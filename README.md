@@ -114,23 +114,24 @@ The [public site](https://duckyquang.github.io/Co-Scientist/) is a static fronte
 3. Open **Settings** and paste your LLM API key (Anthropic, OpenAI, OpenRouter, etc.).
 4. The frontend sends your key with each request to the hosted API. **Keys are never stored on the server** — only in your browser's local storage.
 
-### Host the API yourself
+### Host the API on Oracle Cloud (free, recommended)
 
-Deploy the full backend (Docker) to Railway, Render, Fly.io, or any VPS:
+We ship a one-command bootstrap for **Oracle Always Free** ARM VMs — $0/month, persistent disk, no server-side API keys needed.
 
-```bash
-docker build -t co-scientist .
-docker run -p 8080:8080 -v $(pwd)/data:/app/data co-scientist
-```
+**Full guide:** [`deploy/oracle/README.md`](deploy/oracle/README.md)
 
-Set the GitHub Pages frontend to point at your API by rebuilding with:
+Quick summary:
 
-```bash
-cd frontend
-VITE_API_URL=https://your-api.example.com npm run build:pages
-```
+1. Create an Ubuntu ARM instance on Oracle Cloud (Always Free `VM.Standard.A1.Flex`)
+2. Point `api.yourdomain.com` → VM public IP (HTTPS required for GitHub Pages)
+3. SSH in and run:
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/duckyquang/Co-Scientist/main/deploy/oracle/setup.sh | bash
+   ```
+4. Set GitHub repo variable **`VITE_API_URL`** = `https://api.yourdomain.com`
+5. Re-run the **Deploy to GitHub Pages** workflow
 
-Or set the `VITE_API_URL` repository secret in GitHub Actions (see [Deploy](#deploy)).
+Users paste their own LLM keys in Settings — you pay nothing for inference.
 
 ### Browse without keys
 
@@ -215,8 +216,9 @@ config/           # default.toml + agent prompts
 | Target | What deploys | Command / workflow |
 |---|---|---|
 | **GitHub Pages** | Static React demo + onboarding | `.github/workflows/deploy-pages.yml` |
-| **Docker / VPS** | Full stack (UI + API + engine) | `docker compose up` |
-| **Connect Pages → API** | Set `VITE_API_URL` secret in GitHub Actions | Rebuild Pages workflow |
+| **Oracle Cloud (free)** | API + engine + HTTPS (Option 2) | [`deploy/oracle/README.md`](deploy/oracle/README.md) |
+| **Docker (local/VPS)** | Full stack (UI + API + engine) | `docker compose up` |
+| **Connect Pages → API** | Set `VITE_API_URL` variable in GitHub Actions | Rebuild Pages workflow |
 
 Enable **GitHub Pages → Source: GitHub Actions** in repo settings.
 

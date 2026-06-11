@@ -1,0 +1,7 @@
+# HTTPS reverse proxy — requires API_DOMAIN pointing at this server's public IP.
+# Caddy obtains a Let's Encrypt certificate automatically.
+
+{$API_DOMAIN} {
+	encode gzip
+	reverse_proxy co-scientist:8080
+}
