@@ -1,43 +1,33 @@
-"""FastAPI web UI for the co-scientist.
+"""FastAPI host for Co-Scientist.
 
-One process per host: launching `co-scientist serve` runs both the API + UI
-and the worker pool — the queue is DB-backed so CLI `co-scientist run` in a
-separate terminal feeds tasks to whatever Supervisor is currently active.
-
-The UI is server-side Jinja2 + htmx for partial updates + SSE for live events.
-No JS build step. Pico.css for default styling.
+`co-scientist serve` runs the React dashboard + JSON API + real agent engine.
+Legacy htmx pages remain under /classic for compatibility.
 """
 
 from __future__ import annotations
 
 import asyncio
-import contextlib
-import json
 import logging as stdlib_logging
-from collections.abc import AsyncIterator
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from fastapi import BackgroundTasks, FastAPI, Form, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sse_starlette.sse import EventSourceResponse
 
-from .. import ids
 from ..config import Config, load_config
 from ..logging import get_logger
-from ..models import SystemFeedback
-from ..orchestrator.events import GLOBAL_BUS
 from ..storage import db as db_mod
-from ..storage.repos import events as events_repo
-from ..storage.repos import feedback as fb_repo
-from ..storage.repos import hypotheses as hyp_repo
 from ..storage.repos import reviews as rev_repo
 from ..storage.repos import sessions as sess_repo
 from ..storage.repos import transcripts as tx_repo
+from .react_api import create_react_router
 from .sanitize import render_markdown
+from .spa import DIST, create_spa_router
 
 log = get_logger("web")
 HERE = Path(__file__).parent
@@ -46,29 +36,51 @@ TEMPLATES = Jinja2Templates(directory=HERE / "templates")
 
 def create_app(cfg: Config | None = None) -> FastAPI:
     cfg = cfg or load_config()
-    app = FastAPI(title="AI Co-Scientist")
+    app = FastAPI(title="Co-Scientist")
     app.state.cfg = cfg
     app.state.background_runs: dict[str, asyncio.Task] = {}
+    live_sessions: set[str] = set()
 
-    # Static
-    app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
+    # CORS — allows the GitHub Pages frontend to call a hosted API with user keys.
+    origins = os.environ.get(
+        "CORS_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173,https://duckyquang.github.io",
+    ).split(",")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[o.strip() for o in origins if o.strip()],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    app.include_router(create_react_router(cfg, live_sessions=live_sessions))
+
+    # React production build (assets/)
+    if DIST.exists():
+        assets = DIST / "assets"
+        if assets.is_dir():
+            app.mount("/assets", StaticFiles(directory=assets), name="react-assets")
+
+    # Legacy htmx static + pages
+    app.mount("/classic/static", StaticFiles(directory=HERE / "static"), name="classic-static")
 
     # ----------------------------- pages ----------------------------- #
 
-    @app.get("/", response_class=HTMLResponse)
+    @app.get("/classic", response_class=HTMLResponse)
     async def index(request: Request) -> HTMLResponse:
         rows = await _list_sessions(cfg)
         return TEMPLATES.TemplateResponse(
             request, "index.html", {"sessions": rows}
         )
 
-    @app.get("/sessions/new", response_class=HTMLResponse)
+    @app.get("/classic/sessions/new", response_class=HTMLResponse)
     async def new_session_form(request: Request) -> HTMLResponse:
         return TEMPLATES.TemplateResponse(
             request, "new_session.html", {"default_budget": cfg.run.budget_usd}
         )
 
-    @app.post("/sessions/new")
+    @app.post("/classic/sessions/new")
     async def create_session(
         request: Request,
         background_tasks: BackgroundTasks,
@@ -99,9 +111,9 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         # No durable session id at this point — give the run a chance to insert
         # the row, then redirect to /. The user can find it in the listing.
         _ = task
-        return RedirectResponse(url="/", status_code=303)
+        return RedirectResponse(url="/classic", status_code=303)
 
-    @app.get("/sessions/{session_id}", response_class=HTMLResponse)
+    @app.get("/classic/sessions/{session_id}", response_class=HTMLResponse)
     async def session_detail(request: Request, session_id: str) -> HTMLResponse:
         conn = await db_mod.connect(cfg)
         try:
@@ -124,7 +136,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         finally:
             await conn.close()
 
-    @app.get("/sessions/{session_id}/hypotheses/{hid}", response_class=HTMLResponse)
+    @app.get("/classic/sessions/{session_id}/hypotheses/{hid}", response_class=HTMLResponse)
     async def hypothesis_detail(request: Request, session_id: str, hid: str) -> HTMLResponse:
         conn = await db_mod.connect(cfg)
         try:
@@ -146,7 +158,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         finally:
             await conn.close()
 
-    @app.get("/sessions/{session_id}/overview", response_class=HTMLResponse)
+    @app.get("/classic/sessions/{session_id}/overview", response_class=HTMLResponse)
     async def session_overview(request: Request, session_id: str) -> HTMLResponse:
         conn = await db_mod.connect(cfg)
         try:
@@ -181,115 +193,14 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         finally:
             await conn.close()
 
-    # ----------------------------- API + SSE ----------------------------- #
-
-    @app.get("/api/sessions/{session_id}/metrics")
-    async def api_metrics(session_id: str) -> JSONResponse:
-        from ..obs.metrics import session_metrics_cached, to_dict
-
-        conn = await db_mod.connect(cfg)
-        try:
-            m = await session_metrics_cached(conn, session_id)
-            return JSONResponse(to_dict(m))
-        finally:
-            await conn.close()
-
-    @app.get("/api/sessions/{session_id}")
-    async def api_session(session_id: str) -> JSONResponse:
-        conn = await db_mod.connect(cfg)
-        try:
-            s = await sess_repo.fetch(conn, session_id)
-            if s is None:
-                raise HTTPException(status_code=404)
-            return JSONResponse(s.model_dump(mode="json"))
-        finally:
-            await conn.close()
-
-    @app.get("/api/sessions/{session_id}/events")
-    async def api_events(session_id: str) -> EventSourceResponse:
-        async def _stream() -> AsyncIterator[dict[str, Any]]:
-            # Replay last 25 events from DB so refreshes don't go blank.
-            conn = await db_mod.connect(cfg)
-            try:
-                history = await events_repo.recent(conn, session_id, limit=25)
-            finally:
-                await conn.close()
-            for ev in reversed(history):
-                yield {
-                    "event": ev["event"],
-                    "data": json.dumps({"payload": ev["payload"], "ts": ev["ts"]}),
-                }
-            async with contextlib.aclosing(GLOBAL_BUS.subscribe(session_id)) as gen:
-                async for ev in gen:
-                    yield {
-                        "event": ev.name,
-                        "data": ev.to_json(),
-                    }
-
-        return EventSourceResponse(_stream())
-
-    @app.post("/api/sessions/{session_id}/pause")
-    async def api_pause(session_id: str) -> JSONResponse:
-        conn = await db_mod.connect(cfg)
-        try:
-            await sess_repo.set_status(conn, session_id, "paused")
-            await GLOBAL_BUS.publish(session_id, "session_paused", {})
-            return JSONResponse({"ok": True})
-        finally:
-            await conn.close()
-
-    @app.post("/api/sessions/{session_id}/resume")
-    async def api_resume(session_id: str) -> JSONResponse:
-        conn = await db_mod.connect(cfg)
-        try:
-            await sess_repo.set_status(conn, session_id, "running")
-            await GLOBAL_BUS.publish(session_id, "session_resumed", {})
-            return JSONResponse({"ok": True})
-        finally:
-            await conn.close()
-
-    @app.post("/api/sessions/{session_id}/abort")
-    async def api_abort(session_id: str) -> JSONResponse:
-        conn = await db_mod.connect(cfg)
-        try:
-            await sess_repo.set_status(conn, session_id, "aborted")
-            await GLOBAL_BUS.publish(session_id, "session_aborted", {})
-            return JSONResponse({"ok": True})
-        finally:
-            await conn.close()
-
-    @app.post("/api/sessions/{session_id}/feedback")
-    async def api_feedback(
-        session_id: str,
-        text: str = Form(...),
-        kind: str = Form("directive"),
-        target_id: str = Form(""),
-    ) -> JSONResponse:
-        conn = await db_mod.connect(cfg)
-        try:
-            fb = SystemFeedback(
-                id=ids.feedback_id(), session_id=session_id,
-                created_at=datetime.now(UTC),
-                source="human", kind=kind,
-                target_id=target_id or None, text=text, active=True,
-            )
-            await fb_repo.insert(conn, fb)
-            if kind == "pin" and target_id:
-                await hyp_repo.set_state(conn, target_id, "pinned")
-            elif kind == "rejection" and target_id:
-                await hyp_repo.set_state(conn, target_id, "rejected")
-            await GLOBAL_BUS.publish(session_id, "human_feedback", {
-                "kind": kind, "target_id": target_id or None, "text": text[:200],
-            })
-            return JSONResponse({"ok": True, "feedback_id": fb.id})
-        finally:
-            await conn.close()
-
     @app.get("/healthz")
     async def health() -> JSONResponse:
         return JSONResponse({"ok": True})
 
-    # quiet uvicorn access spam during streaming
+    # React SPA catch-all (must be last)
+    if DIST.exists():
+        app.include_router(create_spa_router())
+
     stdlib_logging.getLogger("uvicorn.access").setLevel(stdlib_logging.WARNING)
     return app
 

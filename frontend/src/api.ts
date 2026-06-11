@@ -1,18 +1,25 @@
-import { API_ROOT, IS_STATIC_DEMO } from "./lib/config";
+import { apiUrl, IS_STATIC_DEMO, STATIC_DEMO_ROOT } from "./lib/config";
+import { authHeaders } from "./lib/credentials";
+import { canUseLiveApi } from "./lib/live";
 import type {
   ClusterPoint, CostByAgent, Feedback, GlobalStats, Hypothesis, LineageNode,
   Match, Meta, SessionDetail, SessionRow,
 } from "./types";
 
-async function j<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, {
+async function j<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(apiUrl(path), {
     ...init,
-    headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(),
+      ...(init?.headers || {}),
+    },
   });
   if (!res.ok) {
     let detail = res.statusText;
     try {
-      detail = (await res.json()).error || detail;
+      const body = await res.json();
+      detail = body.detail || body.error || detail;
     } catch {}
     throw new Error(detail);
   }
@@ -20,110 +27,133 @@ async function j<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 async function staticGet<T>(path: string): Promise<T> {
-  return j<T>(`${API_ROOT}/${path}`);
+  const res = await fetch(`${STATIC_DEMO_ROOT}/${path}`);
+  if (!res.ok) throw new Error(res.statusText);
+  return res.json();
 }
 
-function staticErr(msg: string): never {
-  throw new Error(msg);
+function needsCloudSetup(): never {
+  throw new Error(
+    "Cloud mode requires an API key. Open Settings, add your key, and ensure the hosted API is configured.",
+  );
+}
+
+function useLiveOrStatic<T>(live: () => Promise<T>, staticPath: string): Promise<T> {
+  if (canUseLiveApi() || !IS_STATIC_DEMO) return live();
+  return staticGet<T>(staticPath);
 }
 
 export const api = {
   meta: () =>
-    IS_STATIC_DEMO
-      ? staticGet<Meta>("meta.json")
-      : j<Meta>("/api/meta"),
+    useLiveOrStatic(() => j<Meta>("/api/meta"), "meta.json"),
 
   stats: () =>
-    IS_STATIC_DEMO
-      ? staticGet<GlobalStats>("stats.json")
-      : j<GlobalStats>("/api/stats"),
+    useLiveOrStatic(() => j<GlobalStats>("/api/stats"), "stats.json"),
 
   sessions: () =>
-    IS_STATIC_DEMO
-      ? staticGet<{ sessions: SessionRow[] }>("sessions.json").then((d) => d.sessions)
-      : j<{ sessions: SessionRow[] }>("/api/sessions").then((d) => d.sessions),
+    useLiveOrStatic(
+      () => j<{ sessions: SessionRow[] }>("/api/sessions").then((d) => d.sessions),
+      "sessions.json",
+    ).then((d: any) => (Array.isArray(d) ? d : d.sessions)),
 
   session: (id: string) =>
-    IS_STATIC_DEMO
-      ? staticGet<SessionDetail>(`sessions/${id}/detail.json`)
-      : j<SessionDetail>(`/api/sessions/${id}`),
+    useLiveOrStatic(
+      () => j<SessionDetail>(`/api/sessions/${id}`),
+      `sessions/${id}/detail.json`,
+    ),
 
   hypotheses: (id: string) =>
-    IS_STATIC_DEMO
-      ? staticGet<{ hypotheses: Hypothesis[] }>(`sessions/${id}/hypotheses.json`).then((d) => d.hypotheses)
-      : j<{ hypotheses: Hypothesis[] }>(`/api/sessions/${id}/hypotheses`).then((d) => d.hypotheses),
+    useLiveOrStatic(
+      () => j<{ hypotheses: Hypothesis[] }>(`/api/sessions/${id}/hypotheses`).then((d) => d.hypotheses),
+      `sessions/${id}/hypotheses.json`,
+    ).then((d: any) => (Array.isArray(d) ? d : d.hypotheses)),
 
   hypothesis: (id: string, hid: string) =>
-    IS_STATIC_DEMO
-      ? staticGet<Hypothesis>(`sessions/${id}/hypotheses/${hid}.json`)
-      : j<Hypothesis>(`/api/sessions/${id}/hypotheses/${hid}`),
+    useLiveOrStatic(
+      () => j<Hypothesis>(`/api/sessions/${id}/hypotheses/${hid}`),
+      `sessions/${id}/hypotheses/${hid}.json`,
+    ),
 
   matches: (id: string) =>
-    IS_STATIC_DEMO
-      ? staticGet<{ matches: Match[] }>(`sessions/${id}/matches.json`).then((d) => d.matches)
-      : j<{ matches: Match[] }>(`/api/sessions/${id}/matches`).then((d) => d.matches),
+    useLiveOrStatic(
+      () => j<{ matches: Match[] }>(`/api/sessions/${id}/matches`).then((d) => d.matches),
+      `sessions/${id}/matches.json`,
+    ).then((d: any) => (Array.isArray(d) ? d : d.matches)),
 
   cost: (id: string) =>
-    IS_STATIC_DEMO
-      ? staticGet<{ by_agent: CostByAgent[]; summary: any }>(`sessions/${id}/cost.json`)
-      : j<{ by_agent: CostByAgent[]; summary: any }>(`/api/sessions/${id}/cost`),
+    useLiveOrStatic(
+      () => j<{ by_agent: CostByAgent[]; summary: any }>(`/api/sessions/${id}/cost`),
+      `sessions/${id}/cost.json`,
+    ),
 
   feedback: (id: string) =>
-    IS_STATIC_DEMO
-      ? staticGet<{ feedback: Feedback[] }>(`sessions/${id}/feedback.json`).then((d) => d.feedback)
-      : j<{ feedback: Feedback[] }>(`/api/sessions/${id}/feedback`).then((d) => d.feedback),
+    useLiveOrStatic(
+      () => j<{ feedback: Feedback[] }>(`/api/sessions/${id}/feedback`).then((d) => d.feedback),
+      `sessions/${id}/feedback.json`,
+    ).then((d: any) => (Array.isArray(d) ? d : d.feedback)),
 
   lineage: (id: string) =>
-    IS_STATIC_DEMO
-      ? staticGet<{ nodes: LineageNode[]; edges: { source: string; target: string }[] }>(
-          `sessions/${id}/lineage.json`,
-        )
-      : j<{ nodes: LineageNode[]; edges: { source: string; target: string }[] }>(
-          `/api/sessions/${id}/lineage`,
-        ),
+    useLiveOrStatic(
+      () => j<{ nodes: LineageNode[]; edges: { source: string; target: string }[] }>(
+        `/api/sessions/${id}/lineage`,
+      ),
+      `sessions/${id}/lineage.json`,
+    ),
 
   clusters: (id: string) =>
-    IS_STATIC_DEMO
-      ? staticGet<{ points: ClusterPoint[] }>(`sessions/${id}/clusters.json`).then((d) => d.points)
-      : j<{ points: ClusterPoint[] }>(`/api/sessions/${id}/clusters`).then((d) => d.points),
+    useLiveOrStatic(
+      () => j<{ points: ClusterPoint[] }>(`/api/sessions/${id}/clusters`).then((d) => d.points),
+      `sessions/${id}/clusters.json`,
+    ).then((d: any) => (Array.isArray(d) ? d : d.points)),
 
   eloHistory: (id: string) =>
-    IS_STATIC_DEMO
-      ? staticGet<{ series: Record<string, { i: number; elo: number }[]> }>(
-          `sessions/${id}/elo-history.json`,
-        ).then((d) => d.series)
-      : j<{ series: Record<string, { i: number; elo: number }[]> }>(
-          `/api/sessions/${id}/elo-history`,
-        ).then((d) => d.series),
+    useLiveOrStatic(
+      () => j<{ series: Record<string, { i: number; elo: number }[]> }>(
+        `/api/sessions/${id}/elo-history`,
+      ).then((d) => d.series),
+      `sessions/${id}/elo-history.json`,
+    ).then((d: any) => (d.series ? d.series : d)),
 
   overview: (id: string) =>
-    IS_STATIC_DEMO
-      ? staticGet<{ markdown: string }>(`sessions/${id}/overview.json`).then((d) => d.markdown)
-      : j<{ markdown: string }>(`/api/sessions/${id}/overview`).then((d) => d.markdown),
+    useLiveOrStatic(
+      () => j<{ markdown: string }>(`/api/sessions/${id}/overview`).then((d) => d.markdown),
+      `sessions/${id}/overview.json`,
+    ).then((d: any) => (typeof d === "string" ? d : d.markdown)),
 
   create: (body: {
     goal: string; budget_usd: number; n_initial: number; provider?: string; speed?: number;
-  }) =>
-    IS_STATIC_DEMO
-      ? staticErr("Static demo — browse existing sessions or run locally to create new ones.")
-      : j<{ session_id: string }>("/api/sessions", { method: "POST", body: JSON.stringify(body) }),
+  }) => {
+    if (IS_STATIC_DEMO && !canUseLiveApi()) return Promise.reject(needsCloudSetup());
+    return j<{ session_id: string }>("/api/sessions", {
+      method: "POST", body: JSON.stringify(body),
+    });
+  },
 
-  control: (id: string, action: "pause" | "resume" | "abort") =>
-    IS_STATIC_DEMO
-      ? Promise.resolve({ status: action === "pause" ? "paused" : action === "resume" ? "running" : "aborted" })
-      : j<{ status: string }>(`/api/sessions/${id}/${action}`, { method: "POST" }),
+  control: (id: string, action: "pause" | "resume" | "abort") => {
+    if (IS_STATIC_DEMO && !canUseLiveApi()) {
+      return Promise.resolve({
+        status: action === "pause" ? "paused" : action === "resume" ? "running" : "aborted",
+      });
+    }
+    return j<{ status: string }>(`/api/sessions/${id}/${action}`, { method: "POST" });
+  },
 
-  sendFeedback: (id: string, body: { text: string; kind?: string; target_id?: string }) =>
-    IS_STATIC_DEMO
-      ? Promise.resolve({ ok: true })
-      : j<{ ok: boolean }>(`/api/sessions/${id}/feedback`, {
-          method: "POST", body: JSON.stringify(body),
-        }),
+  sendFeedback: (id: string, body: { text: string; kind?: string; target_id?: string }) => {
+    if (IS_STATIC_DEMO && !canUseLiveApi()) return Promise.resolve({ ok: true });
+    return j<{ ok: boolean }>(`/api/sessions/${id}/feedback`, {
+      method: "POST", body: JSON.stringify(body),
+    });
+  },
 
-  setHypState: (id: string, hid: string, state: string) =>
-    IS_STATIC_DEMO
-      ? Promise.resolve({ ok: true })
-      : j<{ ok: boolean }>(`/api/sessions/${id}/hypotheses/${hid}/state`, {
-          method: "POST", body: JSON.stringify({ state }),
-        }),
+  setHypState: (id: string, hid: string, state: string) => {
+    if (IS_STATIC_DEMO && !canUseLiveApi()) return Promise.resolve({ ok: true });
+    return j<{ ok: boolean }>(`/api/sessions/${id}/hypotheses/${hid}/state`, {
+      method: "POST", body: JSON.stringify({ state }),
+    });
+  },
 };
+
+/** SSE stream URL for live session events. */
+export function streamUrl(sessionId: string): string {
+  return apiUrl(`/api/sessions/${sessionId}/stream`);
+}

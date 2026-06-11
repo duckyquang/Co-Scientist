@@ -14,199 +14,211 @@
 
 ---
 
-An open-source re-implementation of Google's **AI co-scientist** ([Gottweis et al., *Nature*, 2026](https://www.nature.com/articles/s41586-026-10644-y); [research blog](https://research.google/blog/accelerating-scientific-breakthroughs-with-an-ai-co-scientist/)) — a multi-agent system that takes a research goal and produces a tournament-ranked **research overview** of novel hypotheses.
+## Choose how to run Co-Scientist
 
-> Independent project — not affiliated with Google or the paper's authors.
+Co-Scientist supports **two ways** to use the same web dashboard:
 
----
+| | **Option 1 — Run locally** | **Option 2 — Use the website + your API key** |
+|---|---|---|
+| **Best for** | Full privacy, local models (Ollama), your own hardware | Quick start in the browser with your cloud LLM account |
+| **API keys** | Stored in your `.env` file on your machine | Pasted in the browser Settings (stored locally in your browser only) |
+| **Engine** | Real multi-agent pipeline on your machine | Real pipeline on a hosted API you connect to |
+| **Cost** | You pay your LLM provider directly | You pay your LLM provider directly |
 
-## ✨ Highlights
-
-| | |
-|---|---|
-| **6 specialized agents** | Generation, Reflection, Ranking, Evolution, Proximity, Meta-review |
-| **Elo tournament** | Pairwise debates rank hypotheses into a live leaderboard |
-| **Provider-agnostic** | Anthropic, OpenAI, OpenRouter, Gemini, Groq, Ollama, and more |
-| **Live web UI** | React dashboard with SSE streaming, lineage graphs, cluster maps |
-| **Key-free demo** | Explore pre-seeded sessions without API keys |
+> On the [public demo site](https://duckyquang.github.io/Co-Scientist/), an onboarding popup lets you pick either option. **Option 1** opens this README's local setup guide. **Option 2** opens Settings to paste your API key.
 
 ---
 
-## 🌐 Live demo
+## Option 1 — Run locally
 
-Browse sample research sessions on GitHub Pages — no setup required:
+Clone the repo, install dependencies, and run the full web app on your machine. Use **Ollama** for a local model, or any cloud provider via `.env`.
 
-**[https://duckyquang.github.io/Co-Scientist/](https://duckyquang.github.io/Co-Scientist/)**
-
-The live demo is a read-only snapshot. Run locally to create new sessions.
-
----
-
-## 🚀 Quick start
-
-### 1. Install
+### 1. Clone & install
 
 ```bash
+git clone https://github.com/duckyquang/Co-Scientist.git
+cd Co-Scientist
+
 python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 
 cp .env.example .env
-# Add your LLM provider API key
+# Add your API key, or use Ollama (no key needed):
+#   [llm]
+#   provider = "ollama"
 ```
 
-### 2. Initialize
+### 2. Initialize & build the UI
 
 ```bash
 co-scientist init
-co-scientist list
+
+cd frontend && npm install && npm run build && cd ..
 ```
 
-### 3. Run a session
+### 3. Start the web app
 
 ```bash
-co-scientist run "Identify hypotheses about microbiome-driven inflammation" \
-  --n 3 --budget-usd 2.0 --wall-clock 600
+co-scientist serve --host 127.0.0.1 --port 8080
 ```
 
-### 4. Launch the web UI
+Open **http://127.0.0.1:8080** — the React dashboard and real agent engine run together.
+
+**Dev mode** (hot-reload frontend):
 
 ```bash
-# Seed demo data + start the server
-python -m webapp.seed --reset
-python -m webapp.server --seed --port 8000
+# Terminal 1
+co-scientist serve --port 8080
 
-# In another terminal — dev frontend
-cd frontend && npm install && npm run dev
+# Terminal 2
+cd frontend && npm run dev
 ```
 
-Open **http://localhost:5173** (API proxied to port 8000).
+Open **http://localhost:5173** (Vite proxies API calls to port 8080).
+
+### Local model with Ollama
+
+```bash
+ollama pull llama3.3:70b
+```
+
+```toml
+# co-scientist.toml
+[llm]
+provider = "ollama"
+
+[models]
+generation = "llama3.3:70b"
+reflection = "llama3.3:70b"
+ranking_pairwise = "llama3.3:70b"
+# ... set all model keys to your Ollama model tag
+```
+
+### Docker (local or self-hosted)
+
+```bash
+docker compose up --build
+```
+
+Open **http://localhost:8080**.
+
+---
+
+## Option 2 — Use the website with your API key
+
+The [public site](https://duckyquang.github.io/Co-Scientist/) is a static frontend. To **launch real sessions** from the browser:
+
+1. Visit the site — the onboarding popup appears on first visit.
+2. Choose **Option 2 — Use the website**.
+3. Open **Settings** and paste your LLM API key (Anthropic, OpenAI, OpenRouter, etc.).
+4. The frontend sends your key with each request to the hosted API. **Keys are never stored on the server** — only in your browser's local storage.
+
+### Host the API yourself
+
+Deploy the full backend (Docker) to Railway, Render, Fly.io, or any VPS:
+
+```bash
+docker build -t co-scientist .
+docker run -p 8080:8080 -v $(pwd)/data:/app/data co-scientist
+```
+
+Set the GitHub Pages frontend to point at your API by rebuilding with:
+
+```bash
+cd frontend
+VITE_API_URL=https://your-api.example.com npm run build:pages
+```
+
+Or set the `VITE_API_URL` repository secret in GitHub Actions (see [Deploy](#deploy)).
+
+### Browse without keys
+
+You can always explore **pre-seeded demo sessions** on GitHub Pages without an API key — read-only snapshots of sample research runs.
+
+---
+
+## ✨ What Co-Scientist does
+
+An open-source re-implementation of Google's **AI co-scientist** ([Gottweis et al., *Nature*, 2026](https://www.nature.com/articles/s41586-026-10644-y)) — six specialized agents collaborate through an Elo tournament to produce a ranked research overview of novel hypotheses.
+
+| Agent | Role |
+|---|---|
+| **Generation** | Proposes hypotheses via literature review and debate |
+| **Reflection** | Reviews novelty, correctness, testability |
+| **Ranking** | Elo tournament with pairwise debates |
+| **Evolution** | Combines and refines top hypotheses |
+| **Proximity** | Clusters hypotheses for dedup and matchmaking |
+| **Meta-review** | Synthesizes the final research overview |
+
+> Independent project — not affiliated with Google or the paper's authors.
 
 ---
 
 ## 🏗️ Architecture
 
 ```
-                       co-scientist run "<goal>"
+                       User goal (web or CLI)
                                   │
                                   ▼
             ┌──────────────────────────────────────┐
-            │            Supervisor                │  durable task queue (SQLite)
-            │  • parse_goal → ResearchPlan         │  bounded concurrency
-            │  • enqueue initial Generation tasks  │  lease + dead-letter + resume
-            │  • main loop: claim → run → follow-up│  termination: BUDGET / WALL_CLOCK
-            │  • decide_next_steps when idle       │              / ELO_STABLE / IDLE
-            │  • finalize: meta-review overview    │
+            │            Supervisor                │
+            │  parse_goal → task queue → agents    │
             └──────────────────────────────────────┘
-                                  │  tasks
-            ┌─────────────────────┼─────────────────────────────┐
-            ▼                     ▼                             ▼
-   ┌──────────────┐      ┌──────────────┐              ┌──────────────┐
-   │  Generation  │ hyp  │  Reflection  │ review       │   Ranking    │
-   │  literature  │─────►│  full +      │─────────────►│ pairwise vs  │──► Elo
-   │  + debate    │      │  verification│              │   debate     │
-   └──────────────┘      └──────────────┘              └──────────────┘
-            ▲                     ▲                             │
-            │                     │ informative pairings        ▼
-   ┌──────────────┐      ┌──────────────┐              ┌──────────────┐
-   │  Evolution   │◄─────│ Meta-review  │              │  Proximity   │
-   │ combine /    │ feed │ system fdbk  │              │ FAISS embed  │
-   │ simplify /   │ back │ + final      │              │ + cluster /  │
-   │ feasibility /│      │ overview     │              │ dedup        │
-   │ out_of_box   │      └──────────────┘              └──────────────┘
-   └──────────────┘
-            │
-            ▼
-       new hypotheses re-enter the cycle
+                                  │
+            Generation → Reflection → Ranking (Elo)
+                    → Evolution → Proximity → Meta-review
 ```
-
-### Agent roster
-
-- **Generation** — proposes hypotheses via literature review and simulated scientific debate
-- **Reflection** — reviews for novelty, correctness, and testability; deep-verifies assumptions
-- **Ranking** — Elo tournament with simulated debates between hypotheses
-- **Evolution** — combines, simplifies, reimagines top-ranked hypotheses
-- **Proximity** — embeds and clusters hypotheses for dedup and informative pairings
-- **Meta-review** — synthesizes system-wide feedback and the final research overview
-
-Paper source materials used to instruct the build are in [`reference/`](reference/) (pseudocode, prompts, diagrams). Prompts are in [`config/prompts/`](config/prompts/).
 
 ---
 
 ## ⚙️ Configuration
 
-Layered config: [`config/default.toml`](config/default.toml) → `~/.co-scientist/config.toml` → `./co-scientist.toml` → `--config <path>`
-
-```toml
-[llm]
-provider = "openai"   # anthropic | openai | openrouter | gemini | groq | ollama | ...
-
-[models]
-generation       = "<strong-model>"
-reflection       = "<strong-model>"
-ranking_pairwise = "<cheap-model>"
-# ... override ALL keys when switching providers
-```
+Layered config: [`config/default.toml`](config/default.toml) → `~/.co-scientist/config.toml` → `./co-scientist.toml`
 
 | Provider | API key env var | Example models |
 |---|---|---|
 | `anthropic` | `ANTHROPIC_API_KEY` | `claude-opus-4-7`, `claude-sonnet-4-6` |
-| `openai` | `OPENAI_API_KEY` | `gpt-5`, `gpt-4o`, `o3-mini` |
+| `openai` | `OPENAI_API_KEY` | `gpt-5`, `gpt-4o` |
 | `openrouter` | `OPENROUTER_API_KEY` | `openai/gpt-5`, `google/gemini-2.5-pro` |
-| `gemini` | `GEMINI_API_KEY` | `gemini-2.5-pro`, `gemini-2.5-flash` |
-| `groq` | `GROQ_API_KEY` | `llama-3.3-70b-versatile` |
-| `ollama` | *(none)* | `llama3.3:70b` |
-
-Tool / function calling is **required**. See the full provider table and feature matrix in the original docs above or [`config/default.toml`](config/default.toml).
+| `ollama` | *(none — local)* | `llama3.3:70b` |
 
 ---
 
-## 🖥️ CLI reference
+## 🖥️ CLI (optional)
+
+The CLI remains available for scripting and power users:
 
 ```bash
-co-scientist serve            # FastAPI + htmx + SSE dashboard at localhost:7878
-co-scientist report <id>      # print the final overview
-co-scientist status <id>      # session metadata + counts
-co-scientist pause <id> | resume <id> | abort <id>
-co-scientist feedback <id> --kind directive --text "focus on metabolic pathways"
-co-scientist estimate         # pre-flight cost estimate
-co-scientist eval [agent]     # run the rubric eval bundle
-co-scientist tools list       # show registered agent tools
-co-scientist bench --preset paper   # cross-model head-to-head comparison
+co-scientist run "Identify hypotheses about microbiome-driven inflammation" --n 3
+co-scientist serve          # web UI + API (recommended)
+co-scientist report <id>
+co-scientist bench --preset paper
 ```
-
-Bench results: [`docs/BENCH_RESULTS.md`](docs/BENCH_RESULTS.md) (auto-generated via `python scripts/build_bench_report.py`).
 
 ---
 
 ## 📦 Repository layout
 
 ```
-co_scientist/     # Python engine — agents, LLM, storage, tools, vectors
-config/           # default.toml + Jinja2 agent prompts
-frontend/         # React + Vite web dashboard
-webapp/           # Stdlib HTTP server + demo seeder + simulator
-scripts/          # bench report builder, static demo exporter
-docs/             # BENCH_RESULTS.md
-reference/        # paper source materials (gitignored)
-data/             # runtime artifacts (gitignored)
+co_scientist/     # Python engine — agents, LLM, storage, tools
+frontend/         # React dashboard (primary UI)
+co_scientist/web/ # FastAPI — JSON API + serves React build
+webapp/           # Demo seeder + legacy simulator helpers
+config/           # default.toml + agent prompts
 ```
 
 ---
 
-## 🚢 Deploy to GitHub Pages
+## 🚢 Deploy
 
-The frontend deploys automatically on push to `main` via [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml).
+| Target | What deploys | Command / workflow |
+|---|---|---|
+| **GitHub Pages** | Static React demo + onboarding | `.github/workflows/deploy-pages.yml` |
+| **Docker / VPS** | Full stack (UI + API + engine) | `docker compose up` |
+| **Connect Pages → API** | Set `VITE_API_URL` secret in GitHub Actions | Rebuild Pages workflow |
 
-Manual build:
-
-```bash
-python scripts/export_static_demo.py
-cd frontend
-GITHUB_PAGES=true VITE_STATIC_DEMO=true npm run build:pages
-```
-
-Enable **GitHub Pages → Source: GitHub Actions** in your repo settings.
+Enable **GitHub Pages → Source: GitHub Actions** in repo settings.
 
 ---
 

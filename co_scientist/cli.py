@@ -366,7 +366,7 @@ def serve(
     host: str | None = typer.Option(None, "--host"),
     port: int | None = typer.Option(None, "--port"),
 ) -> None:
-    """Launch the FastAPI + htmx + SSE web UI."""
+    """Launch the React dashboard + JSON API + agent engine."""
     cfg, _ = ctx.obj
     host = host or cfg.web_ui.host
     port = port or cfg.web_ui.port

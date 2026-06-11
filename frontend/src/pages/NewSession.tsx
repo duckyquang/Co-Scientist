@@ -3,7 +3,9 @@ import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { Loader } from "../components/ui";
 import { fmtUsd } from "../lib/format";
-import { IS_STATIC_DEMO } from "../lib/config";
+import { IS_STATIC_DEMO, README_LOCAL_URL } from "../lib/config";
+import { getDeploymentMode } from "../lib/credentials";
+import { canUseLiveApi } from "../lib/live";
 import { usePoll } from "../lib/hooks";
 import type { Meta } from "../types";
 
@@ -14,7 +16,7 @@ const EXAMPLES = [
   "Generate hypotheses for overcoming antibody resistance in HER2+ breast cancer",
 ];
 
-export default function NewSession() {
+export default function NewSession({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const nav = useNavigate();
   const { data: meta } = usePoll<Meta>(() => api.meta(), [], null);
   const [goal, setGoal] = useState("");
@@ -46,17 +48,32 @@ export default function NewSession() {
     }
   }
 
-  if (IS_STATIC_DEMO) {
+  const mode = getDeploymentMode();
+  const liveReady = canUseLiveApi() || !IS_STATIC_DEMO;
+
+  if (IS_STATIC_DEMO && !liveReady) {
     return (
-      <div className="mx-auto max-w-xl">
+      <div className="mx-auto max-w-xl space-y-4">
         <div className="card p-8 text-center">
-          <div className="text-4xl">🌐</div>
-          <h1 className="mt-4 text-2xl font-bold text-white">Static demo</h1>
+          <div className="text-4xl">{mode === "local" ? "💻" : "🌐"}</div>
+          <h1 className="mt-4 text-2xl font-bold text-white">
+            {mode === "local" ? "Run locally to create sessions" : "Add your API key to start"}
+          </h1>
           <p className="mt-3 text-sm leading-relaxed text-slate-400">
-            This GitHub Pages deployment is a read-only snapshot of sample research sessions.
-            To launch new sessions with the live simulator, run the app locally.
+            {mode === "local"
+              ? "Clone the repo and run Co-Scientist on your machine with your local model or .env API keys."
+              : "Cloud mode needs your LLM API key in Settings. Keys stay in your browser only."}
           </p>
-          <Link to="/" className="btn-primary mt-6 inline-flex">Browse demo sessions</Link>
+          <div className="mt-6 flex flex-wrap justify-center gap-3">
+            {mode === "local" ? (
+              <a href={README_LOCAL_URL} target="_blank" rel="noopener noreferrer" className="btn-primary inline-flex">
+                Local setup guide
+              </a>
+            ) : (
+              <button onClick={onOpenSettings} className="btn-primary">Open Settings</button>
+            )}
+            <Link to="/" className="btn-ghost">Browse demo sessions</Link>
+          </div>
         </div>
       </div>
     );

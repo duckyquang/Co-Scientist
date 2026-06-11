@@ -176,6 +176,10 @@ export interface SSEvent {
 export interface Meta {
   demo_mode: boolean;
   static_demo?: boolean;
+  hosted?: boolean;
+  server_has_key?: boolean;
+  requires_api_key?: boolean;
+  readme_local_url?: string;
   providers: { id: string; label: string; models: string[] }[];
   models: Record<string, string>;
   defaults: { budget_usd: number; n_initial: number; wall_clock_seconds: number };

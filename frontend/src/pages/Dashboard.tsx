@@ -4,6 +4,8 @@ import { Sparkline } from "../components/charts";
 import { Empty, Loader, Progress, Stat, StatusBadge } from "../components/ui";
 import { eloColor, fmtUsd, timeAgo } from "../lib/format";
 import { IS_STATIC_DEMO } from "../lib/config";
+import { getDeploymentMode } from "../lib/credentials";
+import { canUseLiveApi } from "../lib/live";
 import { usePoll } from "../lib/hooks";
 import type { GlobalStats, SessionRow } from "../types";
 
@@ -99,10 +101,12 @@ export default function Dashboard() {
     <div>
       <Hero stats={stats} />
 
-      {IS_STATIC_DEMO && (
+      {IS_STATIC_DEMO && !canUseLiveApi() && (
         <div className="mb-6 flex items-center gap-3 rounded-xl border border-brand-500/20 bg-brand-500/[0.06] px-4 py-3 text-sm text-brand-200">
-          <span>🌐</span>
-          GitHub Pages demo — explore pre-seeded sessions. Run locally to create new ones.
+          <span>{getDeploymentMode() === "local" ? "💻" : "🌐"}</span>
+          {getDeploymentMode() === "local"
+            ? "Local mode selected — follow the setup guide to run on your machine, or browse the demo sessions below."
+            : "Demo snapshot — add your API key in Settings to launch live sessions, or browse the samples below."}
         </div>
       )}
 

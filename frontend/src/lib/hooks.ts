@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { API_ROOT, IS_STATIC_DEMO } from "./config";
+import { IS_STATIC_DEMO, STATIC_DEMO_ROOT } from "./config";
+import { streamUrl } from "../api";
+import { canUseLiveApi } from "./live";
 import type { SSEvent } from "../types";
 
 const KNOWN_EVENTS = [
@@ -29,8 +31,8 @@ export function useSessionStream(sessionId: string | undefined) {
     seen.current = new Set();
     setEvents([]);
 
-    if (IS_STATIC_DEMO) {
-      fetch(`${API_ROOT}/sessions/${sessionId}/events.json`)
+    if (IS_STATIC_DEMO && !canUseLiveApi()) {
+      fetch(`${STATIC_DEMO_ROOT}/sessions/${sessionId}/events.json`)
         .then((r) => r.json())
         .then((d) => {
           const evs = (d.events || []).map((ev: SSEvent) => ({ ...ev, event: ev.event || "event" }));
@@ -41,7 +43,7 @@ export function useSessionStream(sessionId: string | undefined) {
       return;
     }
 
-    const es = new EventSource(`/api/sessions/${sessionId}/stream`);
+    const es = new EventSource(streamUrl(sessionId));
     es.onopen = () => setConnected(true);
     es.onerror = () => setConnected(false);
 

@@ -1,0 +1,12 @@
+services:
+  co-scientist:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data
+    env_file:
+      - .env
+    environment:
+      CORS_ORIGINS: "http://localhost:5173,http://127.0.0.1:5173,https://duckyquang.github.io"
+    restart: unless-stopped

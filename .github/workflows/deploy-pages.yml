@@ -42,6 +42,8 @@ jobs:
         env:
           GITHUB_PAGES: "true"
           VITE_STATIC_DEMO: "true"
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
+          VITE_README_LOCAL_URL: https://github.com/duckyquang/Co-Scientist#option-1-run-locally
         run: npm run build:pages
 
       - uses: actions/upload-pages-artifact@v3

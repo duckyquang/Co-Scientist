@@ -52,6 +52,9 @@ def export(db_path: Path, out: Path) -> None:
     _write(out / "meta.json", {
         "demo_mode": True,
         "static_demo": True,
+        "hosted": False,
+        "requires_api_key": True,
+        "readme_local_url": "https://github.com/duckyquang/Co-Scientist#option-1-run-locally",
         "providers": PROVIDERS,
         "models": {
             "parse_goal": "claude-sonnet-4-6",
