@@ -79,7 +79,7 @@ function Hero({ stats }: { stats: GlobalStats | null }) {
             { k: "Matches", v: stats.n_matches, accent: "#f59e0b" },
             { k: "Total spend", v: fmtUsd(stats.total_cost_usd), accent: "#a855f7" },
           ].map((x) => (
-            <div key={x.k} className="rounded-xl border border-white/[0.06] bg-ink-900/40 p-3">
+            <div key={x.k} className="rounded-xl border border-zinc-800/70 bg-zinc-950/60 p-3">
               <div className="text-2xl font-bold" style={{ color: x.accent }}>{x.v}</div>
               <div className="text-[11px] uppercase tracking-wider text-slate-500">{x.k}</div>
             </div>

@@ -52,7 +52,7 @@ export function Stat({ label, value, sub, accent }: {
 export function Progress({ value, max, color = "#6366f1" }: { value: number; max: number; color?: string }) {
   const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
   return (
-    <div className="h-2 w-full overflow-hidden rounded-full bg-white/[0.07]">
+    <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-800">
       <div className="h-full rounded-full transition-all duration-700"
         style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${color}, #a855f7)` }} />
     </div>

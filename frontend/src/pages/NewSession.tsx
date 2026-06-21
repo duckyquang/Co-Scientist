@@ -117,21 +117,42 @@ export default function NewSession({ onOpenSettings }: { onOpenSettings?: () => 
           </div>
         </div>
 
+        {/* Free hosting callout */}
+        <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] px-4 py-3">
+          <div className="flex items-center gap-2 text-sm font-semibold text-emerald-300">
+            <span>✅ Run for free 24/7</span>
+          </div>
+          <p className="mt-1 text-[13px] text-emerald-200/70">
+            Use <strong className="text-emerald-300">Groq</strong> (Llama 3.3 70B · free API tier) or{" "}
+            <strong className="text-emerald-300">Google Gemini</strong> (Flash · 1M tokens/day free) for zero-cost AI.
+            Host the server on <strong className="text-emerald-300">Oracle Cloud Always Free</strong> (2 VMs, forever free)
+            + the frontend on <strong className="text-emerald-300">Vercel</strong>.
+          </p>
+        </div>
+
         <div className="grid gap-5 sm:grid-cols-2">
           <div className="card p-5">
             <label className="label">LLM provider</label>
             <div className="mt-3 grid grid-cols-2 gap-2">
-              {(meta?.providers || []).map((p) => (
-                <button key={p.id} onClick={() => setProvider(p.id)}
-                  className={`rounded-xl border px-3 py-2.5 text-left text-sm transition ${
-                    provider === p.id
-                      ? "border-brand-500/60 bg-brand-500/15 text-white"
-                      : "border-white/10 bg-white/[0.02] text-slate-300 hover:border-white/20"
-                  }`}>
-                  <div className="font-semibold">{p.label}</div>
-                  <div className="truncate text-[11px] text-slate-500">{p.models[0]}</div>
-                </button>
-              ))}
+              {(meta?.providers || []).map((p) => {
+                const isFree = ["groq", "gemini", "ollama"].includes(p.id);
+                return (
+                  <button key={p.id} onClick={() => setProvider(p.id)}
+                    className={`relative rounded-xl border px-3 py-2.5 text-left text-sm transition ${
+                      provider === p.id
+                        ? "border-brand-500/60 bg-brand-500/15 text-white"
+                        : "border-zinc-800 bg-zinc-900/50 text-zinc-300 hover:border-zinc-700"
+                    }`}>
+                    {isFree && (
+                      <span className="absolute -top-2 -right-1 rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-400 ring-1 ring-emerald-500/30">
+                        FREE
+                      </span>
+                    )}
+                    <div className="font-semibold">{p.label}</div>
+                    <div className="truncate text-[11px] text-zinc-500">{p.models[0]}</div>
+                  </button>
+                );
+              })}
             </div>
           </div>
 

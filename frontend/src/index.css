@@ -2,112 +2,165 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  color-scheme: dark;
-}
+/* ── Base ─────────────────────────────────────────────────── */
+:root { color-scheme: dark; }
 
-html,
-body,
-#root {
-  height: 100%;
-}
+html, body, #root { height: 100%; }
 
 body {
-  @apply bg-ink-950 text-slate-200 font-sans antialiased;
+  @apply bg-ink-950 text-zinc-200 font-sans antialiased;
+  /* Subtle blue bloom — very faint, resend-inspired */
   background-image:
-    radial-gradient(1100px 700px at 85% -10%, rgba(99, 102, 241, 0.16), transparent 60%),
-    radial-gradient(900px 600px at -5% 10%, rgba(168, 85, 247, 0.12), transparent 55%);
+    radial-gradient(900px 600px at 70% -20%, rgba(59,130,246,0.07), transparent 60%),
+    radial-gradient(700px 500px at -10% 80%, rgba(37,99,235,0.05), transparent 55%);
   background-attachment: fixed;
 }
 
-/* light theme */
-html:not(.dark) {
-  color-scheme: light;
-}
+/* light theme overrides */
+html:not(.dark) { color-scheme: light; }
 html:not(.dark) body {
-  @apply bg-slate-100 text-slate-800;
+  @apply bg-zinc-50 text-zinc-800;
   background-image:
-    radial-gradient(1100px 700px at 85% -10%, rgba(99, 102, 241, 0.12), transparent 60%),
-    radial-gradient(900px 600px at -5% 10%, rgba(168, 85, 247, 0.08), transparent 55%);
+    radial-gradient(900px 600px at 70% -20%, rgba(59,130,246,0.06), transparent 60%);
 }
 
+/* ── Components ───────────────────────────────────────────── */
 @layer components {
+
+  /* Card — resend style: zinc-900 bg, crisp border, no blur (keeps perf high) */
   .card {
-    @apply rounded-2xl border border-white/[0.06] bg-ink-850/70 backdrop-blur-xl shadow-card;
+    @apply rounded-xl border border-zinc-800/80 bg-zinc-900 shadow-card;
   }
   html:not(.dark) .card {
-    @apply border-slate-200 bg-white/80;
+    @apply border-zinc-200 bg-white shadow-sm;
   }
   .card-hover {
-    @apply transition duration-200 hover:border-brand-500/40 hover:shadow-glow hover:-translate-y-0.5;
+    @apply transition-all duration-200
+           hover:border-brand-500/30 hover:shadow-glow hover:-translate-y-px;
   }
+
+  /* Buttons */
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold
-           transition active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none;
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm
+           font-medium transition-all duration-150
+           active:scale-[0.97] disabled:opacity-40 disabled:pointer-events-none;
   }
+  /* Primary: solid blue, crisp (resend-style) */
   .btn-primary {
-    @apply btn text-white bg-gradient-to-br from-brand-500 to-flux-500
-           shadow-[0_8px_24px_-8px_rgba(99,102,241,0.7)] hover:brightness-110;
+    @apply btn bg-brand-600 text-white hover:bg-brand-500
+           shadow-[0_1px_0_0_rgba(255,255,255,0.06)_inset,0_4px_16px_-4px_rgba(37,99,235,0.5)]
+           hover:shadow-[0_1px_0_0_rgba(255,255,255,0.08)_inset,0_6px_20px_-4px_rgba(59,130,246,0.5)];
   }
+  html:not(.dark) .btn-primary {
+    @apply bg-brand-600 hover:bg-brand-700;
+  }
+  /* Ghost: zinc border, subtle */
   .btn-ghost {
-    @apply btn border border-white/10 bg-white/[0.03] text-slate-200 hover:bg-white/[0.07];
+    @apply btn border border-white/[0.08] bg-white/[0.03] text-zinc-300
+           hover:bg-white/[0.06] hover:text-white hover:border-white/[0.12];
   }
   html:not(.dark) .btn-ghost {
-    @apply border-slate-300 bg-white text-slate-700 hover:bg-slate-50;
+    @apply border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 hover:border-zinc-400;
   }
+  /* Danger variant */
+  .btn-danger {
+    @apply btn border border-rose-500/20 bg-rose-500/[0.06] text-rose-400
+           hover:bg-rose-500/[0.12] hover:border-rose-500/30;
+  }
+
+  /* Chip / pill badge */
   .chip {
-    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold
-           tracking-wide uppercase;
+    @apply inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px]
+           font-medium tracking-wide;
   }
+  /* Tiny badge pill (used in sidebar mode badge) */
+  .badge-pill {
+    @apply rounded-md px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-widest;
+  }
+
+  /* Input */
   .input {
-    @apply w-full rounded-xl border border-white/10 bg-ink-900/60 px-3.5 py-2.5 text-sm
-           text-slate-100 placeholder:text-slate-500 outline-none transition
-           focus:border-brand-500/60 focus:ring-2 focus:ring-brand-500/20;
+    @apply w-full rounded-lg border border-white/[0.08] bg-ink-900/80 px-3.5 py-2.5
+           text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition-all
+           focus:border-brand-500/50 focus:ring-2 focus:ring-brand-500/15;
   }
   html:not(.dark) .input {
-    @apply border-slate-300 bg-white text-slate-800 placeholder:text-slate-400;
+    @apply border-zinc-300 bg-white text-zinc-900 placeholder:text-zinc-400
+           focus:border-brand-500/60 focus:ring-brand-500/10;
   }
+
+  /* Sidebar nav item */
+  .nav-item {
+    @apply flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm font-medium
+           text-zinc-400 transition-colors duration-150
+           hover:bg-white/[0.05] hover:text-zinc-100;
+  }
+  .nav-item-active {
+    @apply bg-white/[0.07] text-zinc-50;
+  }
+
+  /* Typography helpers */
   .label {
-    @apply text-xs font-semibold uppercase tracking-wider text-slate-400;
+    @apply text-[10.5px] font-semibold uppercase tracking-widest text-zinc-500;
   }
   .stat-num {
-    @apply text-3xl font-bold tracking-tight text-white;
+    @apply text-3xl font-bold tracking-tight text-white tabular-nums;
   }
-  html:not(.dark) .stat-num {
-    @apply text-slate-900;
-  }
+  html:not(.dark) .stat-num { @apply text-zinc-900; }
 }
 
-/* scrollbar */
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
+/* ── Scrollbar ────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { @apply bg-transparent; }
 ::-webkit-scrollbar-thumb {
-  @apply bg-white/10 rounded-full;
+  @apply bg-white/[0.08] rounded-full;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
-::-webkit-scrollbar-thumb:hover {
-  @apply bg-white/20;
+::-webkit-scrollbar-thumb:hover { @apply bg-white/[0.14]; }
+
+/* ── Markdown / prose ─────────────────────────────────────── */
+.prose-sci h1    { @apply text-2xl font-bold text-white mt-2 mb-3; }
+.prose-sci h2    { @apply text-base font-semibold text-brand-400 mt-6 mb-2; }
+.prose-sci h3    { @apply text-sm font-semibold text-zinc-100 mt-4 mb-1.5; }
+.prose-sci p     { @apply text-[14.5px] leading-7 text-zinc-300 my-2.5; }
+.prose-sci ul    { @apply list-disc pl-5 my-2 space-y-1 text-zinc-300; }
+.prose-sci ol    { @apply list-decimal pl-5 my-2 space-y-1 text-zinc-300; }
+.prose-sci strong { @apply text-white font-semibold; }
+.prose-sci code  {
+  @apply rounded-md bg-white/[0.07] px-1.5 py-0.5 text-[12.5px]
+         font-mono text-brand-300 border border-white/[0.06];
+}
+.prose-sci a     { @apply text-brand-400 underline decoration-brand-500/30 underline-offset-2 hover:text-brand-300; }
+.prose-sci em    { @apply text-zinc-400; }
+.prose-sci blockquote {
+  @apply border-l-2 border-brand-500/40 pl-4 my-3 italic text-zinc-400;
 }
 
-/* markdown */
-.prose-sci h1 { @apply text-2xl font-bold text-white mt-2 mb-3; }
-.prose-sci h2 { @apply text-lg font-bold text-brand-300 mt-6 mb-2; }
-.prose-sci h3 { @apply text-base font-semibold text-slate-100 mt-4 mb-1.5; }
-.prose-sci p { @apply text-[15px] leading-7 text-slate-300 my-2.5; }
-.prose-sci ul { @apply list-disc pl-5 my-2 space-y-1 text-slate-300; }
-.prose-sci ol { @apply list-decimal pl-5 my-2 space-y-1 text-slate-300; }
-.prose-sci strong { @apply text-white font-semibold; }
-.prose-sci code { @apply rounded bg-white/10 px-1.5 py-0.5 text-[13px] font-mono text-cyber-400; }
-.prose-sci a { @apply text-brand-300 underline decoration-brand-500/40 underline-offset-2; }
-.prose-sci em { @apply text-slate-400; }
-html:not(.dark) .prose-sci h1, html:not(.dark) .prose-sci h3, html:not(.dark) .prose-sci strong { @apply text-slate-900; }
-html:not(.dark) .prose-sci p, html:not(.dark) .prose-sci ul, html:not(.dark) .prose-sci ol { @apply text-slate-700; }
+html:not(.dark) .prose-sci h1,
+html:not(.dark) .prose-sci h3,
+html:not(.dark) .prose-sci strong { @apply text-zinc-900; }
+html:not(.dark) .prose-sci p,
+html:not(.dark) .prose-sci ul,
+html:not(.dark) .prose-sci ol    { @apply text-zinc-700; }
 
+/* ── Grid background ──────────────────────────────────────── */
 .grid-bg {
-  background-image: linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+  background-image:
+    linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
   background-size: 28px 28px;
+}
+
+/* ── Sidebar ──────────────────────────────────────────────── */
+.sidebar {
+  @apply fixed inset-y-0 left-0 z-30 flex w-56 flex-col;
+  background: #0d0d10;
+  border-right: 1px solid rgba(255,255,255,0.055);
+}
+
+/* ── Focus ring ───────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid rgba(59,130,246,0.6);
+  outline-offset: 2px;
 }

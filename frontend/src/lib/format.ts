@@ -25,7 +25,7 @@ export const clockTime = (ms: number) =>
 
 // agent -> color identity (used across timeline, costs, badges)
 export const AGENT_COLORS: Record<string, { hex: string; bg: string; text: string }> = {
-  generation: { hex: "#6366f1", bg: "bg-brand-500/15", text: "text-brand-300" },
+  generation: { hex: "#3b82f6", bg: "bg-brand-500/15", text: "text-brand-400" },
   reflection: { hex: "#22d3ee", bg: "bg-cyber-500/15", text: "text-cyber-400" },
   ranking: { hex: "#f59e0b", bg: "bg-amber-500/15", text: "text-amber-400" },
   evolution: { hex: "#a855f7", bg: "bg-flux-500/15", text: "text-flux-400" },

@@ -55,7 +55,7 @@ function Gauge({ label, used, total, fmt, color }: {
 
 function MetricChip({ label, value, accent }: { label: string; value: string | number; accent?: string }) {
   return (
-    <div className="rounded-xl border border-white/[0.06] bg-ink-900/40 px-4 py-2.5">
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-2.5">
       <div className="text-lg font-bold leading-none" style={accent ? { color: accent } : undefined}>{value}</div>
       <div className="mt-1 text-[10px] uppercase tracking-wider text-slate-500">{label}</div>
     </div>
