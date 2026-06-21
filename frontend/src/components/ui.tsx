@@ -8,7 +8,7 @@ export function StatusBadge({ status }: { status: string }) {
   const live = status === "running";
   return (
     <span className={`chip ${STATUS_STYLE[status] || STATUS_STYLE.aborted}`}>
-      {live && <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulseDot" />}
+      {live && <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulseDot" />}
       {status}
     </span>
   );

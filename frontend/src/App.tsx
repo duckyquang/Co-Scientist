@@ -5,7 +5,7 @@ import { CommandPalette } from "./components/CommandPalette";
 import { OnboardingModal } from "./components/OnboardingModal";
 import { SettingsModal } from "./components/SettingsModal";
 import { IS_LOCAL_HOST, IS_STATIC_DEMO } from "./lib/config";
-import { getDeploymentMode, isOnboardingDone } from "./lib/credentials";
+import { getCredentials, getDeploymentMode, isOnboardingDone } from "./lib/credentials";
 import { canUseLiveApi } from "./lib/live";
 import { useTheme, usePoll } from "./lib/hooks";
 import { api } from "./api";
@@ -18,7 +18,7 @@ import type { SessionRow } from "./types";
 /* ── Mode badge ─────────────────────────────────────────── */
 function ModeBadge() {
   if (IS_LOCAL_HOST && !IS_STATIC_DEMO)
-    return <span className="badge-pill bg-emerald-500/15 text-emerald-400">Local</span>;
+    return <span className="badge-pill bg-blue-500/15 text-blue-400">Local</span>;
   if (canUseLiveApi())
     return <span className="badge-pill bg-brand-500/15 text-brand-400">Cloud</span>;
   if (getDeploymentMode() === "local")
@@ -93,8 +93,8 @@ function Sidebar({
             {recent.map((s) => (
               <SLink key={s.id} to={`/s/${s.id}`}>
                 <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                  s.status === "running" ? "bg-emerald-400 animate-pulseDot" :
-                  s.status === "paused"  ? "bg-amber-400" :
+                  s.status === "running" ? "bg-blue-400 animate-pulseDot" :
+                  s.status === "paused"  ? "bg-zinc-400" :
                   s.status === "done"    ? "bg-brand-400" : "bg-zinc-600"
                 }`} />
                 <span className="truncate text-[12.5px]">
@@ -189,7 +189,7 @@ export default function App() {
   const [settings, setSettings] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [onboarding, setOnboarding] = useState(
-    IS_STATIC_DEMO && !isOnboardingDone(),
+    !isOnboardingDone() && !getCredentials() && IS_STATIC_DEMO,
   );
 
   return (

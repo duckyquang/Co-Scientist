@@ -4,8 +4,8 @@ import { Empty } from "../ui";
 import type { ClusterPoint } from "../../types";
 
 const CLUSTER_COLORS = [
-  "#818cf8", "#22d3ee", "#34d399", "#f59e0b", "#a855f7",
-  "#ec4899", "#f43f5e", "#10b981", "#eab308", "#38bdf8",
+  "#3b82f6", "#60a5fa", "#93c5fd", "#bfdbfe", "#2563eb",
+  "#1d4ed8", "#1e40af", "#eff6ff", "#dbeafe", "#1e3a8a",
 ];
 
 /** Proximity map: 2D projection of hypotheses, grouped by dedup cluster.

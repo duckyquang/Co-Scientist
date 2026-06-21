@@ -1,7 +1,7 @@
 import type { Scores } from "../types";
 
 export function Sparkline({
-  values, width = 120, height = 34, stroke = "#818cf8", fill = true,
+  values, width = 120, height = 34, stroke = "#3b82f6", fill = true,
 }: { values: number[]; width?: number; height?: number; stroke?: string; fill?: boolean }) {
   if (values.length < 2) {
     return <div className="text-[11px] text-slate-500">—</div>;
@@ -94,10 +94,10 @@ export function ScoreRadar({ scores, size = 168 }: { scores: Scores; size?: numb
         const [x, y] = point(i, 1);
         return <line key={i} x1={cx} y1={cy} x2={x} y2={y} stroke="rgba(255,255,255,0.07)" />;
       })}
-      <polygon points={poly} fill="rgba(99,102,241,0.28)" stroke="#818cf8" strokeWidth="2" />
+      <polygon points={poly} fill="rgba(59,130,246,0.20)" stroke="#3b82f6" strokeWidth="2" />
       {vals.map((v, i) => {
         const [x, y] = point(i, v);
-        return <circle key={i} cx={x} cy={y} r="3" fill="#a5b4fc" />;
+        return <circle key={i} cx={x} cy={y} r="3" fill="#60a5fa" />;
       })}
       {axes.map((a, i) => {
         const [x, y] = point(i, 1.22);
@@ -114,10 +114,10 @@ export function ScoreRadar({ scores, size = 168 }: { scores: Scores; size?: numb
 
 export function ScoreBars({ scores }: { scores: Scores }) {
   const rows = [
-    { key: "novelty", label: "Novelty", color: "#818cf8" },
-    { key: "correctness", label: "Correctness", color: "#22d3ee" },
-    { key: "testability", label: "Testability", color: "#34d399" },
-    { key: "feasibility", label: "Feasibility", color: "#f59e0b" },
+    { key: "novelty", label: "Novelty", color: "#60a5fa" },
+    { key: "correctness", label: "Correctness", color: "#3b82f6" },
+    { key: "testability", label: "Testability", color: "#93c5fd" },
+    { key: "feasibility", label: "Feasibility", color: "#2563eb" },
   ] as const;
   return (
     <div className="space-y-2">
@@ -155,7 +155,7 @@ export function EloRace({
   const pad = { l: 38, r: 12, t: 12, b: 22 };
   const x = (i: number) => pad.l + (i / (maxI || 1)) * (W - pad.l - pad.r);
   const y = (e: number) => pad.t + (1 - (e - min) / (max - min || 1)) * (H - pad.t - pad.b);
-  const palette = ["#818cf8", "#22d3ee", "#34d399", "#f59e0b", "#a855f7", "#ec4899", "#f43f5e", "#10b981"];
+  const palette = ["#bfdbfe", "#93c5fd", "#60a5fa", "#3b82f6", "#2563eb", "#1d4ed8", "#1e40af", "#1e3a8a"];
   const ticks = 4;
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
@@ -171,7 +171,7 @@ export function EloRace({
       })}
       {entries.map(([id, v], idx) => {
         const isHi = highlight && id === highlight;
-        const color = isHi ? "#fbbf24" : palette[idx % palette.length];
+        const color = isHi ? "#60a5fa" : palette[idx % palette.length];
         const d = v.map((p, i) => `${i ? "L" : "M"}${x(p.i).toFixed(1)},${y(p.elo).toFixed(1)}`).join(" ");
         return (
           <path key={id} d={d} fill="none" stroke={color}

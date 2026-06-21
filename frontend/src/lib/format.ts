@@ -23,54 +23,57 @@ export function timeAgo(iso: string): string {
 export const clockTime = (ms: number) =>
   new Date(ms).toLocaleTimeString(undefined, { hour12: false });
 
-// agent -> color identity (used across timeline, costs, badges)
+// ── Agent colors — blue mono palette ───────────────────────
 export const AGENT_COLORS: Record<string, { hex: string; bg: string; text: string }> = {
-  generation: { hex: "#3b82f6", bg: "bg-brand-500/15", text: "text-brand-400" },
-  reflection: { hex: "#22d3ee", bg: "bg-cyber-500/15", text: "text-cyber-400" },
-  ranking: { hex: "#f59e0b", bg: "bg-amber-500/15", text: "text-amber-400" },
-  evolution: { hex: "#a855f7", bg: "bg-flux-500/15", text: "text-flux-400" },
-  proximity: { hex: "#10b981", bg: "bg-emerald-500/15", text: "text-emerald-400" },
-  metareview: { hex: "#ec4899", bg: "bg-pink-500/15", text: "text-pink-400" },
-  supervisor: { hex: "#94a3b8", bg: "bg-slate-500/15", text: "text-slate-300" },
-  human: { hex: "#34d399", bg: "bg-emerald-500/15", text: "text-emerald-300" },
+  generation: { hex: "#3b82f6", bg: "bg-blue-500/15", text: "text-blue-400" },
+  reflection:  { hex: "#60a5fa", bg: "bg-blue-400/15", text: "text-blue-300" },
+  ranking:     { hex: "#93c5fd", bg: "bg-blue-300/15", text: "text-blue-200" },
+  evolution:   { hex: "#1d4ed8", bg: "bg-blue-700/15", text: "text-blue-400" },
+  proximity:   { hex: "#2563eb", bg: "bg-blue-600/15", text: "text-blue-400" },
+  metareview:  { hex: "#bfdbfe", bg: "bg-blue-200/10", text: "text-blue-200" },
+  supervisor:  { hex: "#94a3b8", bg: "bg-zinc-500/15", text: "text-zinc-400" },
+  human:       { hex: "#e2e8f0", bg: "bg-zinc-200/10", text: "text-zinc-200" },
 };
 
 export const agentColor = (a: string | null | undefined) =>
   AGENT_COLORS[a || "supervisor"] || AGENT_COLORS.supervisor;
 
+// ── Session status — blue/white/zinc ───────────────────────
 export const STATUS_STYLE: Record<string, string> = {
-  running: "bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/30",
-  paused: "bg-amber-500/15 text-amber-400 ring-1 ring-amber-500/30",
-  done: "bg-brand-500/15 text-brand-300 ring-1 ring-brand-500/30",
-  failed: "bg-rose-500/15 text-rose-400 ring-1 ring-rose-500/30",
-  aborted: "bg-slate-500/15 text-slate-400 ring-1 ring-slate-500/30",
+  running: "bg-blue-500/10 text-blue-400 ring-1 ring-blue-500/25",
+  paused:  "bg-zinc-500/10 text-zinc-400 ring-1 ring-zinc-500/20",
+  done:    "bg-white/10    text-white     ring-1 ring-white/15",
+  failed:  "bg-zinc-700/10 text-zinc-500 ring-1 ring-zinc-600/20",
+  aborted: "bg-zinc-700/10 text-zinc-600 ring-1 ring-zinc-700/15",
 };
 
+// ── Hypothesis state — blue/zinc ───────────────────────────
 export const HYP_STATE_STYLE: Record<string, string> = {
-  pinned: "bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/30",
-  in_tournament: "bg-brand-500/15 text-brand-300 ring-1 ring-brand-500/30",
-  reviewed: "bg-cyber-500/15 text-cyber-400 ring-1 ring-cyber-500/30",
-  draft: "bg-slate-500/15 text-slate-400 ring-1 ring-slate-500/30",
-  rejected: "bg-rose-500/15 text-rose-400 ring-1 ring-rose-500/30",
-  retired: "bg-slate-500/10 text-slate-500 ring-1 ring-slate-500/20",
-  quarantined: "bg-orange-500/15 text-orange-400 ring-1 ring-orange-500/30",
+  pinned:        "bg-blue-500/10 text-blue-300 ring-1 ring-blue-500/20",
+  in_tournament: "bg-blue-600/10 text-blue-400 ring-1 ring-blue-600/20",
+  reviewed:      "bg-zinc-400/10 text-zinc-300 ring-1 ring-zinc-400/20",
+  draft:         "bg-zinc-600/10 text-zinc-500 ring-1 ring-zinc-600/15",
+  rejected:      "bg-zinc-700/10 text-zinc-600 ring-1 ring-zinc-700/20",
+  retired:       "bg-zinc-800/10 text-zinc-700 ring-1 ring-zinc-800/15",
+  quarantined:   "bg-zinc-500/10 text-zinc-500 ring-1 ring-zinc-500/20",
 };
 
 export const STRATEGY_ICON: Record<string, string> = {
-  literature: "📚",
-  debate: "⚔️",
-  combine: "🧬",
-  simplify: "✂️",
-  out_of_box: "💡",
-  feasibility: "🔧",
-  assumption: "🔍",
+  literature:      "📚",
+  debate:          "⚔️",
+  combine:         "🧬",
+  simplify:        "✂️",
+  out_of_box:      "💡",
+  feasibility:     "🔧",
+  assumption:      "🔍",
   feedback_driven: "🎯",
 };
 
+// ── Elo color — white/blue/zinc only ─────────────────────
 export const eloColor = (elo: number | null | undefined) => {
-  if (elo == null) return "text-slate-500";
-  if (elo >= 1260) return "text-amber-300";
-  if (elo >= 1220) return "text-emerald-400";
-  if (elo >= 1180) return "text-slate-200";
-  return "text-rose-400";
+  if (elo == null)   return "text-zinc-600";
+  if (elo >= 1260)   return "text-white";
+  if (elo >= 1220)   return "text-blue-400";
+  if (elo >= 1180)   return "text-zinc-300";
+  return "text-zinc-500";
 };

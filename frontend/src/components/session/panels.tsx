@@ -50,7 +50,7 @@ function Row({ h, rank, onSelect, spark }: {
       className="card card-hover flex w-full items-center gap-4 p-3.5 text-left animate-fade-up">
       <div className="w-8 shrink-0 text-center">
         {rank > 0
-          ? <span className={`text-lg font-bold ${rank <= 3 ? "text-amber-300" : "text-slate-500"}`}>{rank}</span>
+          ? <span className={`text-lg font-bold ${rank <= 3 ? "text-blue-400" : "text-slate-500"}`}>{rank}</span>
           : <span className="text-slate-600">—</span>}
       </div>
       <div className="min-w-0 flex-1">
@@ -85,7 +85,7 @@ function MiniSpark({ values }: { values: number[] }) {
     `${i ? "L" : "M"}${(i / (values.length - 1)) * w},${ht - ((v - min) / span) * ht}`).join(" ");
   return (
     <svg width={w} height={ht}>
-      <path d={d} fill="none" stroke={up ? "#34d399" : "#f43f5e"} strokeWidth="1.6" />
+      <path d={d} fill="none" stroke={up ? "#60a5fa" : "#52525b"} strokeWidth="1.6" />
     </svg>
   );
 }
@@ -124,7 +124,7 @@ function MatchRow({ m, onSelect }: { m: Match; onSelect: (id: string) => void })
   const Side = ({ id, title, won, eloAfter }: { id: string; title?: string; won: boolean; eloAfter: number | null }) => (
     <button onClick={() => onSelect(id)}
       className={`min-w-0 flex-1 truncate rounded-lg px-2.5 py-1.5 text-left text-[13px] transition ${
-        won ? "bg-emerald-500/15 text-emerald-200 ring-1 ring-emerald-500/30" : "bg-white/[0.03] text-slate-400"
+        won ? "bg-blue-500/10 text-blue-200 ring-1 ring-blue-500/20" : "bg-white/[0.03] text-slate-400"
       }`}>
       {won && "✓ "}{title || id.slice(0, 10)}
       {eloAfter != null && <span className="ml-1 font-mono text-[11px] opacity-70">{Math.round(eloAfter)}</span>}
@@ -184,10 +184,10 @@ export function AnalyticsPanel({
       <div className="card p-5">
         <div className="label mb-3">Token usage</div>
         <div className="grid grid-cols-2 gap-4">
-          <TokenStat label="Input tokens" value={summary?.input_tokens} color="#818cf8" />
-          <TokenStat label="Output tokens" value={summary?.output_tokens} color="#22d3ee" />
-          <TokenStat label="Cache reads" value={summary?.cache_read} color="#34d399" />
-          <TokenStat label="LLM calls" value={summary?.n_calls} color="#f59e0b" raw />
+          <TokenStat label="Input tokens" value={summary?.input_tokens} color="#3b82f6" />
+          <TokenStat label="Output tokens" value={summary?.output_tokens} color="#60a5fa" />
+          <TokenStat label="Cache reads" value={summary?.cache_read} color="#93c5fd" />
+          <TokenStat label="LLM calls" value={summary?.n_calls} color="#3b82f6" raw />
         </div>
         <div className="mt-5 border-t border-white/[0.06] pt-4">
           <div className="label mb-2">Per-agent call breakdown</div>
@@ -242,8 +242,8 @@ export function ActivityFeed({ events, live }: { events: SSEvent[]; live: boolea
     <div className="card p-5">
       <div className="mb-3 flex items-center justify-between">
         <div className="label">Live activity</div>
-        <span className={`chip ${live ? "bg-emerald-500/15 text-emerald-400" : "bg-slate-500/15 text-slate-400"}`}>
-          {live && <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulseDot" />}
+        <span className={`chip ${live ? "bg-blue-500/10 text-blue-400" : "bg-slate-500/15 text-slate-400"}`}>
+          {live && <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulseDot" />}
           {live ? "streaming" : "idle"}
         </span>
       </div>

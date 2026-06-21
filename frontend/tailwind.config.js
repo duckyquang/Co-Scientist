@@ -28,10 +28,6 @@ export default {
           600: "#2563eb",  // blue-600
           700: "#1d4ed8",  // blue-700
         },
-        // Cyan accent (kept)
-        cyber: { 400: "#22d3ee", 500: "#06b6d4" },
-        // Soft purple accent (kept as secondary)
-        flux:  { 300: "#d8b4fe", 400: "#c084fc", 500: "#a855f7" },
       },
       boxShadow: {
         // Blue glow

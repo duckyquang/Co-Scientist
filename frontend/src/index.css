@@ -64,8 +64,8 @@ html:not(.dark) body {
   }
   /* Danger variant */
   .btn-danger {
-    @apply btn border border-rose-500/20 bg-rose-500/[0.06] text-rose-400
-           hover:bg-rose-500/[0.12] hover:border-rose-500/30;
+    @apply btn border border-zinc-600/30 bg-zinc-700/10 text-zinc-400
+           hover:bg-zinc-700/20 hover:border-zinc-500/40 hover:text-zinc-300;
   }
 
   /* Chip / pill badge */

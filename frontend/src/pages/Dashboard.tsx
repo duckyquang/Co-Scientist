@@ -1,13 +1,18 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
 import { Sparkline } from "../components/charts";
-import { Empty, Loader, Progress, Stat, StatusBadge } from "../components/ui";
+import { Loader, Progress, StatusBadge } from "../components/ui";
 import { eloColor, fmtUsd, timeAgo } from "../lib/format";
-import { IS_STATIC_DEMO } from "../lib/config";
-import { getDeploymentMode } from "../lib/credentials";
-import { canUseLiveApi } from "../lib/live";
 import { usePoll } from "../lib/hooks";
-import type { GlobalStats, SessionRow } from "../types";
+import type { SessionRow } from "../types";
+
+const EXAMPLE_PROMPTS = [
+  "Identify novel drug-repurposing candidates for acute myeloid leukemia",
+  "Propose mechanisms linking the gut microbiome to neuroinflammation",
+  "Generate hypotheses for overcoming antibody resistance in HER2+ breast cancer",
+  "Find testable strategies to extend the lifespan of human cardiac organoids",
+];
 
 function SessionCard({ s }: { s: SessionRow }) {
   const pct = s.budget_usd > 0 ? (s.budget_used_usd / s.budget_usd) * 100 : 0;
@@ -47,93 +52,114 @@ function SessionCard({ s }: { s: SessionRow }) {
   );
 }
 
-function Hero({ stats }: { stats: GlobalStats | null }) {
+function EmptyState() {
   return (
-    <div className="card grid-bg relative mb-7 overflow-hidden p-8">
-      <div className="relative z-10 max-w-2xl">
-        <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-brand-500/30 bg-brand-500/10 px-3 py-1 text-xs font-semibold text-brand-300">
-          <span className="h-1.5 w-1.5 rounded-full bg-brand-400 animate-pulseDot" />
-          Multi-agent research engine
-        </div>
-        <h1 className="text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
-          Turn a research goal into a{" "}
-          <span className="bg-gradient-to-r from-brand-400 to-flux-400 bg-clip-text text-transparent">
-            tournament-ranked
-          </span>{" "}
-          set of novel hypotheses.
-        </h1>
-        <p className="mt-3 max-w-xl text-[15px] leading-relaxed text-slate-400">
-          Generation, Reflection, Ranking, Evolution, Proximity and Meta-review agents collaborate
-          through an Elo tournament — watch it unfold live.
-        </p>
-        <div className="mt-6 flex flex-wrap gap-3">
-          <Link to="/new" className="btn-primary">✨ Start a session</Link>
-          <a href="#sessions" className="btn-ghost">Browse sessions</a>
-        </div>
+    <div className="card flex flex-col items-center gap-6 px-8 py-14 text-center">
+      <div className="grid h-16 w-16 place-items-center rounded-2xl bg-blue-600/15 ring-1 ring-blue-500/25">
+        <span className="text-3xl">🔬</span>
       </div>
-      {stats && (
-        <div className="relative z-10 mt-7 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:max-w-2xl">
-          {[
-            { k: "Sessions", v: stats.n_sessions, accent: "#818cf8" },
-            { k: "Hypotheses", v: stats.n_hypotheses, accent: "#22d3ee" },
-            { k: "Matches", v: stats.n_matches, accent: "#f59e0b" },
-            { k: "Total spend", v: fmtUsd(stats.total_cost_usd), accent: "#a855f7" },
-          ].map((x) => (
-            <div key={x.k} className="rounded-xl border border-zinc-800/70 bg-zinc-950/60 p-3">
-              <div className="text-2xl font-bold" style={{ color: x.accent }}>{x.v}</div>
-              <div className="text-[11px] uppercase tracking-wider text-slate-500">{x.k}</div>
-            </div>
+      <div>
+        <h2 className="text-xl font-bold text-white">Start your first research session</h2>
+        <p className="mt-2 max-w-md text-sm leading-relaxed text-slate-400">
+          Describe a scientific question and six AI agents will generate, debate, and
+          Elo-rank novel hypotheses — live.
+        </p>
+      </div>
+      <Link to="/new" className="btn-primary px-6 py-2.5 text-sm font-semibold">
+        🚀 Launch a session →
+      </Link>
+      <div className="w-full border-t border-white/[0.06]" />
+      <div className="w-full max-w-lg text-left">
+        <div className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
+          Try one of these prompts
+        </div>
+        <div className="space-y-2">
+          {EXAMPLE_PROMPTS.map((p) => (
+            <Link
+              key={p}
+              to={`/new?goal=${encodeURIComponent(p)}`}
+              className="block rounded-lg border border-white/[0.06] bg-white/[0.02] px-4 py-2.5 text-sm text-slate-300 transition hover:border-blue-500/30 hover:bg-blue-500/[0.06] hover:text-white"
+            >
+              {p}
+            </Link>
           ))}
         </div>
-      )}
+      </div>
     </div>
   );
 }
 
 export default function Dashboard() {
   const { data: sessions, loading } = usePoll<SessionRow[]>(() => api.sessions(), [], 5000);
-  const { data: stats } = usePoll<GlobalStats>(() => api.stats(), [], 5000);
+  const [showDemo, setShowDemo] = useState(false);
 
-  const running = (sessions || []).filter((s) => s.status === "running");
-  const trend = (sessions || []).map((s) => s.n_hyps).slice(0, 12).reverse();
+  const userSessions = (sessions || []).filter((s) => !s.id.startsWith("demo::"));
+  const demoSessions = (sessions || []).filter((s) => s.id.startsWith("demo::"));
+  const running = userSessions.filter((s) => s.status === "running");
+  const trend = userSessions.map((s) => s.n_hyps).slice(0, 12).reverse();
+
+  if (loading && !sessions) {
+    return <Loader label="Loading dashboard" />;
+  }
 
   return (
-    <div>
-      <Hero stats={stats} />
-
-      {IS_STATIC_DEMO && !canUseLiveApi() && (
-        <div className="mb-6 flex items-center gap-3 rounded-xl border border-brand-500/20 bg-brand-500/[0.06] px-4 py-3 text-sm text-brand-200">
-          <span>{getDeploymentMode() === "local" ? "💻" : "🌐"}</span>
-          {getDeploymentMode() === "local"
-            ? "Local mode selected — follow the setup guide to run on your machine, or browse the demo sessions below."
-            : "Demo snapshot — add your API key in Settings to launch live sessions, or browse the samples below."}
+    <div className="animate-fade-up space-y-8">
+      {/* Live sessions banner */}
+      {running.length > 0 && (
+        <div className="flex items-center gap-3 rounded-xl border border-blue-500/20 bg-blue-500/[0.06] px-4 py-3 text-sm text-blue-200">
+          <span className="h-2 w-2 shrink-0 rounded-full bg-blue-400 animate-pulseDot" />
+          {running.length} session{running.length > 1 ? "s" : ""} running — live updates streaming.
         </div>
       )}
 
-      {!IS_STATIC_DEMO && running.length > 0 && (
-        <div className="mb-6 flex items-center gap-3 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] px-4 py-3 text-sm text-emerald-300">
-          <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulseDot" />
-          {running.length} session{running.length > 1 ? "s" : ""} running right now — live updates streaming.
+      {/* Your sessions */}
+      <section>
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <h2 className="text-base font-bold text-white">Your sessions</h2>
+            {userSessions.length > 0 && trend.length > 1 && (
+              <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
+                trend <Sparkline values={trend} width={64} height={20} />
+              </div>
+            )}
+          </div>
+          {userSessions.length > 0 && (
+            <Link to="/new" className="btn-primary h-8 px-3 text-xs">+ New session</Link>
+          )}
         </div>
-      )}
 
-      <div id="sessions" className="mb-4 flex items-center justify-between">
-        <h2 className="text-lg font-bold text-white">Research sessions</h2>
-        {trend.length > 1 && (
-          <div className="flex items-center gap-2 text-xs text-slate-500">
-            output trend <Sparkline values={trend} width={90} height={26} />
+        {userSessions.length === 0 ? (
+          <EmptyState />
+        ) : (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {userSessions.map((s) => <SessionCard key={s.id} s={s} />)}
           </div>
         )}
-      </div>
+      </section>
 
-      {loading && !sessions ? (
-        <Loader label="Loading sessions" />
-      ) : sessions && sessions.length === 0 ? (
-        <Empty icon="🔬" title="No sessions yet" hint="Start your first research session to see the agents in action." />
-      ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {sessions!.map((s) => <SessionCard key={s.id} s={s} />)}
-        </div>
+      {/* Demo examples — collapsible section */}
+      {demoSessions.length > 0 && (
+        <section>
+          <button
+            onClick={() => setShowDemo((v) => !v)}
+            className="mb-4 flex w-full items-center justify-between text-left"
+          >
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-semibold text-slate-400">Example sessions</h2>
+              <span className="rounded-full bg-white/[0.07] px-2 py-0.5 text-[11px] font-bold text-slate-500">
+                {demoSessions.length}
+              </span>
+            </div>
+            <span className="text-[11px] text-slate-600 hover:text-slate-400 transition">
+              {showDemo ? "Hide ↑" : "Show ↓"}
+            </span>
+          </button>
+          {showDemo && (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 animate-fade-up">
+              {demoSessions.map((s) => <SessionCard key={s.id} s={s} />)}
+            </div>
+          )}
+        </section>
       )}
     </div>
   );

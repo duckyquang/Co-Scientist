@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { Loader } from "../components/ui";
 import { fmtUsd } from "../lib/format";
@@ -18,8 +18,9 @@ const EXAMPLES = [
 
 export default function NewSession({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const nav = useNavigate();
+  const [searchParams] = useSearchParams();
   const { data: meta } = usePoll<Meta>(() => api.meta(), [], null);
-  const [goal, setGoal] = useState("");
+  const [goal, setGoal] = useState(() => searchParams.get("goal") ?? "");
   const [provider, setProvider] = useState("anthropic");
   const [budget, setBudget] = useState(5);
   const [nInitial, setNInitial] = useState(4);
@@ -118,15 +119,15 @@ export default function NewSession({ onOpenSettings }: { onOpenSettings?: () => 
         </div>
 
         {/* Free hosting callout */}
-        <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] px-4 py-3">
-          <div className="flex items-center gap-2 text-sm font-semibold text-emerald-300">
+        <div className="rounded-xl border border-blue-500/20 bg-blue-500/[0.06] px-4 py-3">
+          <div className="flex items-center gap-2 text-sm font-semibold text-blue-300">
             <span>✅ Run for free 24/7</span>
           </div>
-          <p className="mt-1 text-[13px] text-emerald-200/70">
-            Use <strong className="text-emerald-300">Groq</strong> (Llama 3.3 70B · free API tier) or{" "}
-            <strong className="text-emerald-300">Google Gemini</strong> (Flash · 1M tokens/day free) for zero-cost AI.
-            Host the server on <strong className="text-emerald-300">Oracle Cloud Always Free</strong> (2 VMs, forever free)
-            + the frontend on <strong className="text-emerald-300">Vercel</strong>.
+          <p className="mt-1 text-[13px] text-blue-100/70">
+            Use <strong className="text-blue-300">Groq</strong> (Llama 3.3 70B · free API tier) or{" "}
+            <strong className="text-blue-300">Google Gemini</strong> (Flash · 1M tokens/day free) for zero-cost AI.
+            Host the server on <strong className="text-blue-300">Oracle Cloud Always Free</strong> (2 VMs, forever free)
+            + the frontend on <strong className="text-blue-300">Vercel</strong>.
           </p>
         </div>
 
@@ -144,7 +145,7 @@ export default function NewSession({ onOpenSettings }: { onOpenSettings?: () => 
                         : "border-zinc-800 bg-zinc-900/50 text-zinc-300 hover:border-zinc-700"
                     }`}>
                     {isFree && (
-                      <span className="absolute -top-2 -right-1 rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-400 ring-1 ring-emerald-500/30">
+                      <span className="absolute -top-2 -right-1 rounded-full bg-blue-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-blue-400 ring-1 ring-blue-500/30">
                         FREE
                       </span>
                     )}
@@ -184,7 +185,7 @@ export default function NewSession({ onOpenSettings }: { onOpenSettings?: () => 
               </div>
               <input type="range" min={0.2} max={1.2} step={0.1} value={speed}
                 onChange={(e) => setSpeed(+e.target.value)}
-                className="mt-3 w-full accent-flux-500" />
+                className="mt-3 w-full accent-brand-500" />
             </div>
           </div>
         </div>
@@ -204,7 +205,7 @@ export default function NewSession({ onOpenSettings }: { onOpenSettings?: () => 
         </div>
 
         {error && (
-          <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-300">
+          <div className="rounded-xl border border-zinc-600/40 bg-zinc-800/60 px-4 py-3 text-sm text-zinc-300">
             {error}
           </div>
         )}

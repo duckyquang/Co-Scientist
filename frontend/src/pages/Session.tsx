@@ -155,8 +155,8 @@ export default function Session() {
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-3">
               <StatusBadge status={session.status} />
-              <span className={`inline-flex items-center gap-1.5 text-[11px] ${connected ? "text-emerald-400" : "text-slate-500"}`}>
-                <span className={`h-1.5 w-1.5 rounded-full ${connected ? "bg-emerald-400 animate-pulseDot" : "bg-slate-600"}`} />
+              <span className={`inline-flex items-center gap-1.5 text-[11px] ${connected ? "text-blue-400" : "text-slate-500"}`}>
+                <span className={`h-1.5 w-1.5 rounded-full ${connected ? "bg-blue-500 animate-pulseDot" : "bg-slate-600"}`} />
                 {connected ? "live stream connected" : "stream idle"}
               </span>
             </div>
@@ -177,7 +177,7 @@ export default function Session() {
               <button disabled={busy} onClick={() => control("resume")} className="btn-primary h-9">▶ Resume</button>
             )}
             {(live || status === "paused") && (
-              <button disabled={busy} onClick={() => control("abort")} className="btn-ghost h-9 text-rose-300">⏹ Abort</button>
+              <button disabled={busy} onClick={() => control("abort")} className="btn-ghost h-9 text-zinc-400">⏹ Abort</button>
             )}
           </div>
         </div>
@@ -187,26 +187,26 @@ export default function Session() {
           <Gauge label="Budget" used={session.budget_used_usd} total={session.budget_usd}
             fmt={fmtUsd} color="#6366f1" />
           <Gauge label="Tokens" used={tokenUsed} total={session.budget_tokens || tokenUsed || 1}
-            fmt={(n) => fmtCompact(n)} color="#22d3ee" />
+            fmt={(n) => fmtCompact(n)} color="#60a5fa" />
         </div>
 
         {/* metric strip */}
         <div className="mt-5 flex flex-wrap gap-2.5">
-          <MetricChip label="Hypotheses" value={metrics.n_hypotheses} accent="#818cf8" />
-          <MetricChip label="In tournament" value={metrics.n_in_tournament} accent="#22d3ee" />
-          <MetricChip label="Matches" value={metrics.n_matches} accent="#f59e0b" />
-          <MetricChip label="Reviewed" value={metrics.n_reviewed} accent="#34d399" />
-          <MetricChip label="Pinned" value={stateCounts.pinned || metrics.n_pinned || 0} accent="#fbbf24" />
+          <MetricChip label="Hypotheses" value={metrics.n_hypotheses} accent="#3b82f6" />
+          <MetricChip label="In tournament" value={metrics.n_in_tournament} accent="#60a5fa" />
+          <MetricChip label="Matches" value={metrics.n_matches} accent="#3b82f6" />
+          <MetricChip label="Reviewed" value={metrics.n_reviewed} accent="#93c5fd" />
+          <MetricChip label="Pinned" value={stateCounts.pinned || metrics.n_pinned || 0} accent="#60a5fa" />
           <MetricChip label="LLM calls" value={metrics.n_calls} />
-          <MetricChip label="Spend" value={fmtUsd(metrics.cost_usd)} accent="#a855f7" />
+          <MetricChip label="Spend" value={fmtUsd(metrics.cost_usd)} accent="#2563eb" />
         </div>
       </div>
 
       {/* compare-mode banner */}
       {compareBase && (
-        <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/[0.08] px-4 py-2.5 text-sm text-amber-200">
+        <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-blue-500/30 bg-blue-500/[0.08] px-4 py-2.5 text-sm text-blue-200">
           <span>⚖ Compare mode — pick another hypothesis to compare against the selected one.</span>
-          <button onClick={() => setCompareBase(null)} className="text-amber-300 hover:text-white">Cancel</button>
+          <button onClick={() => setCompareBase(null)} className="text-blue-300 hover:text-white">Cancel</button>
         </div>
       )}
 

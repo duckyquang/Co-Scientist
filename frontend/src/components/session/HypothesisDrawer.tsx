@@ -7,10 +7,10 @@ import type { Hypothesis } from "../../types";
 
 const VERDICT_STYLE: Record<string, string> = {
   neutral: "text-slate-300",
-  missing_piece: "text-amber-300",
-  already_explained: "text-cyber-400",
-  other_more_likely: "text-flux-400",
-  disproved: "text-rose-400",
+  missing_piece: "text-blue-300",
+  already_explained: "text-zinc-300",
+  other_more_likely: "text-blue-400",
+  disproved: "text-zinc-500",
 };
 
 export function HypothesisDrawer({
@@ -78,8 +78,8 @@ export function HypothesisDrawer({
 
             {/* actions */}
             <div className="mt-4 flex flex-wrap gap-2">
-              <button disabled={busy} onClick={() => setState("pinned")} className="btn-ghost h-9 text-amber-300">📌 Pin</button>
-              <button disabled={busy} onClick={() => setState("rejected")} className="btn-ghost h-9 text-rose-300">✕ Reject</button>
+              <button disabled={busy} onClick={() => setState("pinned")} className="btn-ghost h-9 text-blue-300">📌 Pin</button>
+              <button disabled={busy} onClick={() => setState("rejected")} className="btn-ghost h-9 text-zinc-400">✕ Reject</button>
               <button disabled={busy} onClick={() => setState("in_tournament")} className="btn-ghost h-9">↩ Reinstate</button>
               <button onClick={() => onCompare(h.id)} className="btn-ghost h-9">⚖ Compare</button>
             </div>
