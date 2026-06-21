@@ -6,7 +6,7 @@
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11--3.13-blue.svg)](https://www.python.org/)
-[![Live Demo](https://img.shields.io/badge/demo-GitHub%20Pages-6366f1.svg)](https://duckyquang.github.io/Co-Scientist/)
+[![Live Demo](https://img.shields.io/badge/demo-live-3b82f6.svg)](https://duckyquang.github.io/Co-Scientist/)
 
 *Created by **Quang Bui***
 
@@ -14,24 +14,36 @@
 
 ---
 
-## Choose how to run Co-Scientist
+## ✨ What it does
 
-Co-Scientist supports **two ways** to use the same web dashboard:
+An open-source re-implementation of Google's **AI co-scientist** ([Gottweis et al., *Nature*, 2026](https://www.nature.com/articles/s41586-026-10644-y)) — six specialised agents collaborate through an Elo tournament to produce a ranked research overview.
 
-| | **Option 1 — Run locally** | **Option 2 — Use the website + your API key** |
-|---|---|---|
-| **Best for** | Full privacy, local models (Ollama), your own hardware | Quick start in the browser with your cloud LLM account |
-| **API keys** | Stored in your `.env` file on your machine | Pasted in the browser Settings (stored locally in your browser only) |
-| **Engine** | Real multi-agent pipeline on your machine | Real pipeline on a hosted API you connect to |
-| **Cost** | You pay your LLM provider directly | You pay your LLM provider directly |
+| Agent | Role |
+|---|---|
+| **Generation** | Proposes hypotheses via literature review and debate |
+| **Reflection** | Reviews novelty, correctness, testability |
+| **Ranking** | Elo tournament with pairwise debates |
+| **Evolution** | Combines and refines top hypotheses |
+| **Proximity** | Clusters hypotheses for dedup and matchmaking |
+| **Meta-review** | Synthesises the final research overview |
 
-> On the [public demo site](https://duckyquang.github.io/Co-Scientist/), an onboarding popup lets you pick either option. **Option 1** opens this README's local setup guide. **Option 2** opens Settings to paste your API key.
+> Independent project — not affiliated with Google or the paper's authors.
 
 ---
 
-## Option 1 — Run locally
+## 🚀 Quick start — no setup required
 
-Clone the repo, install dependencies, and run the full web app on your machine. Use **Ollama** for a local model, or any cloud provider via `.env`.
+1. **Visit the live site** → [duckyquang.github.io/Co-Scientist](https://duckyquang.github.io/Co-Scientist/)
+2. Click **"Start a research session"**
+3. Type your research question and hit **Launch**
+
+**No account. No API key. No configuration.** The engine runs on Groq's free Llama 3.3 70B tier — fully managed on our end.
+
+---
+
+## 🏗️ Self-host in 5 minutes
+
+Want to run your own instance (private data, custom models, no rate limits)?
 
 ### 1. Clone & install
 
@@ -42,133 +54,93 @@ cd Co-Scientist
 python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
-
-cp .env.example .env
-# Add your API key, or use Ollama (no key needed):
-#   [llm]
-#   provider = "ollama"
 ```
 
-### 2. Initialize & build the UI
+### 2. Configure your LLM (pick one)
 
+**Groq — free tier, recommended**
 ```bash
-co-scientist init
-
-cd frontend && npm install && npm run build && cd ..
+echo "GROQ_API_KEY=gsk_..." >> .env
 ```
 
-### 3. Start the web app
-
+**Anthropic / OpenAI / OpenRouter**
 ```bash
-co-scientist serve --host 127.0.0.1 --port 8080
+echo "ANTHROPIC_API_KEY=sk-ant-..." >> .env
+# or OPENAI_API_KEY / OPENROUTER_API_KEY
 ```
 
-Open **http://127.0.0.1:8080** — the React dashboard and real agent engine run together.
-
-**Dev mode** (hot-reload frontend):
-
-```bash
-# Terminal 1
-co-scientist serve --port 8080
-
-# Terminal 2
-cd frontend && npm run dev
-```
-
-Open **http://localhost:5173** (Vite proxies API calls to port 8080).
-
-### Local model with Ollama
-
+**Ollama — fully local, no API key**
 ```bash
 ollama pull llama3.3:70b
+# Then set provider = "ollama" in co-scientist.toml
 ```
 
-```toml
-# co-scientist.toml
-[llm]
-provider = "ollama"
+### 3. Build the UI & run
 
-[models]
-generation = "llama3.3:70b"
-reflection = "llama3.3:70b"
-ranking_pairwise = "llama3.3:70b"
-# ... set all model keys to your Ollama model tag
+```bash
+cd frontend && npm install && npm run build && cd ..
+python -m webapp.server --port 8080
 ```
 
-### Docker (local or self-hosted)
+Open **http://localhost:8080** — full dashboard, live agent updates.
+
+**Dev mode** (hot-reload):
+```bash
+# Terminal 1
+python -m webapp.server --port 8080
+
+# Terminal 2
+cd frontend && npm run dev   # proxies API → :8080
+```
+
+### Docker
 
 ```bash
 docker compose up --build
+# → http://localhost:8080
 ```
-
-Open **http://localhost:8080**.
 
 ---
 
-## Option 2 — Use the website with your API key
+## ☁️ Free cloud hosting
 
-The [public site](https://duckyquang.github.io/Co-Scientist/) is a static frontend. To **launch real sessions** from the browser:
+Host your own public instance at **$0/month**:
 
-1. Visit the site — the onboarding popup appears on first visit.
-2. Choose **Option 2 — Use the website**.
-3. Open **Settings** and paste your LLM API key (Anthropic, OpenAI, OpenRouter, etc.).
-4. The frontend sends your key with each request to the hosted API. **Keys are never stored on the server** — only in your browser's local storage.
-
-### Host the API on Oracle Cloud (free, recommended)
-
-We ship a one-command bootstrap for **Oracle Always Free** ARM VMs — $0/month, persistent disk, no server-side API keys needed.
+| Service | What it hosts | Cost |
+|---|---|---|
+| **Groq** | AI inference (Llama 3.3 70B) | Free tier |
+| **Oracle Cloud Always Free** | Python backend (ARM VM) | Free forever |
+| **Vercel / GitHub Pages** | React frontend | Free |
 
 **Full guide:** [`deploy/oracle/README.md`](deploy/oracle/README.md)
 
-Quick summary:
-
-1. Create an Ubuntu ARM instance on Oracle Cloud (Always Free `VM.Standard.A1.Flex`)
-2. Point `api.yourdomain.com` → VM public IP (HTTPS required for GitHub Pages)
-3. SSH in and run:
+Quick steps:
+1. Create an Ubuntu ARM instance on [Oracle Cloud Always Free](https://www.oracle.com/cloud/free/) (`VM.Standard.A1.Flex`)
+2. SSH in and run:
    ```bash
    curl -fsSL https://raw.githubusercontent.com/duckyquang/Co-Scientist/main/deploy/oracle/setup.sh | bash
    ```
-4. Set GitHub repo variable **`VITE_API_URL`** = `https://api.yourdomain.com`
-5. Re-run the **Deploy to GitHub Pages** workflow
-
-Users paste their own LLM keys in Settings — you pay nothing for inference.
-
-### Browse without keys
-
-You can always explore **pre-seeded demo sessions** on GitHub Pages without an API key — read-only snapshots of sample research runs.
+3. Set `VITE_API_URL=https://api.yourdomain.com` in your Vercel/GitHub Actions env vars
+4. Deploy the frontend — done
 
 ---
 
-## ✨ What Co-Scientist does
-
-An open-source re-implementation of Google's **AI co-scientist** ([Gottweis et al., *Nature*, 2026](https://www.nature.com/articles/s41586-026-10644-y)) — six specialized agents collaborate through an Elo tournament to produce a ranked research overview of novel hypotheses.
-
-| Agent | Role |
-|---|---|
-| **Generation** | Proposes hypotheses via literature review and debate |
-| **Reflection** | Reviews novelty, correctness, testability |
-| **Ranking** | Elo tournament with pairwise debates |
-| **Evolution** | Combines and refines top hypotheses |
-| **Proximity** | Clusters hypotheses for dedup and matchmaking |
-| **Meta-review** | Synthesizes the final research overview |
-
-> Independent project — not affiliated with Google or the paper's authors.
-
----
-
-## 🏗️ Architecture
+## 🖥️ Architecture
 
 ```
-                       User goal (web or CLI)
-                                  │
-                                  ▼
-            ┌──────────────────────────────────────┐
-            │            Supervisor                │
-            │  parse_goal → task queue → agents    │
-            └──────────────────────────────────────┘
-                                  │
-            Generation → Reflection → Ranking (Elo)
-                    → Evolution → Proximity → Meta-review
+                     User goal (browser)
+                              │
+                              ▼
+          ┌──────────────────────────────────────┐
+          │  Python backend (webapp/server.py)   │
+          │  SQLite · SSE live stream · REST API │
+          └──────────────────────────────────────┘
+                              │
+          ┌───────────────────┴───────────────────┐
+          │          Simulator / real engine       │
+          │  Generation → Reflection → Ranking    │
+          │  → Evolution → Proximity → Meta-review│
+          └────────────────────────────────────────┘
 ```
 
 ---
@@ -177,24 +149,23 @@ An open-source re-implementation of Google's **AI co-scientist** ([Gottweis et a
 
 Layered config: [`config/default.toml`](config/default.toml) → `~/.co-scientist/config.toml` → `./co-scientist.toml`
 
-| Provider | API key env var | Example models |
+| Provider | Env var | Free tier |
 |---|---|---|
-| `anthropic` | `ANTHROPIC_API_KEY` | `claude-opus-4-7`, `claude-sonnet-4-6` |
-| `openai` | `OPENAI_API_KEY` | `gpt-5`, `gpt-4o` |
-| `openrouter` | `OPENROUTER_API_KEY` | `openai/gpt-5`, `google/gemini-2.5-pro` |
-| `ollama` | *(none — local)* | `llama3.3:70b` |
+| `groq` | `GROQ_API_KEY` | ✅ Yes — Llama 3.3 70B |
+| `gemini` | `GEMINI_API_KEY` | ✅ Yes — Flash 1M tokens/day |
+| `anthropic` | `ANTHROPIC_API_KEY` | ❌ Paid |
+| `openai` | `OPENAI_API_KEY` | ❌ Paid |
+| `openrouter` | `OPENROUTER_API_KEY` | Varies |
+| `ollama` | *(none)* | ✅ Local |
 
 ---
 
-## 🖥️ CLI (optional)
-
-The CLI remains available for scripting and power users:
+## 🖱️ CLI (optional)
 
 ```bash
 co-scientist run "Identify hypotheses about microbiome-driven inflammation" --n 3
-co-scientist serve          # web UI + API (recommended)
+co-scientist serve          # web dashboard (recommended)
 co-scientist report <id>
-co-scientist bench --preset paper
 ```
 
 ---
@@ -202,25 +173,22 @@ co-scientist bench --preset paper
 ## 📦 Repository layout
 
 ```
-co_scientist/     # Python engine — agents, LLM, storage, tools
-frontend/         # React dashboard (primary UI)
-co_scientist/web/ # FastAPI — JSON API + serves React build
-webapp/           # Demo seeder + legacy simulator helpers
+co_scientist/     # Python engine — agents, LLM, storage
+frontend/         # React 18 + Vite + Tailwind dashboard
+webapp/           # Stdlib HTTP server, simulator, seeder
 config/           # default.toml + agent prompts
+deploy/           # Oracle Cloud & Docker setup scripts
 ```
 
 ---
 
-## 🚢 Deploy
+## 🚢 Deploy targets
 
-| Target | What deploys | Command / workflow |
-|---|---|---|
-| **GitHub Pages** | Static React demo + onboarding | `.github/workflows/deploy-pages.yml` |
-| **Oracle Cloud (free)** | API + engine + HTTPS (Option 2) | [`deploy/oracle/README.md`](deploy/oracle/README.md) |
-| **Docker (local/VPS)** | Full stack (UI + API + engine) | `docker compose up` |
-| **Connect Pages → API** | Set `VITE_API_URL` variable in GitHub Actions | Rebuild Pages workflow |
-
-Enable **GitHub Pages → Source: GitHub Actions** in repo settings.
+| Target | Command / workflow |
+|---|---|
+| **GitHub Pages** (static) | `.github/workflows/deploy-pages.yml` |
+| **Oracle Cloud** (full backend) | [`deploy/oracle/README.md`](deploy/oracle/README.md) |
+| **Docker** (local / VPS) | `docker compose up` |
 
 ---
 

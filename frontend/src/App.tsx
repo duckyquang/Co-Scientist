@@ -52,7 +52,8 @@ function Sidebar({
   toggle: () => void;
 }) {
   const { data: sessions } = usePoll<SessionRow[]>(() => api.sessions(), [], 8000);
-  const recent = (sessions || []).slice(0, 6);
+  // Only show real user sessions in the sidebar — never demo:: seeded ones
+  const recent = (sessions || []).filter((s) => !s.id.startsWith("demo::")).slice(0, 6);
 
   return (
     <aside className="sidebar">
@@ -227,7 +228,7 @@ export default function App() {
         <main className="mx-auto max-w-[1400px] px-5 py-7">
           <Routes>
             <Route path="/" element={<Dashboard />} />
-            <Route path="/new" element={<NewSession onOpenSettings={() => setSettings(true)} />} />
+            <Route path="/new" element={<NewSession />} />
             <Route path="/s/:id" element={<Session />} />
             <Route path="*" element={<Dashboard />} />
           </Routes>
@@ -241,7 +242,6 @@ export default function App() {
       <OnboardingModal
         open={onboarding}
         onClose={() => setOnboarding(false)}
-        onCloud={() => setSettings(true)}
       />
       <SettingsModal open={settings} onClose={() => setSettings(false)} />
     </div>

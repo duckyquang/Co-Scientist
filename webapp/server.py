@@ -101,13 +101,16 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/meta":
                 return _json(self, {
                     "demo_mode": True,
+                    "requires_api_key": False,       # server handles auth — no user key needed
+                    "default_provider": "groq",
+                    "default_model": "llama-3.3-70b-versatile",
                     "providers": PROVIDERS,
                     "models": {
-                        "parse_goal": "claude-sonnet-4-6",
-                        "generation": "claude-opus-4-7",
-                        "reflection": "claude-opus-4-7",
-                        "ranking_pairwise": "claude-sonnet-4-6",
-                        "metareview_final": "claude-opus-4-7",
+                        "parse_goal": "llama-3.3-70b-versatile",
+                        "generation": "llama-3.3-70b-versatile",
+                        "reflection": "llama-3.3-70b-versatile",
+                        "ranking_pairwise": "llama-3.3-70b-versatile",
+                        "metareview_final": "llama-3.3-70b-versatile",
                     },
                     "defaults": {"budget_usd": 5.0, "n_initial": 4, "wall_clock_seconds": 1800},
                 })
@@ -272,7 +275,7 @@ class Handler(BaseHTTPRequestHandler):
                 budget_used_usd, wall_deadline, final_overview)
                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (sid, now, now, "running", goal, json.dumps(plan),
-             json.dumps({"llm": {"provider": b.get("provider", "anthropic")},
+             json.dumps({"llm": {"provider": b.get("provider", "groq")},
                          "models": content.MODELS}),
              5_000_000, budget, 0, 0.0, None, None))
         conn.execute(
