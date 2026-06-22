@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { Loader } from "../components/ui";
-import { fmtUsd } from "../lib/format";
+import { isSimulatedMode } from "../lib/live";
 
 const EXAMPLES = [
   "Identify novel drug-repurposing candidates for acute myeloid leukemia (AML)",
@@ -22,8 +22,8 @@ export default function NewSession() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const estLow = (budget * 0.7).toFixed(2);
-  const estHigh = (budget * 1.05).toFixed(2);
+  const simulated = isSimulatedMode();
+
 
   async function submit() {
     if (goal.trim().length < 12) {
@@ -96,7 +96,7 @@ export default function NewSession() {
           <div>
             <div className="flex justify-between">
               <label className="label">Budget</label>
-              <span className="text-sm font-semibold text-white">{fmtUsd(budget)}</span>
+              <span className="text-sm font-semibold text-white">${budget}</span>
             </div>
             <input
               type="range" min={1} max={30} step={0.5} value={budget}
@@ -130,17 +130,21 @@ export default function NewSession() {
           </div>
         </div>
 
-        {/* AI model chip */}
+        {/* Run-mode chip — honest about where the session actually runs */}
         <div className="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3">
           <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-blue-600/20 text-sm">
-            🤖
+            {simulated ? "🧪" : "🤖"}
           </div>
           <div>
             <div className="text-sm font-medium text-white">
-              Powered by Groq · Llama 3.3 70B
+              {simulated
+                ? "Interactive simulation · runs in your browser"
+                : "Powered by Groq · Llama 3.3 70B"}
             </div>
             <div className="text-[11px] text-zinc-500">
-              Free · no API key required · runs on our server
+              {simulated
+                ? "Free · no API key, no account · nothing leaves your device"
+                : "Free · no API key required · runs on our server"}
             </div>
           </div>
           <span className="ml-auto rounded-full bg-blue-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-blue-400 ring-1 ring-blue-500/25">
@@ -151,10 +155,9 @@ export default function NewSession() {
         {/* Launch row */}
         <div className="card flex flex-col items-start justify-between gap-4 p-5 sm:flex-row sm:items-center">
           <div>
-            <div className="label">Pre-flight estimate</div>
+            <div className="label">Cost</div>
             <div className="mt-1 text-sm text-slate-300">
-              Expected spend{" "}
-              <span className="font-semibold text-white">${estLow}–${estHigh}</span>
+              <span className="font-semibold text-white">Free</span>
             </div>
           </div>
           <button onClick={submit} className="btn-primary w-full py-2.5 sm:w-auto sm:px-8">

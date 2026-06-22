@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { IS_STATIC_DEMO, STATIC_DEMO_ROOT } from "./config";
 import { streamUrl } from "../api";
 import { canUseLiveApi } from "./live";
+import { isSimSession, simEvents, simTick } from "./sim/engine";
 import type { SSEvent } from "../types";
 
 const KNOWN_EVENTS = [
@@ -30,6 +31,26 @@ export function useSessionStream(sessionId: string | undefined) {
     if (!sessionId) return;
     seen.current = new Set();
     setEvents([]);
+
+    // In-browser simulated session: poll the engine to animate the feed/gauges.
+    if (isSimSession(sessionId)) {
+      let iv: ReturnType<typeof setInterval> | undefined;
+      // Returns false once the session is terminal (done/aborted) — paused is
+      // NOT terminal, so polling continues and Resume re-animates seamlessly.
+      const poll = (): boolean => {
+        try {
+          setEvents(simEvents(sessionId).slice(-300).reverse());
+          const t = simTick(sessionId);
+          setTick(t);
+          setConnected(t.live); // true only while running; paused/done → idle
+          return t.status !== "done" && t.status !== "aborted";
+        } catch { setConnected(false); return false; }
+      };
+      // Only start the interval if the first snapshot isn't already terminal —
+      // otherwise a completed session opened on refresh would poll forever.
+      if (poll()) iv = setInterval(() => { if (!poll()) clearInterval(iv); }, 1100);
+      return () => clearInterval(iv);
+    }
 
     if (IS_STATIC_DEMO && !canUseLiveApi()) {
       fetch(`${STATIC_DEMO_ROOT}/sessions/${sessionId}/events.json`)
@@ -104,14 +125,7 @@ export function usePoll<T>(
   return { data, error, loading, refresh: run };
 }
 
-export function useTheme() {
-  const [dark, setDark] = useState(() => {
-    const s = localStorage.getItem("theme");
-    return s ? s === "dark" : true;
-  });
-  useEffect(() => {
-    document.documentElement.classList.toggle("dark", dark);
-    localStorage.setItem("theme", dark ? "dark" : "light");
-  }, [dark]);
-  return { dark, toggle: () => setDark((d) => !d) };
+// Dark mode is forced on — no light mode option available
+export function ensureDarkMode() {
+  document.documentElement.classList.add("dark");
 }

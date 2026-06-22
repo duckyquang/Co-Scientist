@@ -73,6 +73,19 @@ export function Loader({ label = "Loading" }: { label?: string }) {
   );
 }
 
+/** Subtle explanatory callout — used to orient newcomers on each visualization. */
+export function InfoNote({ title, children }: { title?: string; children: ReactNode }) {
+  return (
+    <div className="mb-4 flex gap-2.5 rounded-xl border border-blue-500/15 bg-blue-500/[0.05] px-3.5 py-2.5 text-[12.5px] leading-relaxed text-slate-300">
+      <span className="mt-px shrink-0 text-blue-400">ℹ️</span>
+      <div>
+        {title && <span className="font-semibold text-blue-200">{title} </span>}
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export function Empty({ icon = "🪐", title, hint }: { icon?: string; title: string; hint?: string }) {
   return (
     <div className="card flex flex-col items-center gap-2 py-16 text-center">

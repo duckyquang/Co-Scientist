@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { agentColor, eloColor } from "../../lib/format";
-import { Empty } from "../ui";
+import { Empty, InfoNote } from "../ui";
 import type { LineageNode } from "../../types";
 
 interface Props {
@@ -60,7 +60,32 @@ export function LineageGraph({ nodes, edges, onSelect }: Props) {
   if (nodes.length === 0) return <Empty icon="🌱" title="No hypotheses to chart yet" />;
 
   return (
-    <div className="overflow-auto">
+    <div>
+      <InfoNote title="What is lineage?">
+        This maps how ideas <span className="text-white">evolve</span>. Each box is a hypothesis.
+        The leftmost boxes are <span className="text-blue-300">original ideas</span> from the
+        Generation agent; boxes further right are <span className="text-blue-300">offspring</span>{" "}
+        the Evolution agent bred by combining or mutating top-ranked parents. Follow the lines
+        left → right to trace an idea's ancestry — the number on each box is its Elo rating.
+        Click any box to open it.
+      </InfoNote>
+
+      <div className="mb-3 flex flex-wrap items-center gap-4 text-[11px] text-slate-400">
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-sm" style={{ background: agentColor("generation").hex }} />
+          Original (generation)
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-sm" style={{ background: agentColor("evolution").hex }} />
+          Evolved (offspring)
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <svg width="22" height="8"><path d="M0,4 H22" stroke="rgba(168,85,247,0.6)" strokeWidth="1.6" /></svg>
+          parent → offspring
+        </span>
+      </div>
+
+      <div className="overflow-auto">
       <svg width={Math.max(layout.width, 600)} height={layout.height} className="min-w-full">
         {/* edges */}
         {edges.map((e, i) => {
@@ -97,6 +122,7 @@ export function LineageGraph({ nodes, edges, onSelect }: Props) {
           );
         })}
       </svg>
+      </div>
     </div>
   );
 }

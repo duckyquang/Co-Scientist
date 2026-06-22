@@ -1,0 +1,629 @@
+/** In-browser session simulator — the zero-backend "free for everyone" path.
+ *
+ * A time-deterministic port of webapp/simulator.py. Instead of a background
+ * thread that sleeps and mutates a DB, the whole tournament is expressed as a
+ * deterministic *timeline* (built once per session id). Any read computes
+ * "what state is this session in, given how much wall-clock has elapsed" — so
+ * the leaderboard, gauges and activity feed animate live with no server.
+ *
+ * Sessions persist in localStorage, so a refresh resumes exactly where it was.
+ * Real LLM output is NOT produced here (see lib/live.ts isSimulatedMode); when
+ * a real backend is configured (VITE_API_URL) the app bypasses this entirely.
+ */
+
+import type {
+  ClusterPoint, CostByAgent, Feedback, Hypothesis, LineageNode, Match,
+  Metrics, SessionDetail, SessionRow, SSEvent,
+} from "../../types";
+import type { LiveTick } from "../hooks";
+import { eloUpdate, makeHypothesis, makeOverview, makePlan, makeReview, SIM_MODEL, STRATEGIES } from "./content";
+import { makeRng } from "./rng";
+
+const STORAGE_KEY = "cosci_sim_sessions_v1";
+const BUDGET_TOKENS = 5_000_000;
+const TOKENS_PER_USD = 220_000;
+
+/* ── Persisted record ──────────────────────────────────────── */
+export interface SimRecord {
+  id: string;
+  goal: string;
+  budget_usd: number;
+  n_initial: number;
+  speed: number; // seconds multiplier (lower = faster), matches NewSession
+  created_ms: number;
+  pausedAccumMs: number;
+  pauseStartedMs: number | null;
+  status: "running" | "paused" | "done" | "aborted";
+  frozenSimSec: number | null; // set on abort
+  feedback: Feedback[];
+  stateOverrides: Record<string, Hypothesis["state"]>;
+}
+
+/* ── Timeline (built deterministically, never persisted) ───── */
+interface Step {
+  t: number; agent: string; action: string; model: string;
+  cost: number; input_tokens: number; output_tokens: number;
+  cache_read: number; cache_write: number;
+}
+interface PlanHyp {
+  id: string; idx: number; strategy: string;
+  created_by: "generation" | "evolution"; parents: string[];
+  tCreate: number; tReview: number;
+  title: string; summary: string; full_text: string;
+  citations: { title: string; url: string; excerpt: string | null; doi: string | null; year: number | null }[];
+}
+interface PlanMatch {
+  id: string; t: number; hyp_a: string; hyp_b: string; mode: string;
+  winner: "a" | "b"; elo_a_before: number; elo_b_before: number;
+  elo_a_after: number; elo_b_after: number; rationale: string; similarity: number;
+}
+interface PlanEvent { t: number; agent: string; event: string; payload: any }
+interface Plan {
+  steps: Step[]; hyps: PlanHyp[]; matches: PlanMatch[]; events: PlanEvent[];
+  tEnd: number; pinnedId: string | null; overview: string;
+  metaFeedback: Feedback;
+}
+
+const round1 = (n: number) => Math.round(n * 10) / 10;
+const round2 = (n: number) => Math.round(n * 100) / 100;
+const round4 = (n: number) => Math.round(n * 10000) / 10000;
+
+/* ── Plan builder (memoized per session) ───────────────────── */
+const _planCache = new Map<string, Plan>();
+
+function buildPlan(rec: SimRecord): Plan {
+  const cacheKey = `${rec.id}|${rec.goal}|${rec.n_initial}`;
+  const cached = _planCache.get(cacheKey);
+  if (cached) return cached;
+
+  const { id: simId, goal, n_initial: n } = rec;
+  const r = makeRng(simId);
+  let t = 0;
+  let matchCounter = 0;
+  const steps: Step[] = [];
+  const events: PlanEvent[] = [];
+  const hyps: PlanHyp[] = [];
+  const matches: PlanMatch[] = [];
+  const elo = new Map<string, number>();
+
+  const hypId = (idx: number) => `hyp_${simId}_${idx}`;
+  const emit = (agent: string, event: string, payload: any) => events.push({ t, agent, event, payload });
+  const transcript = (agent: string, action: string, lo: number, hi: number) => {
+    const cost = round4(r.uniform(lo, hi));
+    const it = r.randint(1500, 9000);
+    const ot = r.randint(400, 3500);
+    steps.push({
+      t, agent, action, model: SIM_MODEL, cost,
+      input_tokens: it, output_tokens: ot,
+      cache_read: r.randint(0, it), cache_write: r.randint(0, 800),
+    });
+  };
+  const addHyp = (idx: number, strategy: string, createdBy: "generation" | "evolution", parents: string[]): PlanHyp => {
+    const c = makeHypothesis(goal, idx, strategy);
+    const h: PlanHyp = {
+      id: hypId(idx), idx, strategy, created_by: createdBy, parents,
+      tCreate: t, tReview: t,
+      title: c.title, summary: c.summary, full_text: c.full_text, citations: c.citations,
+    };
+    hyps.push(h);
+    elo.set(h.id, 1200);
+    transcript(createdBy, `${createdBy}.${strategy}`, 0.04, 0.2);
+    emit(createdBy, "hypothesis_created", { hypothesis_id: h.id, title: c.title.slice(0, 80), strategy });
+    return h;
+  };
+  const review = (h: PlanHyp) => {
+    transcript("reflection", "reflection.full", 0.03, 0.1);
+    emit("reflection", "review_completed", { hypothesis_id: h.id, kind: "full" });
+  };
+  const ranking = (pool: PlanHyp[], rounds: number) => {
+    for (let rd = 0; rd < rounds; rd++) {
+      const shuffled = r.shuffle(pool);
+      for (let k = 0; k + 1 < shuffled.length; k += 2) {
+        const a = shuffled[k], b = shuffled[k + 1];
+        t += 1.2;
+        const mode = r.random() < 0.35 ? "debate" : "pairwise";
+        const winner: "a" | "b" = r.random() < 0.5 ? "a" : "b";
+        const ea = elo.get(a.id)!, eb = elo.get(b.id)!;
+        const [ra, rb] = eloUpdate(ea, eb, winner);
+        const mid = `mat_${simId}_${matchCounter++}`;
+        matches.push({
+          id: mid, t, hyp_a: a.id, hyp_b: b.id, mode, winner,
+          elo_a_before: ea, elo_b_before: eb, elo_a_after: ra, elo_b_after: rb,
+          rationale: `Idea ${winner.toUpperCase()} gave a sharper falsification criterion.`,
+          similarity: round2(r.uniform(0.05, 0.4)),
+        });
+        elo.set(a.id, ra); elo.set(b.id, rb);
+        transcript("ranking", `ranking.${mode}`, 0.01, 0.05);
+        emit("ranking", "match_complete", { match_id: mid, winner, mode });
+      }
+    }
+  };
+
+  // ── Phase 0: session start ──
+  emit("supervisor", "session_started", { goal: goal.slice(0, 200), n_initial: n, budget_usd: rec.budget_usd });
+
+  // ── Phase 1: generation ──
+  emit("generation", "task_started", { agent: "generation", action: "CreateInitialHypotheses" });
+  const initial: PlanHyp[] = [];
+  for (let i = 0; i < n; i++) {
+    t += 2.5;
+    const h = addHyp(i, STRATEGIES[i % 3], "generation", []);
+    t += 1.5;
+    h.tReview = t;
+    review(h);
+    initial.push(h);
+  }
+
+  // ── Phase 2: ranking (2 rounds) ──
+  ranking(initial, 2);
+
+  // ── Phase 3: evolution ──
+  t += 1.0;
+  emit("evolution", "task_started", { agent: "evolution", action: "EvolveTopHypotheses" });
+  const top3 = [...hyps].sort((x, y) => elo.get(y.id)! - elo.get(x.id)!).slice(0, 3);
+  ["combine", "out_of_box"].forEach((strat, j) => {
+    t += 2.0;
+    const parents = strat === "combine" && top3.length > 1 ? [top3[0].id, top3[1].id] : [top3[0].id];
+    const h = addHyp(n + j, strat, "evolution", parents);
+    h.tReview = t;
+    review(h);
+  });
+
+  // ── Phase 4: ranking again (all hyps, 2 rounds) ──
+  ranking(hyps, 2);
+
+  // ── Phase 5: finalize ──
+  const tEnd = t;
+  const finalRank = [...hyps].sort((x, y) => elo.get(y.id)! - elo.get(x.id)!);
+  const pinnedId = finalRank.length ? finalRank[0].id : null;
+  transcript("metareview", "metareview.final", 0.05, 0.15);
+  const overview = makeOverview(goal, finalRank.slice(0, 5).map((h) => h.title));
+  emit("metareview", "session_done", { stop_reason: "ELO_STABLE" });
+  const metaFeedback: Feedback = {
+    id: `fb_${simId}_meta`, created_at: isoAt(rec, tEnd), source: "meta_review",
+    kind: "system_feedback", target_id: null, active: 1,
+    text: "Top candidates converge on a shared pathway — a robust signal. Consider one more out-of-box round to stress-test the consensus.",
+  };
+
+  const plan: Plan = { steps, hyps, matches, events, tEnd, pinnedId, overview, metaFeedback };
+  _planCache.set(cacheKey, plan);
+  return plan;
+}
+
+/* ── Time helpers ──────────────────────────────────────────── */
+/** Defensive: a legacy/corrupted persisted record could carry speed 0 or
+ *  undefined, which would divide-by-zero (→ Infinity/NaN → Invalid Date). */
+function safeSpeed(rec: SimRecord): number {
+  return Number.isFinite(rec.speed) && rec.speed > 0 ? rec.speed : 0.5;
+}
+function isoAt(rec: SimRecord, simSec: number): string {
+  return new Date(rec.created_ms + simSec * safeSpeed(rec) * 1000).toISOString();
+}
+function elapsedSimSec(rec: SimRecord, nowMs: number): number {
+  let pausedMs = rec.pausedAccumMs;
+  if (rec.status === "paused" && rec.pauseStartedMs != null) pausedMs += nowMs - rec.pauseStartedMs;
+  const realSec = Math.max(0, (nowMs - rec.created_ms - pausedMs) / 1000);
+  return realSec / safeSpeed(rec);
+}
+
+/* ── Snapshot — the heart of the engine ────────────────────── */
+interface Snapshot {
+  rec: SimRecord; plan: Plan; el: number;
+  status: SessionRow["status"];
+}
+function snapshot(rec: SimRecord, nowMs = Date.now()): Snapshot {
+  const plan = buildPlan(rec);
+  let el: number;
+  let status: SessionRow["status"];
+  if (rec.status === "aborted") {
+    el = rec.frozenSimSec ?? elapsedSimSec(rec, nowMs);
+    status = "aborted";
+  } else {
+    el = elapsedSimSec(rec, nowMs);
+    if (el >= plan.tEnd) { el = plan.tEnd; status = "done"; }
+    else if (rec.status === "paused") status = "paused";
+    else status = "running";
+  }
+  return { rec, plan, el, status };
+}
+
+/* ── Derived views off a snapshot ──────────────────────────── */
+function visibleHyps(s: Snapshot): PlanHyp[] {
+  return s.plan.hyps.filter((h) => h.tCreate <= s.el);
+}
+function currentElo(s: Snapshot, h: PlanHyp): number | null {
+  if (h.tReview > s.el) return null; // still a draft → no Elo yet
+  let e = 1200;
+  for (const m of s.plan.matches) {
+    if (m.t > s.el) break;
+    if (m.hyp_a === h.id) e = m.elo_a_after;
+    else if (m.hyp_b === h.id) e = m.elo_b_after;
+  }
+  return e;
+}
+function matchesPlayed(s: Snapshot, h: PlanHyp): number {
+  let c = 0;
+  for (const m of s.plan.matches) {
+    if (m.t > s.el) break;
+    if (m.hyp_a === h.id || m.hyp_b === h.id) c++;
+  }
+  return c;
+}
+function hypState(s: Snapshot, h: PlanHyp): Hypothesis["state"] {
+  const override = s.rec.stateOverrides[h.id];
+  if (override) return override;
+  if (h.tReview > s.el) return "draft";
+  if (s.status === "done" && h.id === s.plan.pinnedId) return "pinned";
+  return "in_tournament";
+}
+function clusterId(idx: number, n: number): string {
+  return `clu_${idx % Math.max(2, Math.floor(n / 2))}`;
+}
+function reviewScores(goal: string, title: string) {
+  return makeReview(goal, title, "full").scores;
+}
+function stepsUpTo(s: Snapshot): Step[] {
+  return s.plan.steps.filter((st) => st.t <= s.el);
+}
+function costSum(s: Snapshot): number {
+  return round4(stepsUpTo(s).reduce((a, st) => a + st.cost, 0));
+}
+
+function usageSummary(s: Snapshot) {
+  const st = stepsUpTo(s);
+  const sum = (f: (x: Step) => number) => st.reduce((a, x) => a + f(x), 0);
+  return {
+    n_calls: st.length,
+    input_tokens: sum((x) => x.input_tokens),
+    output_tokens: sum((x) => x.output_tokens),
+    cache_read: sum((x) => x.cache_read),
+    cache_write: sum((x) => x.cache_write),
+    cost_usd: costSum(s),
+  };
+}
+function stateCounts(s: Snapshot): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const h of visibleHyps(s)) {
+    const st = hypState(s, h);
+    out[st] = (out[st] || 0) + 1;
+  }
+  return out;
+}
+function metricsOf(s: Snapshot): Metrics {
+  const u = usageSummary(s);
+  const hs = stateCounts(s);
+  const nMatches = s.plan.matches.filter((m) => m.t <= s.el).length;
+  const cacheTotal = u.cache_read + u.cache_write;
+  const denom = u.input_tokens + cacheTotal;
+  const get = (k: string) => hs[k] || 0;
+  return {
+    ...u,
+    n_matches: nMatches,
+    n_invalid_matches: 0,
+    n_hypotheses: Object.values(hs).reduce((a, b) => a + b, 0),
+    n_in_tournament: get("in_tournament") + get("pinned"),
+    n_reviewed: get("reviewed") + get("in_tournament") + get("pinned"),
+    n_pinned: get("pinned"),
+    n_rejected: get("rejected"),
+    cache_hit_ratio: denom ? u.cache_read / denom : null,
+  };
+}
+
+function sessionRow(s: Snapshot): SessionRow {
+  const vis = visibleHyps(s);
+  const elos = vis.map((h) => currentElo(s, h)).filter((e): e is number => e != null);
+  const cost = costSum(s);
+  const u = usageSummary(s);
+  return {
+    id: s.rec.id,
+    status: s.status,
+    research_goal: s.rec.goal,
+    created_at: new Date(s.rec.created_ms).toISOString(),
+    updated_at: isoAt(s.rec, s.el),
+    budget_usd: s.rec.budget_usd,
+    budget_used_usd: cost,
+    budget_tokens: BUDGET_TOKENS,
+    budget_used_tokens: u.input_tokens + u.output_tokens || Math.round(cost * TOKENS_PER_USD),
+    final_overview: s.status === "done" ? `artifacts/${s.rec.id}/final/overview.md` : null,
+    n_hyps: vis.length,
+    n_tournament: vis.filter((h) => hypState(s, h) === "in_tournament").length,
+    top_elo: elos.length ? Math.max(...elos) : null,
+    n_matches: s.plan.matches.filter((m) => m.t <= s.el).length,
+  };
+}
+
+function toHypothesis(s: Snapshot, h: PlanHyp): Hypothesis {
+  const reviewed = h.tReview <= s.el;
+  return {
+    id: h.id,
+    session_id: s.rec.id,
+    created_at: isoAt(s.rec, h.tCreate),
+    created_by: h.created_by,
+    strategy: h.strategy,
+    parent_ids: h.parents,
+    title: h.title,
+    summary: h.summary,
+    full_text: h.full_text,
+    elo: currentElo(s, h),
+    matches_played: matchesPlayed(s, h),
+    state: hypState(s, h),
+    dedup_cluster: clusterId(h.idx, s.rec.n_initial),
+    n_reviews: reviewed ? 1 : 0,
+    scores: reviewed ? reviewScores(s.rec.goal, h.title) : {},
+  };
+}
+
+/* ── Persistence ───────────────────────────────────────────── */
+function loadRecords(): SimRecord[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch { return []; }
+}
+function saveRecords(recs: SimRecord[]): void {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(recs)); } catch { /* quota — ignore */ }
+}
+function getRecord(id: string): SimRecord | null {
+  return loadRecords().find((r) => r.id === id) ?? null;
+}
+function patchRecord(id: string, patch: Partial<SimRecord>): SimRecord | null {
+  const recs = loadRecords();
+  const i = recs.findIndex((r) => r.id === id);
+  if (i < 0) return null;
+  recs[i] = { ...recs[i], ...patch };
+  saveRecords(recs);
+  return recs[i];
+}
+
+/* ── Public API (consumed by api.ts / hooks.ts) ────────────── */
+export function isSimSession(id: string | undefined): boolean {
+  return !!id && id.startsWith("sim_");
+}
+
+export function createSimSession(input: {
+  goal: string; budget_usd: number; n_initial: number; speed?: number;
+}): string {
+  const rand = Math.floor(Math.random() * 1e9).toString(36);
+  const id = `sim_${Date.now().toString(36)}${rand}`;
+  const rec: SimRecord = {
+    id,
+    goal: input.goal,
+    budget_usd: input.budget_usd,
+    n_initial: Math.max(2, Math.min(input.n_initial, 8)),
+    speed: input.speed && input.speed > 0 ? input.speed : 0.5,
+    created_ms: Date.now(),
+    pausedAccumMs: 0,
+    pauseStartedMs: null,
+    status: "running",
+    frozenSimSec: null,
+    feedback: [],
+    stateOverrides: {},
+  };
+  saveRecords([rec, ...loadRecords()]);
+  return id;
+}
+
+export function simListSessions(): SessionRow[] {
+  return loadRecords()
+    .map((rec) => sessionRow(snapshot(rec)))
+    .sort((a, b) => +new Date(b.updated_at) - +new Date(a.updated_at));
+}
+
+export function simStats() {
+  const rows = simListSessions();
+  return {
+    n_sessions: rows.length,
+    n_hypotheses: rows.reduce((a, r) => a + r.n_hyps, 0),
+    n_matches: rows.reduce((a, r) => a + r.n_matches, 0),
+    total_cost_usd: round4(rows.reduce((a, r) => a + r.budget_used_usd, 0)),
+    running: rows.filter((r) => r.status === "running").length,
+    done: rows.filter((r) => r.status === "done").length,
+  };
+}
+
+export function simDetail(id: string): SessionDetail {
+  const rec = mustRecord(id);
+  const s = snapshot(rec);
+  const row = sessionRow(s);
+  return {
+    session: {
+      ...row,
+      research_plan: makePlan(rec.goal),
+      config_snapshot: { llm: { provider: "groq" }, simulated: true, model: SIM_MODEL },
+    },
+    metrics: metricsOf(s),
+    counts: { hypothesis_states: stateCounts(s), task_status: {} },
+    live: s.status === "running",
+  };
+}
+
+export function simHypotheses(id: string): Hypothesis[] {
+  const s = snapshot(mustRecord(id));
+  return visibleHyps(s)
+    .map((h) => toHypothesis(s, h))
+    .sort((a, b) => {
+      if ((a.elo == null) !== (b.elo == null)) return a.elo == null ? 1 : -1;
+      return (b.elo ?? 0) - (a.elo ?? 0);
+    });
+}
+
+export function simHypothesis(id: string, hid: string): Hypothesis {
+  const s = snapshot(mustRecord(id));
+  const h = s.plan.hyps.find((x) => x.id === hid);
+  if (!h || h.tCreate > s.el) throw new Error("hypothesis not found");
+  const base = toHypothesis(s, h);
+  const reviewed = h.tReview <= s.el;
+  const rv = reviewed ? makeReview(s.rec.goal, h.title, "full") : null;
+  const reviews = rv ? [{
+    id: `rev_${h.id}`, kind: rv.kind, verdict: rv.verdict, ...rv.scores,
+    body: rv.body, created_at: isoAt(s.rec, h.tReview),
+  }] : [];
+  const eloHist: { t: string; elo: number }[] = [];
+  for (const m of s.plan.matches) {
+    if (m.t > s.el) break;
+    if (m.hyp_a === hid) eloHist.push({ t: isoAt(s.rec, m.t), elo: m.elo_a_after });
+    else if (m.hyp_b === hid) eloHist.push({ t: isoAt(s.rec, m.t), elo: m.elo_b_after });
+  }
+  return { ...base, citations: h.citations, reviews: reviews as any, elo_history: eloHist };
+}
+
+export function simMatches(id: string): Match[] {
+  const s = snapshot(mustRecord(id));
+  const titleOf = (hid: string) => s.plan.hyps.find((h) => h.id === hid)?.title;
+  return s.plan.matches
+    .filter((m) => m.t <= s.el)
+    .map((m) => ({
+      id: m.id, created_at: isoAt(s.rec, m.t), hyp_a: m.hyp_a, hyp_b: m.hyp_b,
+      mode: m.mode, winner: m.winner,
+      elo_a_before: m.elo_a_before, elo_b_before: m.elo_b_before,
+      elo_a_after: m.elo_a_after, elo_b_after: m.elo_b_after,
+      rationale: m.rationale, similarity: m.similarity,
+      title_a: titleOf(m.hyp_a), title_b: titleOf(m.hyp_b),
+    }))
+    .sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at));
+}
+
+export function simCost(id: string): { by_agent: CostByAgent[]; summary: any } {
+  const s = snapshot(mustRecord(id));
+  const st = stepsUpTo(s);
+  const byAgent = new Map<string, CostByAgent>();
+  for (const x of st) {
+    const cur = byAgent.get(x.agent) ?? { agent: x.agent, n_calls: 0, input_tokens: 0, output_tokens: 0, cost_usd: 0 };
+    cur.n_calls += 1;
+    cur.input_tokens += x.input_tokens;
+    cur.output_tokens += x.output_tokens;
+    cur.cost_usd = round4(cur.cost_usd + x.cost);
+    byAgent.set(x.agent, cur);
+  }
+  const by_agent = [...byAgent.values()].sort((a, b) => b.cost_usd - a.cost_usd);
+  return { by_agent, summary: usageSummary(s) };
+}
+
+export function simFeedback(id: string): Feedback[] {
+  const s = snapshot(mustRecord(id));
+  const out = [...s.rec.feedback];
+  if (s.status === "done") out.push(s.plan.metaFeedback);
+  return out.sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at));
+}
+
+export function simLineage(id: string): { nodes: LineageNode[]; edges: { source: string; target: string }[] } {
+  const s = snapshot(mustRecord(id));
+  const vis = visibleHyps(s);
+  const ids = new Set(vis.map((h) => h.id));
+  const nodes: LineageNode[] = vis.map((h) => ({
+    id: h.id, title: h.title, strategy: h.strategy, created_by: h.created_by,
+    elo: currentElo(s, h), state: hypState(s, h), n_parents: h.parents.length,
+  }));
+  const edges: { source: string; target: string }[] = [];
+  for (const h of vis) for (const p of h.parents) if (ids.has(p)) edges.push({ source: p, target: h.id });
+  return { nodes, edges };
+}
+
+export function simClusters(id: string): ClusterPoint[] {
+  const s = snapshot(mustRecord(id));
+  const vis = visibleHyps(s);
+  const clusterIds = [...new Set(vis.map((h) => clusterId(h.idx, s.rec.n_initial)))].sort();
+  const centers = new Map<string, [number, number]>();
+  const n = Math.max(clusterIds.length, 1);
+  clusterIds.forEach((c, i) => {
+    const ang = (2 * Math.PI * i) / n;
+    centers.set(c, [Math.cos(ang) * 0.62, Math.sin(ang) * 0.62]);
+  });
+  return vis.map((h) => {
+    const c = clusterId(h.idx, s.rec.n_initial);
+    const [cx, cy] = centers.get(c)!;
+    const jr = makeRng(h.id);
+    return {
+      id: h.id, title: h.title, strategy: h.strategy, elo: currentElo(s, h),
+      state: hypState(s, h), cluster: c, matches_played: matchesPlayed(s, h),
+      x: cx + (jr.random() - 0.5) * 0.34, y: cy + (jr.random() - 0.5) * 0.34,
+    };
+  });
+}
+
+export function simEloHistory(id: string): Record<string, { i: number; elo: number }[]> {
+  const s = snapshot(mustRecord(id));
+  const out: Record<string, { i: number; elo: number }[]> = {};
+  let i = 0;
+  for (const m of s.plan.matches) {
+    if (m.t > s.el) break;
+    (out[m.hyp_a] ||= []).push({ i, elo: m.elo_a_after });
+    (out[m.hyp_b] ||= []).push({ i, elo: m.elo_b_after });
+    i++;
+  }
+  return out;
+}
+
+export function simOverview(id: string): string {
+  const s = snapshot(mustRecord(id));
+  if (s.status !== "done") throw new Error("no overview yet");
+  return s.plan.overview;
+}
+
+export function simEvents(id: string): SSEvent[] {
+  const s = snapshot(mustRecord(id));
+  return s.plan.events
+    .filter((e) => e.t <= s.el)
+    .map((e, i) => ({
+      id: i + 1, ts: s.rec.created_ms + e.t * safeSpeed(s.rec) * 1000,
+      agent: e.agent, event: e.event, payload: e.payload,
+    }));
+}
+
+export function simTick(id: string): LiveTick {
+  const s = snapshot(mustRecord(id));
+  return {
+    metrics: metricsOf(s),
+    status: s.status,
+    budget_used_usd: costSum(s),
+    live: s.status === "running",
+  };
+}
+
+export function simControl(id: string, action: "pause" | "resume" | "abort"): { status: string } {
+  const rec = mustRecord(id);
+  const now = Date.now();
+  if (action === "pause" && rec.status === "running") {
+    patchRecord(id, { status: "paused", pauseStartedMs: now });
+    return { status: "paused" };
+  }
+  if (action === "resume" && rec.status === "paused") {
+    const pausedAdd = rec.pauseStartedMs != null ? now - rec.pauseStartedMs : 0;
+    patchRecord(id, { status: "running", pauseStartedMs: null, pausedAccumMs: rec.pausedAccumMs + pausedAdd });
+    return { status: "running" };
+  }
+  if (action === "abort") {
+    const el = elapsedSimSec(rec, now);
+    patchRecord(id, { status: "aborted", frozenSimSec: el, pauseStartedMs: null });
+    return { status: "aborted" };
+  }
+  return { status: rec.status };
+}
+
+export function simSendFeedback(id: string, body: { text: string; kind?: string; target_id?: string }): { ok: boolean } {
+  const rec = mustRecord(id);
+  const kind = body.kind || "directive";
+  const fb: Feedback = {
+    id: `fb_${id}_${rec.feedback.length}`, created_at: new Date().toISOString(),
+    source: "human", kind, target_id: body.target_id || null, text: body.text, active: 1,
+  };
+  const overrides = { ...rec.stateOverrides };
+  if (kind === "pin" && body.target_id) overrides[body.target_id] = "pinned";
+  if (kind === "rejection" && body.target_id) overrides[body.target_id] = "rejected";
+  patchRecord(id, { feedback: [...rec.feedback, fb], stateOverrides: overrides });
+  return { ok: true };
+}
+
+export function simSetHypState(id: string, hid: string, state: string): { ok: boolean } {
+  const rec = mustRecord(id);
+  patchRecord(id, { stateOverrides: { ...rec.stateOverrides, [hid]: state as Hypothesis["state"] } });
+  return { ok: true };
+}
+
+function mustRecord(id: string): SimRecord {
+  const rec = getRecord(id);
+  if (!rec) throw new Error("session not found");
+  return rec;
+}

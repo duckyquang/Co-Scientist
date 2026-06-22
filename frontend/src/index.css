@@ -16,13 +16,6 @@ body {
   background-attachment: fixed;
 }
 
-/* light theme overrides */
-html:not(.dark) { color-scheme: light; }
-html:not(.dark) body {
-  @apply bg-zinc-50 text-zinc-800;
-  background-image:
-    radial-gradient(900px 600px at 70% -20%, rgba(59,130,246,0.06), transparent 60%);
-}
 
 /* ── Components ───────────────────────────────────────────── */
 @layer components {
@@ -30,9 +23,6 @@ html:not(.dark) body {
   /* Card — resend style: zinc-900 bg, crisp border, no blur (keeps perf high) */
   .card {
     @apply rounded-xl border border-zinc-800/80 bg-zinc-900 shadow-card;
-  }
-  html:not(.dark) .card {
-    @apply border-zinc-200 bg-white shadow-sm;
   }
   .card-hover {
     @apply transition-all duration-200
@@ -51,16 +41,10 @@ html:not(.dark) body {
            shadow-[0_1px_0_0_rgba(255,255,255,0.06)_inset,0_4px_16px_-4px_rgba(37,99,235,0.5)]
            hover:shadow-[0_1px_0_0_rgba(255,255,255,0.08)_inset,0_6px_20px_-4px_rgba(59,130,246,0.5)];
   }
-  html:not(.dark) .btn-primary {
-    @apply bg-brand-600 hover:bg-brand-700;
-  }
   /* Ghost: zinc border, subtle */
   .btn-ghost {
     @apply btn border border-white/[0.08] bg-white/[0.03] text-zinc-300
            hover:bg-white/[0.06] hover:text-white hover:border-white/[0.12];
-  }
-  html:not(.dark) .btn-ghost {
-    @apply border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 hover:border-zinc-400;
   }
   /* Danger variant */
   .btn-danger {
@@ -84,10 +68,6 @@ html:not(.dark) body {
            text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition-all
            focus:border-brand-500/50 focus:ring-2 focus:ring-brand-500/15;
   }
-  html:not(.dark) .input {
-    @apply border-zinc-300 bg-white text-zinc-900 placeholder:text-zinc-400
-           focus:border-brand-500/60 focus:ring-brand-500/10;
-  }
 
   /* Sidebar nav item */
   .nav-item {
@@ -106,7 +86,6 @@ html:not(.dark) body {
   .stat-num {
     @apply text-3xl font-bold tracking-tight text-white tabular-nums;
   }
-  html:not(.dark) .stat-num { @apply text-zinc-900; }
 }
 
 /* ── Scrollbar ────────────────────────────────────────────── */
@@ -136,13 +115,6 @@ html:not(.dark) body {
 .prose-sci blockquote {
   @apply border-l-2 border-brand-500/40 pl-4 my-3 italic text-zinc-400;
 }
-
-html:not(.dark) .prose-sci h1,
-html:not(.dark) .prose-sci h3,
-html:not(.dark) .prose-sci strong { @apply text-zinc-900; }
-html:not(.dark) .prose-sci p,
-html:not(.dark) .prose-sci ul,
-html:not(.dark) .prose-sci ol    { @apply text-zinc-700; }
 
 /* ── Grid background ──────────────────────────────────────── */
 .grid-bg {

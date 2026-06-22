@@ -12,8 +12,8 @@ interface Cmd {
 }
 
 export function CommandPalette({
-  open, setOpen, onToggleTheme,
-}: { open: boolean; setOpen: (b: boolean) => void; onToggleTheme: () => void }) {
+  open, setOpen,
+}: { open: boolean; setOpen: (b: boolean) => void }) {
   const nav = useNavigate();
   const [q, setQ] = useState("");
   const [sessions, setSessions] = useState<SessionRow[]>([]);
@@ -45,7 +45,6 @@ export function CommandPalette({
     const base: Cmd[] = [
       { id: "new", label: "Start new research session", icon: "✨", hint: "create", run: () => nav("/new") },
       { id: "home", label: "Go to dashboard", icon: "🏠", run: () => nav("/") },
-      { id: "theme", label: "Toggle light / dark theme", icon: "🌓", run: onToggleTheme },
     ];
     const sess: Cmd[] = sessions.map((s) => ({
       id: s.id,
@@ -55,7 +54,7 @@ export function CommandPalette({
       run: () => nav(`/s/${s.id}`),
     }));
     return [...base, ...sess];
-  }, [sessions, nav, onToggleTheme]);
+  }, [sessions, nav]);
 
   const filtered = cmds.filter((c) =>
     (c.label + (c.hint || "")).toLowerCase().includes(q.toLowerCase()),

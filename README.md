@@ -37,7 +37,14 @@ An open-source re-implementation of Google's **AI co-scientist** ([Gottweis et a
 2. Click **"Start a research session"**
 3. Type your research question and hit **Launch**
 
-**No account. No API key. No configuration.** The engine runs on Groq's free Llama 3.3 70B tier — fully managed on our end.
+**No account. No API key. No configuration.** The live site runs the full multi-agent
+tournament as an **interactive simulation entirely in your browser** — every visitor gets
+the complete experience (generation → debate → Elo ranking → final report) with nothing to
+install and nothing leaving your device.
+
+> Want **real** LLM-generated hypotheses? [Self-host](#️-self-host-in-5-minutes) with a free
+> Groq key (below), or point the site at your own backend via `VITE_API_URL` — it then calls
+> the real Groq-backed engine automatically, still with no per-user key.
 
 ---
 

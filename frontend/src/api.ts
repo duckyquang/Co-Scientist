@@ -1,6 +1,7 @@
 import { apiUrl, IS_STATIC_DEMO, STATIC_DEMO_ROOT } from "./lib/config";
 import { authHeaders } from "./lib/credentials";
-import { canUseLiveApi } from "./lib/live";
+import { canUseLiveApi, isSimulatedMode } from "./lib/live";
+import * as sim from "./lib/sim/engine";
 import type {
   ClusterPoint, CostByAgent, Feedback, GlobalStats, Hypothesis, LineageNode,
   Match, Meta, SessionDetail, SessionRow,
@@ -32,15 +33,16 @@ async function staticGet<T>(path: string): Promise<T> {
   return res.json();
 }
 
-function needsCloudSetup(): never {
-  throw new Error(
-    "Cloud mode requires an API key. Open Settings, add your key, and ensure the hosted API is configured.",
-  );
-}
-
 function useLiveOrStatic<T>(live: () => Promise<T>, staticPath: string): Promise<T> {
   if (canUseLiveApi() || !IS_STATIC_DEMO) return live();
   return staticGet<T>(staticPath);
+}
+
+/** Resolve a per-session read: in-browser simulation for sim_ ids, else the
+ *  normal live-or-static path. Keeps every UI panel backend-agnostic. */
+function sessionRead<T>(id: string, simFn: () => T, live: () => Promise<T>, staticPath: string): Promise<T> {
+  if (sim.isSimSession(id)) return Promise.resolve().then(simFn);
+  return useLiveOrStatic(live, staticPath);
 }
 
 export const api = {
@@ -48,66 +50,77 @@ export const api = {
     useLiveOrStatic(() => j<Meta>("/api/meta"), "meta.json"),
 
   stats: () =>
-    useLiveOrStatic(() => j<GlobalStats>("/api/stats"), "stats.json"),
+    useLiveOrStatic(() => j<GlobalStats>("/api/stats"), "stats.json").then((base: any) => {
+      // Fold locally-simulated sessions into the dashboard totals.
+      if (!isSimulatedMode()) return base;
+      const s = sim.simStats();
+      return {
+        n_sessions: (base?.n_sessions || 0) + s.n_sessions,
+        n_hypotheses: (base?.n_hypotheses || 0) + s.n_hypotheses,
+        n_matches: (base?.n_matches || 0) + s.n_matches,
+        total_cost_usd: (base?.total_cost_usd || 0) + s.total_cost_usd,
+        running: (base?.running || 0) + s.running,
+        done: (base?.done || 0) + s.done,
+      } as GlobalStats;
+    }),
 
   sessions: () =>
     useLiveOrStatic(
       () => j<{ sessions: SessionRow[] }>("/api/sessions").then((d) => d.sessions),
       "sessions.json",
-    ).then((d: any) => (Array.isArray(d) ? d : d.sessions)),
+    )
+      .then((d: any) => (Array.isArray(d) ? d : d.sessions))
+      // Prepend live in-browser sessions so they show up on the dashboard/sidebar.
+      .then((rows: SessionRow[]) => (isSimulatedMode() ? [...sim.simListSessions(), ...rows] : rows)),
 
   session: (id: string) =>
-    useLiveOrStatic(
+    sessionRead(id, () => sim.simDetail(id),
       () => j<SessionDetail>(`/api/sessions/${id}`),
-      `sessions/${id}/detail.json`,
-    ),
+      `sessions/${id}/detail.json`),
 
   hypotheses: (id: string) =>
-    useLiveOrStatic(
+    sessionRead(id, () => sim.simHypotheses(id),
       () => j<{ hypotheses: Hypothesis[] }>(`/api/sessions/${id}/hypotheses`).then((d) => d.hypotheses),
       `sessions/${id}/hypotheses.json`,
     ).then((d: any) => (Array.isArray(d) ? d : d.hypotheses)),
 
   hypothesis: (id: string, hid: string) =>
-    useLiveOrStatic(
+    sessionRead(id, () => sim.simHypothesis(id, hid),
       () => j<Hypothesis>(`/api/sessions/${id}/hypotheses/${hid}`),
-      `sessions/${id}/hypotheses/${hid}.json`,
-    ),
+      `sessions/${id}/hypotheses/${hid}.json`),
 
   matches: (id: string) =>
-    useLiveOrStatic(
+    sessionRead(id, () => sim.simMatches(id),
       () => j<{ matches: Match[] }>(`/api/sessions/${id}/matches`).then((d) => d.matches),
       `sessions/${id}/matches.json`,
     ).then((d: any) => (Array.isArray(d) ? d : d.matches)),
 
   cost: (id: string) =>
-    useLiveOrStatic(
+    sessionRead(id, () => sim.simCost(id),
       () => j<{ by_agent: CostByAgent[]; summary: any }>(`/api/sessions/${id}/cost`),
-      `sessions/${id}/cost.json`,
-    ),
+      `sessions/${id}/cost.json`),
 
   feedback: (id: string) =>
-    useLiveOrStatic(
+    sessionRead(id, () => sim.simFeedback(id),
       () => j<{ feedback: Feedback[] }>(`/api/sessions/${id}/feedback`).then((d) => d.feedback),
       `sessions/${id}/feedback.json`,
     ).then((d: any) => (Array.isArray(d) ? d : d.feedback)),
 
   lineage: (id: string) =>
-    useLiveOrStatic(
+    sessionRead(id, () => sim.simLineage(id),
       () => j<{ nodes: LineageNode[]; edges: { source: string; target: string }[] }>(
         `/api/sessions/${id}/lineage`,
       ),
-      `sessions/${id}/lineage.json`,
-    ),
+      `sessions/${id}/lineage.json`),
 
   clusters: (id: string) =>
-    useLiveOrStatic(
+    sessionRead(id, () => sim.simClusters(id),
       () => j<{ points: ClusterPoint[] }>(`/api/sessions/${id}/clusters`).then((d) => d.points),
       `sessions/${id}/clusters.json`,
     ).then((d: any) => (Array.isArray(d) ? d : d.points)),
 
   eloHistory: (id: string) =>
-    useLiveOrStatic(
+    sessionRead(id, () => sim.simEloHistory(id),
       () => j<{ series: Record<string, { i: number; elo: number }[]> }>(
         `/api/sessions/${id}/elo-history`,
       ).then((d) => d.series),
@@ -115,7 +128,7 @@ export const api = {
     ).then((d: any) => (d.series ? d.series : d)),
 
   overview: (id: string) =>
-    useLiveOrStatic(
+    sessionRead(id, () => sim.simOverview(id),
       () => j<{ markdown: string }>(`/api/sessions/${id}/overview`).then((d) => d.markdown),
       `sessions/${id}/overview.json`,
     ).then((d: any) => (typeof d === "string" ? d : d.markdown)),
@@ -123,30 +136,30 @@ export const api = {
   create: (body: {
     goal: string; budget_usd: number; n_initial: number; provider?: string; speed?: number;
   }) => {
-    if (IS_STATIC_DEMO && !canUseLiveApi()) return Promise.reject(needsCloudSetup());
+    // No backend? Run the session entirely in the browser — free, no key.
+    if (isSimulatedMode()) {
+      const session_id = sim.createSimSession(body);
+      return Promise.resolve({ session_id });
+    }
     return j<{ session_id: string }>("/api/sessions", {
       method: "POST", body: JSON.stringify(body),
     });
   },
 
   control: (id: string, action: "pause" | "resume" | "abort") => {
-    if (IS_STATIC_DEMO && !canUseLiveApi()) {
-      return Promise.resolve({
-        status: action === "pause" ? "paused" : action === "resume" ? "running" : "aborted",
-      });
-    }
+    if (sim.isSimSession(id)) return Promise.resolve(sim.simControl(id, action));
     return j<{ status: string }>(`/api/sessions/${id}/${action}`, { method: "POST" });
   },
 
   sendFeedback: (id: string, body: { text: string; kind?: string; target_id?: string }) => {
-    if (IS_STATIC_DEMO && !canUseLiveApi()) return Promise.resolve({ ok: true });
+    if (sim.isSimSession(id)) return Promise.resolve(sim.simSendFeedback(id, body));
     return j<{ ok: boolean }>(`/api/sessions/${id}/feedback`, {
       method: "POST", body: JSON.stringify(body),
     });
   },
 
   setHypState: (id: string, hid: string, state: string) => {
-    if (IS_STATIC_DEMO && !canUseLiveApi()) return Promise.resolve({ ok: true });
+    if (sim.isSimSession(id)) return Promise.resolve(sim.simSetHypState(id, hid, state));
     return j<{ ok: boolean }>(`/api/sessions/${id}/hypotheses/${hid}/state`, {
       method: "POST", body: JSON.stringify({ state }),
     });

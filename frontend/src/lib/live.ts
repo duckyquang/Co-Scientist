@@ -18,3 +18,14 @@ export function canUseLiveApi(): boolean {
   // Legacy: user manually pasted a key in Settings.
   return getDeploymentMode() === "cloud" && Boolean(getCredentials());
 }
+
+/** True when sessions run as an in-browser simulation (no backend, no key).
+ *
+ * This is the zero-config free path: a static deploy with no live backend.
+ * In this mode `api.create()` starts a client-side simulated session instead
+ * of calling a server, and the UI labels results as a simulation (not real
+ * LLM output). The moment a backend is configured (VITE_API_URL), this turns
+ * false and the app talks to the real Groq-backed engine. */
+export function isSimulatedMode(): boolean {
+  return IS_STATIC_DEMO && !canUseLiveApi();
+}

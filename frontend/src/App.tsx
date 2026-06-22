@@ -7,9 +7,12 @@ import { SettingsModal } from "./components/SettingsModal";
 import { IS_LOCAL_HOST, IS_STATIC_DEMO } from "./lib/config";
 import { getCredentials, getDeploymentMode, isOnboardingDone } from "./lib/credentials";
 import { canUseLiveApi } from "./lib/live";
-import { useTheme, usePoll } from "./lib/hooks";
+import { usePoll, ensureDarkMode } from "./lib/hooks";
 import { api } from "./api";
 import { timeAgo } from "./lib/format";
+
+// Ensure dark mode is always on
+ensureDarkMode();
 import Dashboard from "./pages/Dashboard";
 import NewSession from "./pages/NewSession";
 import Session from "./pages/Session";
@@ -44,12 +47,10 @@ function SLink({
 
 /* ── Sidebar ────────────────────────────────────────────── */
 function Sidebar({
-  onPalette, onSettings, dark, toggle,
+  onPalette, onSettings,
 }: {
   onPalette: () => void;
   onSettings: () => void;
-  dark: boolean;
-  toggle: () => void;
 }) {
   const { data: sessions } = usePoll<SessionRow[]>(() => api.sessions(), [], 8000);
   // Only show real user sessions in the sidebar — never demo:: seeded ones
@@ -134,28 +135,6 @@ function Sidebar({
           </svg>
           Settings
         </button>
-        <button
-          onClick={toggle}
-          className="nav-item w-full text-left"
-          title="Toggle theme"
-        >
-          {dark ? (
-            <>
-              <svg className="h-4 w-4 shrink-0" viewBox="0 0 16 16" fill="none">
-                <circle cx="8" cy="8" r="3.5" stroke="currentColor" strokeWidth="1.25"/>
-                <path d="M8 1v1.5M8 13.5V15M1 8h1.5M13.5 8H15M3.05 3.05l1.06 1.06M11.89 11.89l1.06 1.06M3.05 12.95l1.06-1.06M11.89 4.11l1.06-1.06" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round"/>
-              </svg>
-              Light mode
-            </>
-          ) : (
-            <>
-              <svg className="h-4 w-4 shrink-0" viewBox="0 0 16 16" fill="none">
-                <path d="M13.5 9.5A6 6 0 0 1 6.5 2.5 5.5 5.5 0 1 0 13.5 9.5z" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round"/>
-              </svg>
-              Dark mode
-            </>
-          )}
-        </button>
       </div>
     </aside>
   );
@@ -163,8 +142,8 @@ function Sidebar({
 
 /* ── Mobile top bar (hidden on md+) ───────────────────────── */
 function MobileBar({
-  onMenu, dark,
-}: { onMenu: () => void; dark: boolean }) {
+  onMenu,
+}: { onMenu: () => void }) {
   return (
     <div className="sticky top-0 z-40 flex h-12 items-center gap-3 border-b border-white/[0.06] bg-ink-950/80 px-4 backdrop-blur-xl md:hidden">
       <button onClick={onMenu} className="p-1 text-zinc-400 hover:text-zinc-200">
@@ -185,7 +164,6 @@ function MobileBar({
 
 /* ── Root ───────────────────────────────────────────────── */
 export default function App() {
-  const { dark, toggle } = useTheme();
   const [palette, setPalette] = useState(false);
   const [settings, setSettings] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -200,8 +178,6 @@ export default function App() {
         <Sidebar
           onPalette={() => setPalette(true)}
           onSettings={() => setSettings(true)}
-          dark={dark}
-          toggle={toggle}
         />
       </div>
 
@@ -213,15 +189,13 @@ export default function App() {
             <Sidebar
               onPalette={() => { setPalette(true); setMobileOpen(false); }}
               onSettings={() => { setSettings(true); setMobileOpen(false); }}
-              dark={dark}
-              toggle={toggle}
             />
           </div>
         </div>
       )}
 
       {/* Mobile top bar */}
-      <MobileBar onMenu={() => setMobileOpen(true)} dark={dark} />
+      <MobileBar onMenu={() => setMobileOpen(true)} />
 
       {/* Main content — offset by sidebar on desktop */}
       <div className="md:pl-56 min-h-screen">
@@ -238,7 +212,7 @@ export default function App() {
         </footer>
       </div>
 
-      <CommandPalette open={palette} setOpen={setPalette} onToggleTheme={toggle} />
+      <CommandPalette open={palette} setOpen={setPalette} />
       <OnboardingModal
         open={onboarding}
         onClose={() => setOnboarding(false)}

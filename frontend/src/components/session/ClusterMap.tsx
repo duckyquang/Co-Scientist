@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { STRATEGY_ICON } from "../../lib/format";
-import { Empty } from "../ui";
+import { Empty, InfoNote } from "../ui";
 import type { ClusterPoint } from "../../types";
 
 const CLUSTER_COLORS = [
@@ -16,9 +16,11 @@ export function ClusterMap({
   const [hover, setHover] = useState<ClusterPoint | null>(null);
   const W = 720, H = 460, pad = 40;
 
-  const { mapped, clusterList } = useMemo(() => {
+  const { mapped, clusterList, name } = useMemo(() => {
     const clusters = Array.from(new Set(points.map((p) => p.cluster))).sort();
     const color = (c: string) => CLUSTER_COLORS[clusters.indexOf(c) % CLUSTER_COLORS.length];
+    // Friendly display label — backend cluster ids look like "clu_0".
+    const name = (c: string) => `Theme ${clusters.indexOf(c) + 1}`;
     const eloVals = points.map((p) => p.elo || 1200);
     const eMin = Math.min(...eloVals, 1200), eMax = Math.max(...eloVals, 1201);
     const mapped = points.map((p) => ({
@@ -28,13 +30,20 @@ export function ClusterMap({
       r: 7 + ((p.elo || 1200) - eMin) / (eMax - eMin || 1) * 13,
       color: color(p.cluster),
     }));
-    return { mapped, clusterList: clusters.map((c) => ({ c, color: color(c) })) };
+    return { mapped, name, clusterList: clusters.map((c) => ({ c, color: color(c), count: points.filter((p) => p.cluster === c).length })) };
   }, [points]);
 
   if (points.length === 0) return <Empty icon="🛰️" title="No hypotheses to map yet" />;
 
   return (
     <div>
+      <InfoNote title="What is this map?">
+        Each dot is a hypothesis, placed so that ideas exploring the{" "}
+        <span className="text-white">same underlying theme sit close together</span> (a
+        "cluster"). Bigger dots have a higher Elo rating; <span className="text-white">📌</span>{" "}
+        marks a pinned favorite. Use it to spot where the agents are converging — and which
+        themes are still unexplored. Click any dot to read the full hypothesis.
+      </InfoNote>
       <div className="relative">
         <svg viewBox={`0 0 ${W} ${H}`} className="w-full rounded-xl border border-white/[0.06] grid-bg">
           {/* cluster hulls (soft glow per cluster centroid) */}
@@ -71,7 +80,7 @@ export function ClusterMap({
         {hover && (
           <div className="pointer-events-none absolute left-3 top-3 max-w-xs rounded-lg border border-white/10 bg-ink-950/95 p-3 shadow-xl">
             <div className="text-[11px] uppercase tracking-wide text-slate-500">
-              {STRATEGY_ICON[hover.strategy]} {hover.strategy} · {hover.cluster}
+              {STRATEGY_ICON[hover.strategy]} {hover.strategy} · {name(hover.cluster)}
             </div>
             <div className="mt-1 text-sm font-semibold text-white">{hover.title}</div>
             <div className="mt-1 text-xs text-slate-400">
