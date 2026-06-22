@@ -90,14 +90,14 @@ export function ClusterMap({
         )}
       </div>
       <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-slate-400">
-        <span className="text-slate-500">Clusters:</span>
-        {clusterList.map(({ c, color }) => (
+        <span className="text-slate-500">Themes:</span>
+        {clusterList.map(({ c, color, count }) => (
           <span key={c} className="inline-flex items-center gap-1.5">
             <span className="h-2.5 w-2.5 rounded-full" style={{ background: color }} />
-            {c}
+            {name(c)} <span className="text-slate-600">({count})</span>
           </span>
         ))}
-        <span className="ml-auto text-slate-500">marker size ∝ Elo · click to inspect</span>
+        <span className="ml-auto text-slate-500">dot size ∝ Elo · click to inspect</span>
       </div>
     </div>
   );

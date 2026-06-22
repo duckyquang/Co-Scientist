@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { Scores } from "../types";
 
 export function Sparkline({
@@ -140,10 +141,18 @@ export function ScoreBars({ scores }: { scores: Scores }) {
   );
 }
 
-/** Multi-line Elo race chart. series: id -> [{i, elo}] */
+/** Multi-line Elo race chart. series: id -> [{i, elo}].
+ *  Hover a line (or legend chip) to highlight it; click to open that hypothesis. */
 export function EloRace({
-  series, height = 220, highlight,
-}: { series: Record<string, { i: number; elo: number }[]>; height?: number; highlight?: string }) {
+  series, height = 220, highlight, onSelect, labels,
+}: {
+  series: Record<string, { i: number; elo: number }[]>;
+  height?: number;
+  highlight?: string;
+  onSelect?: (id: string) => void;
+  labels?: Record<string, string>;
+}) {
+  const [hoverId, setHoverId] = useState<string | null>(null);
   const entries = Object.entries(series).filter(([, v]) => v.length > 1);
   if (!entries.length) return <div className="text-sm text-slate-500">Not enough matches yet.</div>;
   const allElo = entries.flatMap(([, v]) => v.map((p) => p.elo));
@@ -157,28 +166,80 @@ export function EloRace({
   const y = (e: number) => pad.t + (1 - (e - min) / (max - min || 1)) * (H - pad.t - pad.b);
   const palette = ["#bfdbfe", "#93c5fd", "#60a5fa", "#3b82f6", "#2563eb", "#1d4ed8", "#1e40af", "#1e3a8a"];
   const ticks = 4;
+  const colorOf = (idx: number) => palette[idx % palette.length];
+  const active = hoverId || highlight || null;
+  const labelOf = (id: string) => labels?.[id] || id.slice(0, 12);
+  const finalElo = (id: string) => {
+    const v = series[id];
+    return v?.length ? Math.round(v[v.length - 1].elo) : null;
+  };
+
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
-      {Array.from({ length: ticks + 1 }).map((_, k) => {
-        const e = min + ((max - min) * k) / ticks;
-        const yy = y(e);
-        return (
-          <g key={k}>
-            <line x1={pad.l} y1={yy} x2={W - pad.r} y2={yy} stroke="rgba(255,255,255,0.06)" />
-            <text x={4} y={yy + 3} fontSize="9" fill="#64748b" className="font-mono">{Math.round(e)}</text>
-          </g>
-        );
-      })}
-      {entries.map(([id, v], idx) => {
-        const isHi = highlight && id === highlight;
-        const color = isHi ? "#60a5fa" : palette[idx % palette.length];
-        const d = v.map((p, i) => `${i ? "L" : "M"}${x(p.i).toFixed(1)},${y(p.elo).toFixed(1)}`).join(" ");
-        return (
-          <path key={id} d={d} fill="none" stroke={color}
-            strokeWidth={isHi ? 3 : 1.6} opacity={highlight && !isHi ? 0.3 : 0.9}
-            strokeLinecap="round" strokeLinejoin="round" />
-        );
-      })}
-    </svg>
+    <div>
+      <div className="relative">
+        <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
+          {Array.from({ length: ticks + 1 }).map((_, k) => {
+            const e = min + ((max - min) * k) / ticks;
+            const yy = y(e);
+            return (
+              <g key={k}>
+                <line x1={pad.l} y1={yy} x2={W - pad.r} y2={yy} stroke="rgba(255,255,255,0.06)" />
+                <text x={4} y={yy + 3} fontSize="9" fill="#64748b" className="font-mono">{Math.round(e)}</text>
+              </g>
+            );
+          })}
+          {entries.map(([id, v], idx) => {
+            const isHi = active === id;
+            const color = isHi ? "#60a5fa" : colorOf(idx);
+            const d = v.map((p, i) => `${i ? "L" : "M"}${x(p.i).toFixed(1)},${y(p.elo).toFixed(1)}`).join(" ");
+            const last = v[v.length - 1];
+            return (
+              <g key={id}>
+                <path d={d} fill="none" stroke={color}
+                  strokeWidth={isHi ? 3 : 1.6} opacity={active && !isHi ? 0.25 : 0.9}
+                  strokeLinecap="round" strokeLinejoin="round" />
+                <circle cx={x(last.i)} cy={y(last.elo)} r={isHi ? 4 : 2.5} fill={color}
+                  opacity={active && !isHi ? 0.25 : 1} />
+                {/* invisible fat hit-area for easy hover/click */}
+                {onSelect && (
+                  <path d={d} fill="none" stroke="transparent" strokeWidth={14}
+                    className="cursor-pointer"
+                    onMouseEnter={() => setHoverId(id)} onMouseLeave={() => setHoverId(null)}
+                    onClick={() => onSelect(id)} />
+                )}
+              </g>
+            );
+          })}
+        </svg>
+        {active && (
+          <div className="pointer-events-none absolute left-3 top-2 max-w-[60%] truncate rounded-lg border border-white/10 bg-ink-950/95 px-2.5 py-1.5 text-[12px] shadow-xl">
+            <span className="font-semibold text-white">{labelOf(active)}</span>
+            <span className="ml-1.5 font-mono text-blue-300">{finalElo(active)}</span>
+          </div>
+        )}
+      </div>
+
+      {/* clickable legend — also the way to discover what each line is */}
+      <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1.5">
+        {entries.map(([id], idx) => {
+          const isHi = active === id;
+          return (
+            <button key={id}
+              onClick={() => onSelect?.(id)}
+              onMouseEnter={() => setHoverId(id)} onMouseLeave={() => setHoverId(null)}
+              className={`inline-flex max-w-[230px] items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[11px] transition ${
+                isHi ? "bg-white/[0.08] text-white" : "text-slate-400 hover:text-slate-200"
+              }`}>
+              <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: isHi ? "#60a5fa" : colorOf(idx) }} />
+              <span className="truncate">{labelOf(id)}</span>
+              <span className="shrink-0 font-mono text-slate-500">{finalElo(id)}</span>
+            </button>
+          );
+        })}
+      </div>
+      {onSelect && (
+        <div className="mt-2 text-[11px] text-slate-600">Click a line or label to open the hypothesis.</div>
+      )}
+    </div>
   );
 }

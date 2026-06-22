@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { api } from "../../api";
 import {
   agentColor, clockTime, eloColor, fmtCompact, fmtUsd, timeAgo,
@@ -99,11 +99,20 @@ export function TournamentPanel({
   onSelect: (id: string) => void;
   highlight?: string;
 }) {
+  // Map hypothesis id → title (from match rows) so chart lines/legend are readable.
+  const labels = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const x of matches) {
+      if (x.title_a) m[x.hyp_a] = x.title_a;
+      if (x.title_b) m[x.hyp_b] = x.title_b;
+    }
+    return m;
+  }, [matches]);
   return (
     <div className="space-y-5">
       <div className="card p-5">
         <div className="label mb-3">Elo race — rating over matches</div>
-        <EloRace series={eloSeries} highlight={highlight} />
+        <EloRace series={eloSeries} highlight={highlight} onSelect={onSelect} labels={labels} />
       </div>
       <div className="card p-5">
         <div className="label mb-3">Recent matches ({matches.length})</div>
