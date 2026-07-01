@@ -1,12 +1,14 @@
-/** Plausible-content generators for the in-browser simulator.
+/** Prompt-aware, domain-agnostic content generators for the offline fallback.
  *
- * A faithful TypeScript port of webapp/content.py — produces realistic-looking
- * hypotheses / reviews / overviews from a goal string so a session is fully
- * explorable with no backend and no API key. The shapes match the engine's
- * `Hypothesis` / `Review` / `Citation` types.
+ * When no live model is reachable (offline, rate-limited, blocked), the engine
+ * still needs to fill a tournament. This module derives that content from the
+ * ACTUAL research goal — its real noun phrases and inferred domain — so a prompt
+ * about traffic yields traffic hypotheses and a prompt about batteries yields
+ * battery hypotheses. It never injects biomedicine unless the prompt is
+ * biomedical. Everything is deterministic (seeded RNG), no network.
  *
- * NOTE: this content is *simulated*, not real LLM output. The UI labels it as
- * such whenever the engine is driving a session (see lib/live.ts isSimulatedMode).
+ * This is a *simulated* fallback, clearly labelled in the UI. Real reasoning
+ * comes from the live providers (see lib/llm/*).
  */
 
 import type { Rng } from "./rng";
@@ -17,36 +19,8 @@ export const STRATEGIES = [
   "out_of_box", "feasibility", "assumption", "feedback_driven",
 ] as const;
 
-/** Model label shown in transcripts/analytics — matches the Groq theme. */
+/** Model label shown in transcripts/analytics. */
 export const SIM_MODEL = "llama-3.3-70b-versatile";
-
-const MECHANISMS: ReadonlyArray<readonly [string, string]> = [
-  ["Repurposing {drug} via {pathway} modulation",
-   "{drug} is a clinically approved agent whose off-target inhibition of {pathway} may suppress the disease-driving program identified in the goal."],
-  ["{pathway} blockade reverses the {phenotype} phenotype",
-   "Sustained {pathway} signaling maintains {phenotype}; pharmacological blockade should collapse the feed-forward loop and restore homeostasis."],
-  ["Synthetic-lethal targeting of {gene} in {context}",
-   "Cells in {context} become dependent on {gene}; a selective inhibitor exploits this dependency while sparing normal tissue."],
-  ["{microbe}-derived metabolites drive {phenotype}",
-   "Host exposure to {microbe} metabolites rewires {pathway}, providing a tractable, diet-modifiable lever over {phenotype}."],
-  ["Combination of {drug} and {pathway} inhibition is synergistic",
-   "Each agent alone is sub-therapeutic, but co-inhibition closes a compensatory escape route, predicting a strong synergy index."],
-  ["Epigenetic priming sensitizes {context} to {drug}",
-   "Low-dose epigenetic priming reopens silenced loci, restoring {drug} sensitivity in otherwise refractory {context}."],
-];
-
-const DRUGS = ["Nanvuranlat", "KIRA6", "Leflunomide", "Binimetinib", "Pacritinib",
-  "Cerivastatin", "Dimethyl fumarate", "Metformin", "Disulfiram",
-  "Niclosamide", "Auranofin", "Itraconazole"];
-const PATHWAYS = ["IRE1α–XBP1", "DHODH", "MEK/ERK", "JAK2/STAT5", "mevalonate",
-  "NRF2–KEAP1", "Wnt/β-catenin", "mTORC1", "ferroptosis", "cGAS–STING"];
-const GENES = ["WRN", "PRMT5", "MAT2A", "USP1", "POLQ", "WEE1", "ATR"];
-const PHENOTYPES = ["chronic inflammation", "drug tolerance", "stemness",
-  "immune evasion", "fibrotic remodeling", "metabolic rewiring"];
-const MICROBES = ["Akkermansia muciniphila", "Faecalibacterium prausnitzii",
-  "Bacteroides fragilis", "segmented filamentous bacteria"];
-const CONTEXTS = ["AML blasts", "senescent fibroblasts", "exhausted CD8 T cells",
-  "drug-tolerant persister cells", "the inflamed gut epithelium"];
 
 export interface SimCitation {
   title: string;
@@ -71,66 +45,214 @@ export interface SimReviewContent {
   body: string;
 }
 
-function fmt(tpl: string, fill: Record<string, string>): string {
-  return tpl.replace(/\{(\w+)\}/g, (_, k) => fill[k] ?? `{${k}}`);
+/* ── Prompt understanding (deterministic, no network) ──────── */
+
+const STOPWORDS = new Set([
+  "the", "a", "an", "and", "or", "of", "to", "in", "on", "for", "with", "by",
+  "at", "from", "into", "as", "is", "are", "be", "will", "can", "could", "would",
+  "that", "this", "these", "those", "it", "its", "their", "our", "your", "we",
+  "how", "what", "why", "which", "using", "use", "via", "based", "new", "novel",
+  "testable", "strategies", "strategy", "mechanisms", "mechanism", "ways", "way",
+  "approach", "approaches", "study", "research", "goal", "propose", "proposing",
+  "find", "finding", "identify", "identifying", "generate", "generating",
+  "discover", "explore", "investigate", "develop", "improve", "improving",
+  "reduce", "reducing", "increase", "increasing", "extend", "extending",
+  "overcome", "overcoming", "between", "linking", "across", "within",
+]);
+
+const ACTION_VERBS = [
+  "reduce", "lower", "cut", "decrease", "minimize", "minimise", "prevent",
+  "eliminate", "improve", "increase", "boost", "enhance", "raise", "maximize",
+  "maximise", "extend", "expand", "accelerate", "optimize", "optimise",
+  "strengthen", "overcome", "restore", "stabilize", "stabilise",
+];
+
+export interface GoalKeywords {
+  unigrams: string[];
+  phrases: string[];
+  topics: string[]; // salient noun phrases, longest first
 }
+
+/** Extract meaningful unigrams + contiguous content-word phrases from a goal. */
+export function extractKeywords(goal: string): GoalKeywords {
+  const tokens = goal.match(/[A-Za-z][A-Za-z0-9+–-]*/g) || [];
+  const unigrams: string[] = [];
+  const phrases: string[] = [];
+  let run: string[] = [];
+  const flush = () => {
+    if (run.length) { phrases.push(run.join(" ")); run = []; }
+  };
+  for (const tok of tokens) {
+    const low = tok.toLowerCase();
+    const content = tok.length > 2 && !STOPWORDS.has(low);
+    if (content) { run.push(tok); unigrams.push(low); }
+    else flush();
+  }
+  flush();
+  // Salient topics: contiguous phrases (1-4 words), longest/most-specific first.
+  const topics = Array.from(new Set(phrases))
+    .map((p) => p.split(" ").slice(0, 4).join(" "))
+    .sort((a, b) => b.split(" ").length - a.split(" ").length || b.length - a.length);
+  return { unigrams, phrases, topics };
+}
+
+interface DomainProfile {
+  id: string;
+  match: string[];
+  levers: string[];
+  metric: string;
+  unit: string;
+  methods: string[];
+}
+
+const DOMAINS: DomainProfile[] = [
+  {
+    id: "transportation",
+    match: ["traffic", "congestion", "transit", "road", "commute", "vehicle", "mobility", "urban", "city", "parking", "transport", "bus", "rail", "driving", "highway", "pedestrian"],
+    levers: ["dynamic congestion pricing", "adaptive signal control", "dedicated priority lanes", "demand-responsive routing", "a mode-shift incentive", "real-time rerouting"],
+    metric: "average travel time", unit: "%",
+    methods: ["a calibrated traffic microsimulation", "a before-after field study on a corridor", "a staggered rollout across zones"],
+  },
+  {
+    id: "energy-materials",
+    match: ["battery", "batteries", "lithium", "lithium-ion", "ion", "energy", "solar", "wind", "grid", "turbine", "storage", "material", "photovoltaic", "fuel", "hydrogen", "electrode", "electrolyte", "power", "thermal", "capacity", "charge"],
+    levers: ["a protective interface coating", "a tuned operating-temperature window", "a materials substitution", "a smart charge controller", "an electrolyte additive"],
+    metric: "cycle-life retention", unit: "%",
+    methods: ["accelerated cycling on a test bench", "a controlled bench experiment", "a paired A/B hardware trial"],
+  },
+  {
+    id: "computing",
+    match: ["model", "algorithm", "software", "data", "network", "compute", "latency", "system", "code", "server", "database", "inference", "cache", "gpu", "throughput", "distributed", "spreadsheet", "layout", "app", "ui", "interface", "dashboard"],
+    levers: ["an algorithmic redesign", "a caching layer", "a scheduling-policy change", "a model-architecture tweak", "a batching strategy"],
+    metric: "end-to-end latency", unit: "%",
+    methods: ["a benchmark with ablations", "an A/B experiment in staging", "a load test under production-like traffic"],
+  },
+  {
+    id: "education-social",
+    match: ["student", "students", "learning", "education", "retention", "teach", "school", "college", "training", "course", "curriculum", "literacy", "classroom", "tutor", "graduation"],
+    levers: ["a structured mentoring program", "a low-cost behavioral nudge", "a curriculum redesign", "an early-warning outreach", "a peer-support cohort"],
+    metric: "retention rate", unit: "%",
+    methods: ["a randomized controlled trial", "a difference-in-differences study", "a stepped-wedge pilot"],
+  },
+  {
+    id: "economics-business",
+    match: ["market", "price", "pricing", "cost", "revenue", "customer", "supply", "demand", "business", "retail", "sales", "inventory", "logistics", "churn", "profit", "supermarket", "supermarkets", "food", "grocery", "perishable", "spoilage", "stock"],
+    levers: ["dynamic pricing", "a demand-forecasting model", "a process redesign", "a targeted incentive", "an inventory-routing change"],
+    metric: "unit cost", unit: "%",
+    methods: ["an A/B pricing experiment", "a controlled pilot in selected sites", "a holdout-group trial"],
+  },
+  {
+    id: "climate-environment",
+    match: ["climate", "carbon", "emission", "emissions", "pollution", "pollutant", "air", "smog", "aqi", "ecosystem", "water", "sustainability", "sustainable", "recycling", "biodiversity", "greenhouse", "renewable"],
+    levers: ["a deployment incentive", "a behavioral nudge", "a process electrification", "a monitoring-and-feedback loop", "a policy instrument"],
+    metric: "emissions intensity", unit: "%",
+    methods: ["a field trial with matched controls", "a monitored pilot deployment", "a scenario simulation"],
+  },
+  {
+    id: "biomedicine",
+    // NB: "cell"/"cells" intentionally omitted — too ambiguous (spreadsheet /
+    // battery / phone cell). Real bio prompts hit cancer/tumor/gene/organoid/etc.
+    match: ["gene", "genetic", "protein", "disease", "cancer", "drug", "tissue", "organoid", "microbiome", "patient", "clinical", "neuro", "neuroinflammation", "therapy", "therapeutic", "molecular", "immune", "blood", "brain", "metabolic", "tumor", "leukemia", "antibody", "biomarker"],
+    levers: ["a repurposed approved compound", "a targeted pathway inhibitor", "a genetic perturbation", "a combination regimen", "an epigenetic priming step"],
+    metric: "the disease-signature score", unit: "%",
+    methods: ["an in-vitro assay in a relevant model", "an isogenic knockdown experiment", "a dose-response study"],
+  },
+];
+
+const GENERIC: DomainProfile = {
+  id: "generic",
+  match: [],
+  levers: ["a targeted intervention", "a structural redesign", "a data-driven policy", "an automated feedback controller", "an incentive realignment", "an early screening step"],
+  metric: "the primary outcome measure", unit: "%",
+  methods: ["a controlled pilot study", "a randomized experiment", "a simulation calibrated to real data", "a field trial with matched controls"],
+};
+
+/** Pick the domain whose vocabulary best matches the prompt (else generic).
+ *  Matches tolerate simple plurals (batteries→battery, students→student). */
+export function inferDomain(unigrams: string[]): DomainProfile {
+  const set = new Set<string>();
+  for (const u of unigrams) {
+    set.add(u);
+    if (u.endsWith("s") && u.length > 3) set.add(u.slice(0, -1)); // crude singular
+  }
+  let best = GENERIC, bestScore = 0;
+  for (const d of DOMAINS) {
+    // Count DISTINCT stems so a domain listing both "cell" and "cells" can't
+    // score a single prompt occurrence twice (which used to leak biomedicine
+    // into e.g. "layout of cells in a spreadsheet").
+    const hits = new Set<string>();
+    for (const m of d.match) {
+      const stem = m.endsWith("s") && m.length > 3 ? m.slice(0, -1) : m;
+      if (set.has(m) || set.has(stem)) hits.add(stem);
+    }
+    if (hits.size > bestScore) { best = d; bestScore = hits.size; }
+  }
+  return best;
+}
+
+const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
+const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n).replace(/\s+\S*$/, "") + "…" : s);
+
+/** A short, prompt-grounded "aim" clause (uses the prompt's own words). */
+function goalAim(goal: string): string {
+  const lower = goal.toLowerCase();
+  let idx = -1;
+  for (const v of ACTION_VERBS) {
+    const m = lower.search(new RegExp(`\\b${v}\\b`));
+    if (m >= 0 && (idx < 0 || m < idx)) idx = m;
+  }
+  const clause = idx >= 0 ? goal.slice(idx) : goal;
+  return clip(clause.replace(/[.?!]+$/g, "").trim().toLowerCase(), 90);
+}
+
+const TITLE_SCAFFOLDS = [
+  (t: string, l: string, _l2: string, m: string, _me: string) => `${cap(l)} improves ${m} in ${t}`,
+  (t: string, l: string, _l2: string, _m: string, _me: string) => `${cap(l)} as a lever for ${t}`,
+  (t: string, l: string, l2: string, _m: string, _me: string) => `Combining ${l} and ${l2} in ${t}`,
+  (t: string, l: string, _l2: string, _m: string, me: string) => `${cap(l)} for ${t}, tested via ${me}`,
+  (t: string, l: string, _l2: string, _m: string, _me: string) => `Introducing ${l} early reduces failure in ${t}`,
+  (t: string, l: string, _l2: string, m: string, _me: string) => `${cap(l)} shifts ${m} in ${t}`,
+];
 
 export function makeHypothesis(goal: string, idx: number, strategy: string): SimHypothesisContent {
   const r = makeRng(`${goal}|${idx}|${strategy}`);
-  const [mechTitle, mechBody] = r.choice(MECHANISMS);
-  const fill = {
-    drug: r.choice(DRUGS),
-    pathway: r.choice(PATHWAYS),
-    gene: r.choice(GENES),
-    phenotype: r.choice(PHENOTYPES),
-    microbe: r.choice(MICROBES),
-    context: r.choice(CONTEXTS),
-  };
-  const title = fmt(mechTitle, fill);
-  const body = fmt(mechBody, fill);
+  const { unigrams, topics } = extractKeywords(goal);
+  const dom = inferDomain(unigrams);
+  const aim = goalAim(goal);
+  // Rotate through the prompt's own noun phrases so hypotheses cover its facets.
+  const pool = topics.length ? topics : [clip(goal, 48)];
+  const topic = pool[idx % pool.length] || clip(goal, 48);
+  const lever = r.choice(dom.levers);
+  let lever2 = r.choice(dom.levers);
+  if (lever2 === lever) lever2 = dom.levers[(dom.levers.indexOf(lever) + 1) % dom.levers.length];
+  const method = r.choice(dom.methods);
+  const pct = r.randint(15, 45);
+
+  const scaffold = TITLE_SCAFFOLDS[idx % TITLE_SCAFFOLDS.length];
+  const title = clip(scaffold(topic, lever, lever2, dom.metric, method), 110);
   const summary =
-    `${body} The hypothesis is directly testable in existing ${fill.context} models with a clear, quantitative readout.`;
+    `${cap(lever)} is a plausible lever to ${aim}. The effect should appear as a measurable change in ${dom.metric}, making it directly testable via ${method} against a pre-registered threshold.`;
   const full_text = `## Mechanism
 
-${body}
-
-We propose that **${fill.pathway}** acts as the central node linking the
-upstream stimulus to **${fill.phenotype}** observed in ${fill.context}.
-
-## Rationale
-
-1. Genetic perturbation of ${fill.gene} phenocopies the proposed intervention.
-2. ${fill.drug} is already approved, de-risking translation and toxicity.
-3. The pathway is druggable with sub-micromolar tool compounds.
+We hypothesise that **${lever}** acts on the core driver of ${topic}, and that this
+propagates to a measurable shift in **${dom.metric}**. The link to the stated goal —
+*${aim}* — is direct: if the lever works, the outcome moves; if it does not, the
+outcome is unchanged, giving a clean falsification.
 
 ## Proposed experiment
 
-- **Model:** ${fill.context} (primary + isogenic line).
-- **Intervention:** titrate ${fill.drug} ± ${fill.pathway} inhibitor.
-- **Primary readout:** reversal of ${fill.phenotype} signature (RNA-seq + functional assay).
-- **Controls:** vehicle, isotype, and a pathway-dead mutant rescue.
-- **Success criterion:** >50% reduction in the ${fill.phenotype} score at a
-  clinically achievable exposure.
+- **Method:** ${cap(method)}.
+- **Intervention:** apply ${lever}${strategy === "combine" ? ` together with ${lever2}` : ""}.
+- **Primary readout:** ${dom.metric} (with a matched control condition).
+- **Controls:** a no-intervention baseline and a plausibly-inert comparison.
+- **Success criterion:** a ≥${pct}${dom.unit} improvement in ${dom.metric} versus control.
 
 ## Predicted outcome
 
-A dose-dependent collapse of the ${fill.phenotype} program with an
-EC50 within the approved therapeutic window of ${fill.drug}.
+A dose- or intensity-dependent change in ${dom.metric}, concentrated where
+${topic} is most acute — with no effect in the inert control arm.
 `;
-  const citations: SimCitation[] = [];
-  const nCit = r.randint(2, 4);
-  const ctxWord = fill.context.split(" ")[0];
-  for (let i = 0; i < nCit; i++) {
-    const yr = r.randint(2018, 2025);
-    citations.push({
-      title: `${fill.pathway} regulates ${fill.phenotype} in ${ctxWord} models`,
-      url: `https://doi.org/10.1038/s${r.randint(40000, 49999)}-0${yr - 2000}-${r.randint(1000, 9999)}-x`,
-      excerpt: `...inhibition of ${fill.pathway} reduced ${fill.phenotype} markers by ${r.randint(40, 80)}%...`,
-      doi: `10.1038/s${r.randint(40000, 49999)}`,
-      year: yr,
-    });
-  }
-  return { title, summary, full_text, citations, strategy };
+  return { title, summary, full_text, citations: [], strategy };
 }
 
 export function makeReview(goal: string, hypTitle: string, kind: string): SimReviewContent {
@@ -144,28 +266,22 @@ export function makeReview(goal: string, hypTitle: string, kind: string): SimRev
   };
   const body = `**Verdict:** ${verdict}
 
-**Novelty (${scores.novelty}).** The mechanistic link is under-explored; a
-handful of adjacent papers exist but none test this exact intervention.
+**Novelty (${scores.novelty}).** The proposed lever is under-explored for this goal; adjacent work exists but does not test this exact intervention.
 
-**Correctness (${scores.correctness}).** Internally consistent. The proposed
-causal chain is plausible given the cited evidence, though one upstream step
-relies on an assumption flagged below.
+**Correctness (${scores.correctness}).** Internally consistent — the causal chain from intervention to the primary outcome is plausible, though one upstream assumption (below) is load-bearing.
 
-**Testability (${scores.testability}).** Strong — the readout is quantitative
-and the reagents are commercially available.
+**Testability (${scores.testability}).** Strong: the readout is quantitative and the proposed method yields a clear pass/fail against the stated threshold.
 
-**Feasibility (${scores.feasibility}).** Achievable within a standard wet-lab
-budget; the main risk is compound exposure in the relevant compartment.
+**Feasibility (${scores.feasibility}).** Achievable with commonly available methods; the main risk is confounding, which the control arm is designed to absorb.
 
-**Key assumption checked:** that the approved agent reaches the target tissue at
-an active concentration. Rated *${r.choice(["plausible", "uncertain"])}*.
+**Key assumption checked:** that the measured outcome actually reflects the mechanism, not a proxy. Rated *${r.choice(["plausible", "uncertain"])}*.
 `;
   return { kind, verdict, scores, body };
 }
 
 export function makeOverview(goal: string, topTitles: string[]): string {
   const bullets = topTitles.slice(0, 5).map((t, i) =>
-    `${i + 1}. **${t}** — ranked by tournament Elo; survives deep verification and is ready for experimental triage.`,
+    `${i + 1}. **${t}** — ranked by tournament Elo; survives verification and is ready for triage.`,
   ).join("\n");
   return `# Research overview
 
@@ -173,11 +289,10 @@ export function makeOverview(goal: string, topTitles: string[]): string {
 
 ## Executive summary
 
-Across the tournament, the system explored a diverse hypothesis space and
-converged on a small set of high-Elo, deeply-verified candidates. The leading
-hypotheses share a common theme: actionable, mechanism-anchored interventions
-that are testable with existing models and, where possible, repurpose
-clinically approved agents to de-risk translation.
+Across the tournament, the agents explored a diverse hypothesis space for this goal
+and converged on a small set of high-Elo candidates. The leading ideas share a
+common shape: a concrete lever, a measurable primary outcome, and a pre-registered
+threshold that makes each one cleanly falsifiable.
 
 ## Top-ranked hypotheses
 
@@ -185,20 +300,15 @@ ${bullets}
 
 ## Cross-cutting themes
 
-- **Repurposing over de-novo discovery.** The highest-ranked ideas lean on
-  approved compounds, trading some novelty for a dramatically shorter path to
-  the clinic.
-- **Pathway convergence.** Independent generation strategies repeatedly nominated
-  the same signaling hubs, a useful signal of robustness.
-- **Clear falsification criteria.** Every surviving hypothesis specifies a
-  quantitative success threshold, which is what let the Ranking agent separate
-  them under debate.
+- **Actionable levers over description.** The highest-ranked ideas name a specific intervention that could be run, not just a phenomenon to observe.
+- **Convergence on shared levers.** Independent generation strategies repeatedly nominated the same mechanisms — a useful signal of robustness.
+- **Clear falsification criteria.** Every surviving hypothesis specifies a quantitative success threshold, which is what let the Ranking agent separate them under debate.
 
 ## Recommended next steps
 
-1. Triage the top-3 candidates in the cheapest available model first.
-2. Run the proposed combination arm early — synergy, if real, is the highest-value outcome.
-3. Pre-register the falsification thresholds before wet-lab work begins.
+1. Triage the top-3 candidates with the cheapest viable method first.
+2. Run any combination arm early — a super-additive effect, if real, is the highest-value outcome.
+3. Pre-register the falsification thresholds before committing resources.
 
 *Generated by the Meta-review agent after Elo stabilization.*
 `;
@@ -215,16 +325,17 @@ export interface SimPlan {
 
 export function makePlan(goal: string): SimPlan {
   const r = makeRng(goal);
+  const dom = inferDomain(extractKeywords(goal).unigrams);
   return {
     objective: goal,
     preferences: r.sample(
-      ["prioritize testable mechanisms", "favor drug repurposing", "emphasize novelty",
-       "require quantitative readouts", "avoid CBRN-adjacent directions"], 3),
+      ["prioritize testable mechanisms", "favor low-cost interventions", "emphasize novelty",
+       "require quantitative readouts", "prefer reversible/ethical directions"], 3),
     constraints: r.sample(
-      ["existing models only", "clinically approved agents preferred",
-       "budget-bounded wet-lab", "no human-subjects work"], 2),
+      ["use existing methods where possible", "bounded budget", "clear falsification criteria required",
+       "no high-risk directions"], 2),
     idea_attributes: ["mechanistic", "testable", "novel", "feasible"],
-    domain_hint: "biomedicine",
+    domain_hint: dom.id,
     notes: "Auto-parsed research plan.",
   };
 }

@@ -43,6 +43,13 @@ jobs:
           GITHUB_PAGES: "true"
           VITE_STATIC_DEMO: "true"
           VITE_API_URL: ${{ vars.VITE_API_URL }}
+          # Baked-in Groq key → the live site reads each visitor's prompt with a
+          # real model. Add a FREE, rotatable Groq key as the GROQ_API_KEY repo
+          # secret. If unset, the site runs the clearly-labeled prompt-aware
+          # in-browser simulation (still on-topic, just no live reasoning).
+          VITE_GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          # Optional keyless-style provider (needs a registered Pollinations token).
+          VITE_POLLINATIONS_TOKEN: ${{ secrets.POLLINATIONS_TOKEN }}
           VITE_README_LOCAL_URL: https://github.com/duckyquang/Co-Scientist#option-1-run-locally
         run: npm run build:pages
 

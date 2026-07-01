@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { STRATEGY_ICON } from "../../lib/format";
+import { Pin, Radar } from "lucide-react";
+import { strategyIcon } from "../../lib/format";
 import { Empty, InfoNote } from "../ui";
 import type { ClusterPoint } from "../../types";
 
@@ -33,19 +34,20 @@ export function ClusterMap({
     return { mapped, name, clusterList: clusters.map((c) => ({ c, color: color(c), count: points.filter((p) => p.cluster === c).length })) };
   }, [points]);
 
-  if (points.length === 0) return <Empty icon="🛰️" title="No hypotheses to map yet" />;
+  if (points.length === 0) return <Empty icon={Radar} title="No hypotheses to map yet" />;
 
   return (
     <div>
       <InfoNote title="What is this map?">
         Each dot is a hypothesis, placed so that ideas exploring the{" "}
-        <span className="text-white">same underlying theme sit close together</span> (a
-        "cluster"). Bigger dots have a higher Elo rating; <span className="text-white">📌</span>{" "}
-        marks a pinned favorite. Use it to spot where the agents are converging — and which
-        themes are still unexplored. Click any dot to read the full hypothesis.
+        <span className="text-fg">same underlying theme sit close together</span> (a
+        "cluster"). Bigger dots have a higher Elo rating; a{" "}
+        <Pin className="inline h-3 w-3 -mt-0.5 text-brand-500" /> marks a pinned favorite.
+        Use it to spot where the agents are converging — and which themes are still
+        unexplored. Click any dot to read the full hypothesis.
       </InfoNote>
       <div className="relative">
-        <svg viewBox={`0 0 ${W} ${H}`} className="w-full rounded-xl border border-white/[0.06] grid-bg">
+        <svg viewBox={`0 0 ${W} ${H}`} className="w-full rounded-xl border border-line grid-bg">
           {/* cluster hulls (soft glow per cluster centroid) */}
           {clusterList.map(({ c, color }) => {
             const pts = mapped.filter((p) => p.cluster === c);
@@ -60,7 +62,7 @@ export function ClusterMap({
             const cy = pts.reduce((s, p) => s + p.sy, 0) / pts.length;
             return pts.map((p) => (
               <line key={p.id} x1={cx} y1={cy} x2={p.sx} y2={p.sy}
-                stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
+                stroke="rgb(var(--fg) / 0.06)" strokeWidth="1" />
             ));
           })}
           {mapped.map((p) => (
@@ -72,32 +74,34 @@ export function ClusterMap({
                 stroke={p.color} strokeWidth={hover?.id === p.id ? 3 : 1}
                 strokeOpacity={0.9} />
               {p.state === "pinned" && (
-                <text x={p.sx} y={p.sy + 3.5} fontSize="11" textAnchor="middle">📌</text>
+                <circle cx={p.sx} cy={p.sy} r={p.r + 3} fill="none"
+                  stroke="rgb(var(--fg))" strokeWidth="1.5" strokeDasharray="2 2" strokeOpacity={0.8} />
               )}
             </g>
           ))}
         </svg>
         {hover && (
-          <div className="pointer-events-none absolute left-3 top-3 max-w-xs rounded-lg border border-white/10 bg-ink-950/95 p-3 shadow-xl">
-            <div className="text-[11px] uppercase tracking-wide text-slate-500">
-              {STRATEGY_ICON[hover.strategy]} {hover.strategy} · {name(hover.cluster)}
+          <div className="pointer-events-none absolute left-3 top-3 max-w-xs rounded-lg border border-line bg-surface/95 p-3 shadow-xl">
+            <div className="flex items-center gap-1 text-[11px] uppercase tracking-wide text-faint">
+              {(() => { const SIcon = strategyIcon(hover.strategy); return <SIcon className="h-3 w-3" />; })()}
+              {hover.strategy} · {name(hover.cluster)}
             </div>
-            <div className="mt-1 text-sm font-semibold text-white">{hover.title}</div>
-            <div className="mt-1 text-xs text-slate-400">
+            <div className="mt-1 text-sm font-semibold text-fg">{hover.title}</div>
+            <div className="mt-1 text-xs text-muted">
               Elo {hover.elo ? Math.round(hover.elo) : "—"} · {hover.matches_played} matches
             </div>
           </div>
         )}
       </div>
-      <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-slate-400">
-        <span className="text-slate-500">Themes:</span>
+      <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-muted">
+        <span className="text-faint">Themes:</span>
         {clusterList.map(({ c, color, count }) => (
           <span key={c} className="inline-flex items-center gap-1.5">
             <span className="h-2.5 w-2.5 rounded-full" style={{ background: color }} />
-            {name(c)} <span className="text-slate-600">({count})</span>
+            {name(c)} <span className="text-faint">({count})</span>
           </span>
         ))}
-        <span className="ml-auto text-slate-500">dot size ∝ Elo · click to inspect</span>
+        <span className="ml-auto text-faint">dot size ∝ Elo · click to inspect</span>
       </div>
     </div>
   );

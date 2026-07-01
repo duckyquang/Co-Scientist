@@ -1,7 +1,8 @@
 import { marked } from "marked";
 import type { ReactNode } from "react";
+import { Info, Telescope, type LucideIcon } from "lucide-react";
 import {
-  HYP_STATE_STYLE, STATUS_STYLE, STRATEGY_ICON, agentColor,
+  HYP_STATE_STYLE, STATUS_STYLE, agentColor, strategyIcon,
 } from "../lib/format";
 
 export function StatusBadge({ status }: { status: string }) {
@@ -19,9 +20,10 @@ export function StateBadge({ state }: { state: string }) {
 }
 
 export function StrategyTag({ strategy }: { strategy: string }) {
+  const Icon = strategyIcon(strategy);
   return (
-    <span className="inline-flex items-center gap-1 rounded-md bg-white/[0.05] px-1.5 py-0.5 text-[11px] font-medium text-slate-300">
-      <span>{STRATEGY_ICON[strategy] || "•"}</span>
+    <span className="inline-flex items-center gap-1 rounded-md bg-surface-2 px-1.5 py-0.5 text-[11px] font-medium text-muted">
+      <Icon className="h-3 w-3" />
       <span className="font-mono">{strategy}</span>
     </span>
   );
@@ -44,7 +46,7 @@ export function Stat({ label, value, sub, accent }: {
     <div className="card p-4">
       <div className="label">{label}</div>
       <div className="stat-num mt-1" style={accent ? { color: accent } : undefined}>{value}</div>
-      {sub && <div className="mt-0.5 text-xs text-slate-400">{sub}</div>}
+      {sub && <div className="mt-0.5 text-xs text-muted">{sub}</div>}
     </div>
   );
 }
@@ -52,7 +54,7 @@ export function Stat({ label, value, sub, accent }: {
 export function Progress({ value, max, color = "#6366f1" }: { value: number; max: number; color?: string }) {
   const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
   return (
-    <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-800">
+    <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
       <div className="h-full rounded-full transition-all duration-700"
         style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${color}, #a855f7)` }} />
     </div>
@@ -66,7 +68,7 @@ export function Markdown({ md }: { md: string }) {
 
 export function Loader({ label = "Loading" }: { label?: string }) {
   return (
-    <div className="flex items-center gap-3 py-16 text-slate-400">
+    <div className="flex items-center gap-3 py-16 text-muted">
       <span className="h-4 w-4 animate-spin rounded-full border-2 border-brand-500/30 border-t-brand-400" />
       {label}…
     </div>
@@ -76,22 +78,23 @@ export function Loader({ label = "Loading" }: { label?: string }) {
 /** Subtle explanatory callout — used to orient newcomers on each visualization. */
 export function InfoNote({ title, children }: { title?: string; children: ReactNode }) {
   return (
-    <div className="mb-4 flex gap-2.5 rounded-xl border border-blue-500/15 bg-blue-500/[0.05] px-3.5 py-2.5 text-[12.5px] leading-relaxed text-slate-300">
-      <span className="mt-px shrink-0 text-blue-400">ℹ️</span>
+    <div className="mb-4 flex gap-2.5 rounded-xl border border-brand-500/20 bg-brand-500/[0.06] px-3.5 py-2.5 text-[12.5px] leading-relaxed text-muted">
+      <Info className="mt-0.5 h-4 w-4 shrink-0 text-brand-500" />
       <div>
-        {title && <span className="font-semibold text-blue-200">{title} </span>}
+        {title && <span className="font-semibold text-fg">{title} </span>}
         {children}
       </div>
     </div>
   );
 }
 
-export function Empty({ icon = "🪐", title, hint }: { icon?: string; title: string; hint?: string }) {
+export function Empty({ icon, title, hint }: { icon?: LucideIcon; title: string; hint?: string }) {
+  const Icon = icon ?? Telescope;
   return (
-    <div className="card flex flex-col items-center gap-2 py-16 text-center">
-      <div className="text-4xl">{icon}</div>
-      <div className="text-base font-semibold text-slate-200">{title}</div>
-      {hint && <div className="max-w-md text-sm text-slate-500">{hint}</div>}
+    <div className="card flex flex-col items-center gap-3 py-16 text-center">
+      <Icon className="h-9 w-9 text-faint" strokeWidth={1.5} />
+      <div className="text-base font-semibold text-fg">{title}</div>
+      {hint && <div className="max-w-md text-sm text-faint">{hint}</div>}
     </div>
   );
 }
@@ -102,7 +105,7 @@ export function Section({ title, action, children, className = "" }: {
   return (
     <section className={`card p-5 ${className}`}>
       <div className="mb-4 flex items-center justify-between gap-3">
-        <h2 className="text-sm font-bold uppercase tracking-wider text-slate-300">{title}</h2>
+        <h2 className="text-sm font-bold uppercase tracking-wider text-fg">{title}</h2>
         {action}
       </div>
       {children}
