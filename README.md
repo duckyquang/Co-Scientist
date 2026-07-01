@@ -37,14 +37,26 @@ An open-source re-implementation of Google's **AI co-scientist** ([Gottweis et a
 2. Click **"Start a research session"**
 3. Type your research question and hit **Launch**
 
-**No account. No API key. No configuration.** The live site runs the full multi-agent
-tournament as an **interactive simulation entirely in your browser** — every visitor gets
-the complete experience (generation → debate → Elo ranking → final report) with nothing to
-install and nothing leaving your device.
+**No account. No API key. No configuration** — for the visitor. Type a prompt and six
+agents generate, debate, and Elo-rank hypotheses, then write a final overview.
 
-> Want **real** LLM-generated hypotheses? [Self-host](#️-self-host-in-5-minutes) with a free
-> Groq key (below), or point the site at your own backend via `VITE_API_URL` — it then calls
-> the real Groq-backed engine automatically, still with no per-user key.
+**How the live site answers prompts** depends on one repo setting:
+
+- **Prompt-aware simulation (default, no setup).** With no credential, the site runs a
+  clearly-labeled **in-browser simulation** that actually reads your prompt: it extracts
+  the key terms, infers the domain (transport, energy, education, biomedicine, …), and
+  generates **on-topic** hypotheses locally — nothing leaves your device. It reflects the
+  prompt but isn't a live model's reasoning.
+- **Live Groq reasoning (recommended).** Add a free [Groq](https://console.groq.com/keys)
+  key as a `GROQ_API_KEY` repo **secret** — the deploy workflow bakes it into the build
+  (`VITE_GROQ_API_KEY`) and every prompt is answered for real by Llama 3.3 70B, with
+  nothing for the visitor to enter. ⚠️ A key baked into a static site is publicly visible,
+  so use a **free, rotatable** key you can revoke — never a paid one. (Browsers can't call
+  Groq anonymously, which is why a baked key is what enables live reasoning.)
+
+> Prefer a server-side key (not exposed) and richer, web-search-grounded agents?
+> [Self-host](#️-self-host-in-5-minutes) or point the site at your own backend via
+> `VITE_API_URL`.
 
 ---
 

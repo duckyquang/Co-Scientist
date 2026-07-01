@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { Sprout } from "lucide-react";
 import { agentColor, eloColor } from "../../lib/format";
 import { Empty, InfoNote } from "../ui";
 import type { LineageNode } from "../../types";
@@ -57,12 +58,12 @@ export function LineageGraph({ nodes, edges, onSelect }: Props) {
     return { pos, width, height, maxTier };
   }, [nodes, edges]);
 
-  if (nodes.length === 0) return <Empty icon="🌱" title="No hypotheses to chart yet" />;
+  if (nodes.length === 0) return <Empty icon={Sprout} title="No hypotheses to chart yet" />;
 
   return (
     <div>
       <InfoNote title="What is lineage?">
-        This maps how ideas <span className="text-white">evolve</span>. Each box is a hypothesis.
+        This maps how ideas <span className="text-fg">evolve</span>. Each box is a hypothesis.
         The leftmost boxes are <span className="text-blue-300">original ideas</span> from the
         Generation agent; boxes further right are <span className="text-blue-300">offspring</span>{" "}
         the Evolution agent bred by combining or mutating top-ranked parents. Follow the lines
@@ -70,7 +71,7 @@ export function LineageGraph({ nodes, edges, onSelect }: Props) {
         Click any box to open it.
       </InfoNote>
 
-      <div className="mb-3 flex flex-wrap items-center gap-4 text-[11px] text-slate-400">
+      <div className="mb-3 flex flex-wrap items-center gap-4 text-[11px] text-muted">
         <span className="inline-flex items-center gap-1.5">
           <span className="h-2.5 w-2.5 rounded-sm" style={{ background: agentColor("generation").hex }} />
           Original (generation)
@@ -107,13 +108,13 @@ export function LineageGraph({ nodes, edges, onSelect }: Props) {
           return (
             <g key={n.id} transform={`translate(${p.x},${p.y})`} className="cursor-pointer"
               onClick={() => onSelect(n.id)}>
-              <rect width="170" height="38" rx="9" fill="rgba(16,22,42,0.92)"
+              <rect width="170" height="38" rx="9" fill="rgb(var(--surface))"
                 stroke={c.hex} strokeWidth="1.3" />
               <rect width="4" height="38" rx="2" fill={c.hex} />
-              <text x="12" y="16" fontSize="10.5" fill="#e2e8f0" className="font-semibold">
+              <text x="12" y="16" fontSize="10.5" fill="rgb(var(--fg))" className="font-semibold">
                 {n.title.length > 24 ? n.title.slice(0, 24) + "…" : n.title}
               </text>
-              <text x="12" y="29" fontSize="9" fill="#64748b">{n.strategy}</text>
+              <text x="12" y="29" fontSize="9" fill="rgb(var(--faint))">{n.strategy}</text>
               <text x="158" y="29" fontSize="11" textAnchor="end"
                 className={`font-bold ${eloColor(n.elo)}`} fill="currentColor">
                 {n.elo ? Math.round(n.elo) : "—"}

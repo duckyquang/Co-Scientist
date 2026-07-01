@@ -5,7 +5,7 @@ export function Sparkline({
   values, width = 120, height = 34, stroke = "#3b82f6", fill = true,
 }: { values: number[]; width?: number; height?: number; stroke?: string; fill?: boolean }) {
   if (values.length < 2) {
-    return <div className="text-[11px] text-slate-500">—</div>;
+    return <div className="text-[11px] text-faint">—</div>;
   }
   const min = Math.min(...values);
   const max = Math.max(...values);
@@ -46,7 +46,7 @@ export function Donut({
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
       <g transform={`rotate(-90 ${size / 2} ${size / 2})`}>
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={thickness} />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgb(var(--fg) / 0.08)" strokeWidth={thickness} />
         {segments.map((s, i) => {
           const len = (s.value / total) * c;
           const el = (
@@ -88,12 +88,12 @@ export function ScoreRadar({ scores, size = 168 }: { scores: Scores; size?: numb
         <polygon
           key={i}
           points={axes.map((_, j) => point(j, rr).join(",")).join(" ")}
-          fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="1"
+          fill="none" stroke="rgb(var(--fg) / 0.08)" strokeWidth="1"
         />
       ))}
       {axes.map((_, i) => {
         const [x, y] = point(i, 1);
-        return <line key={i} x1={cx} y1={cy} x2={x} y2={y} stroke="rgba(255,255,255,0.07)" />;
+        return <line key={i} x1={cx} y1={cy} x2={x} y2={y} stroke="rgb(var(--fg) / 0.08)" />;
       })}
       <polygon points={poly} fill="rgba(59,130,246,0.20)" stroke="#3b82f6" strokeWidth="2" />
       {vals.map((v, i) => {
@@ -103,7 +103,7 @@ export function ScoreRadar({ scores, size = 168 }: { scores: Scores; size?: numb
       {axes.map((a, i) => {
         const [x, y] = point(i, 1.22);
         return (
-          <text key={a.key} x={x} y={y} fontSize="9.5" fill="#94a3b8"
+          <text key={a.key} x={x} y={y} fontSize="9.5" fill="rgb(var(--faint))"
             textAnchor="middle" dominantBaseline="middle" className="font-semibold uppercase">
             {a.label}
           </text>
@@ -126,12 +126,12 @@ export function ScoreBars({ scores }: { scores: Scores }) {
         const v = (scores[r.key] ?? null) as number | null;
         return (
           <div key={r.key} className="flex items-center gap-3">
-            <div className="w-24 text-[11px] font-semibold uppercase tracking-wide text-slate-400">{r.label}</div>
-            <div className="h-2 flex-1 rounded-full bg-white/[0.06] overflow-hidden">
+            <div className="w-24 text-[11px] font-semibold uppercase tracking-wide text-muted">{r.label}</div>
+            <div className="h-2 flex-1 rounded-full bg-surface-2 overflow-hidden">
               <div className="h-full rounded-full transition-all duration-700"
                 style={{ width: `${(v ?? 0) * 100}%`, background: r.color }} />
             </div>
-            <div className="w-9 text-right text-xs font-mono text-slate-300">
+            <div className="w-9 text-right text-xs font-mono text-muted">
               {v == null ? "—" : v.toFixed(2)}
             </div>
           </div>
@@ -154,7 +154,7 @@ export function EloRace({
 }) {
   const [hoverId, setHoverId] = useState<string | null>(null);
   const entries = Object.entries(series).filter(([, v]) => v.length > 1);
-  if (!entries.length) return <div className="text-sm text-slate-500">Not enough matches yet.</div>;
+  if (!entries.length) return <div className="text-sm text-faint">Not enough matches yet.</div>;
   const allElo = entries.flatMap(([, v]) => v.map((p) => p.elo));
   const maxI = Math.max(...entries.flatMap(([, v]) => v.map((p) => p.i)));
   const min = Math.min(...allElo) - 5;
@@ -183,8 +183,8 @@ export function EloRace({
             const yy = y(e);
             return (
               <g key={k}>
-                <line x1={pad.l} y1={yy} x2={W - pad.r} y2={yy} stroke="rgba(255,255,255,0.06)" />
-                <text x={4} y={yy + 3} fontSize="9" fill="#64748b" className="font-mono">{Math.round(e)}</text>
+                <line x1={pad.l} y1={yy} x2={W - pad.r} y2={yy} stroke="rgb(var(--fg) / 0.08)" />
+                <text x={4} y={yy + 3} fontSize="9" fill="rgb(var(--faint))" className="font-mono">{Math.round(e)}</text>
               </g>
             );
           })}
@@ -212,8 +212,8 @@ export function EloRace({
           })}
         </svg>
         {active && (
-          <div className="pointer-events-none absolute left-3 top-2 max-w-[60%] truncate rounded-lg border border-white/10 bg-ink-950/95 px-2.5 py-1.5 text-[12px] shadow-xl">
-            <span className="font-semibold text-white">{labelOf(active)}</span>
+          <div className="pointer-events-none absolute left-3 top-2 max-w-[60%] truncate rounded-lg border border-line bg-surface/95 px-2.5 py-1.5 text-[12px] shadow-xl">
+            <span className="font-semibold text-fg">{labelOf(active)}</span>
             <span className="ml-1.5 font-mono text-blue-300">{finalElo(active)}</span>
           </div>
         )}
@@ -228,17 +228,17 @@ export function EloRace({
               onClick={() => onSelect?.(id)}
               onMouseEnter={() => setHoverId(id)} onMouseLeave={() => setHoverId(null)}
               className={`inline-flex max-w-[230px] items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[11px] transition ${
-                isHi ? "bg-white/[0.08] text-white" : "text-slate-400 hover:text-slate-200"
+                isHi ? "bg-surface-2 text-fg" : "text-muted hover:text-fg"
               }`}>
               <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: isHi ? "#60a5fa" : colorOf(idx) }} />
               <span className="truncate">{labelOf(id)}</span>
-              <span className="shrink-0 font-mono text-slate-500">{finalElo(id)}</span>
+              <span className="shrink-0 font-mono text-faint">{finalElo(id)}</span>
             </button>
           );
         })}
       </div>
       {onSelect && (
-        <div className="mt-2 text-[11px] text-slate-600">Click a line or label to open the hypothesis.</div>
+        <div className="mt-2 text-[11px] text-faint">Click a line or label to open the hypothesis.</div>
       )}
     </div>
   );

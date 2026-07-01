@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Laptop, Globe, X, Check } from "lucide-react";
 import { README_LOCAL_URL } from "../lib/config";
 import {
   clearCredentials, DeploymentMode, getCredentials, getDeploymentMode,
@@ -53,8 +54,8 @@ export function SettingsModal({ open, onClose }: Props) {
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
       <div className="card max-w-lg w-full p-6 animate-fade-up">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-white">Settings</h2>
-          <button onClick={onClose} className="text-slate-500 hover:text-white">✕</button>
+          <h2 className="text-lg font-bold text-fg">Settings</h2>
+          <button onClick={onClose} className="text-faint hover:text-fg"><X className="h-5 w-5" /></button>
         </div>
 
         <div className="mt-5 space-y-4">
@@ -65,20 +66,24 @@ export function SettingsModal({ open, onClose }: Props) {
                 <button
                   key={m}
                   onClick={() => setMode(m)}
-                  className={`rounded-xl border px-3 py-2.5 text-sm font-medium transition ${
+                  className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition ${
                     mode === m
-                      ? "border-brand-400/50 bg-brand-500/15 text-white"
-                      : "border-white/10 text-slate-400 hover:text-white"
+                      ? "border-brand-400/50 bg-brand-500/15 text-fg"
+                      : "border-line text-muted hover:text-fg"
                   }`}
                 >
-                  {m === "local" ? "💻 Local" : "🌐 Cloud + API key"}
+                  {m === "local" ? (
+                    <><Laptop className="h-4 w-4" /> Local</>
+                  ) : (
+                    <><Globe className="h-4 w-4" /> Cloud + API key</>
+                  )}
                 </button>
               ))}
             </div>
           </div>
 
           {mode === "local" ? (
-            <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4 text-sm text-slate-400">
+            <div className="rounded-xl border border-line bg-surface-2 p-4 text-sm text-muted">
               Local mode uses keys from your <code className="text-brand-300">.env</code> file when you run{" "}
               <code className="text-brand-300">co-scientist serve</code> on your machine.
               <a
@@ -113,7 +118,7 @@ export function SettingsModal({ open, onClose }: Props) {
                   placeholder="sk-…"
                   className="input mt-1.5 w-full font-mono text-sm"
                 />
-                <p className="mt-2 text-xs text-slate-500">
+                <p className="mt-2 text-xs text-faint">
                   Stored in your browser only. Sent with each request to run sessions with your account.
                 </p>
               </div>
@@ -124,7 +129,11 @@ export function SettingsModal({ open, onClose }: Props) {
         <div className="mt-6 flex justify-end gap-2">
           <button onClick={onClose} className="btn-ghost">Cancel</button>
           <button onClick={save} className="btn-primary">
-            {saved ? "Saved ✓" : "Save"}
+            {saved ? (
+              <span className="inline-flex items-center gap-1.5"><Check className="h-4 w-4" /> Saved</span>
+            ) : (
+              "Save"
+            )}
           </button>
         </div>
       </div>

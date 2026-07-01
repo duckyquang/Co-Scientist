@@ -9,7 +9,16 @@ export default {
         mono: ["'JetBrains Mono'", "ui-monospace", "SFMono-Regular", "monospace"],
       },
       colors: {
-        // Pure zinc-based dark surfaces (resend-style)
+        // Semantic tokens — driven by CSS vars in index.css, so every utility
+        // (bg-surface, text-fg, border-line…) adapts to light / dark automatically.
+        bg:          "rgb(var(--bg) / <alpha-value>)",
+        surface:     "rgb(var(--surface) / <alpha-value>)",
+        "surface-2": "rgb(var(--surface-2) / <alpha-value>)",
+        line:        "rgb(var(--border) / <alpha-value>)",
+        fg:          "rgb(var(--fg) / <alpha-value>)",
+        muted:       "rgb(var(--muted) / <alpha-value>)",
+        faint:       "rgb(var(--faint) / <alpha-value>)",
+        // Pure zinc-based dark surfaces (resend-style) — legacy, still referenced
         ink: {
           950: "#09090b",  // zinc-950
           900: "#111115",

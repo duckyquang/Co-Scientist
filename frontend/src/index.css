@@ -2,31 +2,54 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── Base ─────────────────────────────────────────────────── */
-:root { color-scheme: dark; }
+/* ── Theme tokens ─────────────────────────────────────────────
+   Light is the default (:root); .dark overrides. All semantic
+   colors are RGB triplets so Tailwind's `<alpha-value>` works
+   (e.g. bg-surface/60, border-line, text-muted). */
+:root {
+  --bg: 250 250 251;        /* app background      */
+  --surface: 255 255 255;   /* cards / panels      */
+  --surface-2: 244 244 245; /* elevated / hover    */
+  --border: 228 228 231;    /* hairlines (zinc-200)*/
+  --fg: 24 24 27;           /* primary text        */
+  --muted: 82 82 91;        /* secondary text      */
+  --faint: 113 113 122;     /* tertiary / labels   */
+  --bloom-a: 59 130 246;    /* accent bloom        */
+  --bloom-strength: 0.05;
+  color-scheme: light;
+}
+.dark {
+  --bg: 9 9 11;
+  --surface: 20 20 23;
+  --surface-2: 30 30 34;
+  --border: 42 42 48;
+  --fg: 244 244 245;
+  --muted: 161 161 170;
+  --faint: 113 113 122;
+  --bloom-strength: 0.07;
+  color-scheme: dark;
+}
 
 html, body, #root { height: 100%; }
 
 body {
-  @apply bg-ink-950 text-zinc-200 font-sans antialiased;
-  /* Subtle blue bloom — very faint, resend-inspired */
+  @apply bg-bg text-muted font-sans antialiased;
   background-image:
-    radial-gradient(900px 600px at 70% -20%, rgba(59,130,246,0.07), transparent 60%),
-    radial-gradient(700px 500px at -10% 80%, rgba(37,99,235,0.05), transparent 55%);
+    radial-gradient(900px 600px at 70% -20%, rgb(var(--bloom-a) / var(--bloom-strength)), transparent 60%),
+    radial-gradient(700px 500px at -10% 80%, rgb(var(--bloom-a) / calc(var(--bloom-strength) * 0.7)), transparent 55%);
   background-attachment: fixed;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
-
 
 /* ── Components ───────────────────────────────────────────── */
 @layer components {
 
-  /* Card — resend style: zinc-900 bg, crisp border, no blur (keeps perf high) */
   .card {
-    @apply rounded-xl border border-zinc-800/80 bg-zinc-900 shadow-card;
+    @apply rounded-xl border border-line bg-surface shadow-card;
   }
   .card-hover {
     @apply transition-all duration-200
-           hover:border-brand-500/30 hover:shadow-glow hover:-translate-y-px;
+           hover:border-brand-500/40 hover:shadow-glow hover:-translate-y-px;
   }
 
   /* Buttons */
@@ -35,21 +58,18 @@ body {
            font-medium transition-all duration-150
            active:scale-[0.97] disabled:opacity-40 disabled:pointer-events-none;
   }
-  /* Primary: solid blue, crisp (resend-style) */
   .btn-primary {
     @apply btn bg-brand-600 text-white hover:bg-brand-500
-           shadow-[0_1px_0_0_rgba(255,255,255,0.06)_inset,0_4px_16px_-4px_rgba(37,99,235,0.5)]
-           hover:shadow-[0_1px_0_0_rgba(255,255,255,0.08)_inset,0_6px_20px_-4px_rgba(59,130,246,0.5)];
+           shadow-[0_1px_0_0_rgba(255,255,255,0.08)_inset,0_4px_16px_-4px_rgba(37,99,235,0.45)]
+           hover:shadow-[0_1px_0_0_rgba(255,255,255,0.10)_inset,0_6px_20px_-4px_rgba(59,130,246,0.5)];
   }
-  /* Ghost: zinc border, subtle */
   .btn-ghost {
-    @apply btn border border-white/[0.08] bg-white/[0.03] text-zinc-300
-           hover:bg-white/[0.06] hover:text-white hover:border-white/[0.12];
+    @apply btn border border-line bg-surface-2 text-muted
+           hover:bg-surface-2 hover:text-fg hover:border-line;
   }
-  /* Danger variant */
   .btn-danger {
-    @apply btn border border-zinc-600/30 bg-zinc-700/10 text-zinc-400
-           hover:bg-zinc-700/20 hover:border-zinc-500/40 hover:text-zinc-300;
+    @apply btn border border-line bg-surface-2 text-faint
+           hover:text-rose-500 hover:border-rose-500/40;
   }
 
   /* Chip / pill badge */
@@ -57,34 +77,33 @@ body {
     @apply inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px]
            font-medium tracking-wide;
   }
-  /* Tiny badge pill (used in sidebar mode badge) */
   .badge-pill {
     @apply rounded-md px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-widest;
   }
 
   /* Input */
   .input {
-    @apply w-full rounded-lg border border-white/[0.08] bg-ink-900/80 px-3.5 py-2.5
-           text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition-all
+    @apply w-full rounded-lg border border-line bg-surface px-3.5 py-2.5
+           text-sm text-fg placeholder:text-faint outline-none transition-all
            focus:border-brand-500/50 focus:ring-2 focus:ring-brand-500/15;
   }
 
   /* Sidebar nav item */
   .nav-item {
     @apply flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm font-medium
-           text-zinc-400 transition-colors duration-150
-           hover:bg-white/[0.05] hover:text-zinc-100;
+           text-muted transition-colors duration-150
+           hover:bg-surface-2 hover:text-fg;
   }
   .nav-item-active {
-    @apply bg-white/[0.07] text-zinc-50;
+    @apply bg-surface-2 text-fg;
   }
 
   /* Typography helpers */
   .label {
-    @apply text-[10.5px] font-semibold uppercase tracking-widest text-zinc-500;
+    @apply text-[10.5px] font-semibold uppercase tracking-widest text-faint;
   }
   .stat-num {
-    @apply text-3xl font-bold tracking-tight text-white tabular-nums;
+    @apply text-3xl font-bold tracking-tight text-fg tabular-nums;
   }
 }
 
@@ -92,47 +111,47 @@ body {
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { @apply bg-transparent; }
 ::-webkit-scrollbar-thumb {
-  @apply bg-white/[0.08] rounded-full;
+  background-color: rgb(var(--fg) / 0.15);
+  border-radius: 9999px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
-::-webkit-scrollbar-thumb:hover { @apply bg-white/[0.14]; }
+::-webkit-scrollbar-thumb:hover { background-color: rgb(var(--fg) / 0.25); }
 
 /* ── Markdown / prose ─────────────────────────────────────── */
-.prose-sci h1    { @apply text-2xl font-bold text-white mt-2 mb-3; }
-.prose-sci h2    { @apply text-base font-semibold text-brand-400 mt-6 mb-2; }
-.prose-sci h3    { @apply text-sm font-semibold text-zinc-100 mt-4 mb-1.5; }
-.prose-sci p     { @apply text-[14.5px] leading-7 text-zinc-300 my-2.5; }
-.prose-sci ul    { @apply list-disc pl-5 my-2 space-y-1 text-zinc-300; }
-.prose-sci ol    { @apply list-decimal pl-5 my-2 space-y-1 text-zinc-300; }
-.prose-sci strong { @apply text-white font-semibold; }
+.prose-sci h1    { @apply text-2xl font-bold text-fg mt-2 mb-3; }
+.prose-sci h2    { @apply text-base font-semibold text-brand-500 mt-6 mb-2; }
+.prose-sci h3    { @apply text-sm font-semibold text-fg mt-4 mb-1.5; }
+.prose-sci p     { @apply text-[14.5px] leading-7 text-muted my-2.5; }
+.prose-sci ul    { @apply list-disc pl-5 my-2 space-y-1 text-muted; }
+.prose-sci ol    { @apply list-decimal pl-5 my-2 space-y-1 text-muted; }
+.prose-sci strong { @apply text-fg font-semibold; }
 .prose-sci code  {
-  @apply rounded-md bg-white/[0.07] px-1.5 py-0.5 text-[12.5px]
-         font-mono text-brand-300 border border-white/[0.06];
+  @apply rounded-md bg-surface-2 px-1.5 py-0.5 text-[12.5px]
+         font-mono text-brand-500 border border-line;
 }
-.prose-sci a     { @apply text-brand-400 underline decoration-brand-500/30 underline-offset-2 hover:text-brand-300; }
-.prose-sci em    { @apply text-zinc-400; }
+.prose-sci a     { @apply text-brand-500 underline decoration-brand-500/30 underline-offset-2 hover:text-brand-400; }
+.prose-sci em    { @apply text-faint; }
 .prose-sci blockquote {
-  @apply border-l-2 border-brand-500/40 pl-4 my-3 italic text-zinc-400;
+  @apply border-l-2 border-brand-500/40 pl-4 my-3 italic text-faint;
 }
 
 /* ── Grid background ──────────────────────────────────────── */
 .grid-bg {
   background-image:
-    linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+    linear-gradient(rgb(var(--fg) / 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(var(--fg) / 0.03) 1px, transparent 1px);
   background-size: 28px 28px;
 }
 
 /* ── Sidebar ──────────────────────────────────────────────── */
 .sidebar {
-  @apply fixed inset-y-0 left-0 z-30 flex w-56 flex-col;
-  background: #0d0d10;
-  border-right: 1px solid rgba(255,255,255,0.055);
+  @apply fixed inset-y-0 left-0 z-30 flex w-56 flex-col border-r border-line;
+  background-color: rgb(var(--surface));
 }
 
 /* ── Focus ring ───────────────────────────────────────────── */
 :focus-visible {
-  outline: 2px solid rgba(59,130,246,0.6);
+  outline: 2px solid rgb(var(--bloom-a) / 0.6);
   outline-offset: 2px;
 }

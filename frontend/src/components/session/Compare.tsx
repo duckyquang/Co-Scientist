@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Scale, X } from "lucide-react";
 import { api } from "../../api";
 import { eloColor } from "../../lib/format";
 import { ScoreBars } from "../charts";
@@ -12,17 +13,17 @@ function Column({ h }: { h: Hypothesis | null }) {
       <div className="flex flex-wrap items-center gap-2">
         <StateBadge state={h.state} />
         <StrategyTag strategy={h.strategy} />
-        <span className="chip bg-white/5 text-slate-400">{h.created_by}</span>
+        <span className="chip bg-surface-2 text-muted">{h.created_by}</span>
       </div>
-      <h3 className="text-lg font-bold leading-tight text-white">{h.title}</h3>
+      <h3 className="text-lg font-bold leading-tight text-fg">{h.title}</h3>
       <div className="flex items-baseline gap-4">
         <div>
           <span className={`text-2xl font-bold ${eloColor(h.elo)}`}>{h.elo ? Math.round(h.elo) : "—"}</span>
-          <span className="ml-1 text-[10px] uppercase tracking-wider text-slate-500">Elo</span>
+          <span className="ml-1 text-[10px] uppercase tracking-wider text-faint">Elo</span>
         </div>
-        <div className="text-xs text-slate-400">{h.matches_played} matches · {h.reviews?.length ?? 0} reviews</div>
+        <div className="text-xs text-muted">{h.matches_played} matches · {h.reviews?.length ?? 0} reviews</div>
       </div>
-      <p className="text-[13px] leading-relaxed text-slate-300">{h.summary}</p>
+      <p className="text-[13px] leading-relaxed text-muted">{h.summary}</p>
       <div className="card p-4">
         <div className="label mb-3">Scores</div>
         <ScoreBars scores={h.scores} />
@@ -58,20 +59,20 @@ export function Compare({
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={onClose}>
-      <div className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-ink-900/95 shadow-2xl animate-fade-up"
+      <div className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-line bg-surface/95 shadow-2xl animate-fade-up"
         onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between border-b border-white/10 px-5 py-3">
+        <div className="flex items-center justify-between border-b border-line px-5 py-3">
           <div className="flex items-center gap-3">
-            <span className="text-sm font-bold text-white">⚖ Compare hypotheses</span>
+            <span className="flex items-center gap-1.5 text-sm font-bold text-fg"><Scale className="h-4 w-4" /> Compare hypotheses</span>
             {eloDiff != null && (
-              <span className="chip bg-white/5 text-slate-300">
+              <span className="chip bg-surface-2 text-muted">
                 Δ Elo {eloDiff > 0 ? `+${eloDiff} (left)` : eloDiff < 0 ? `${eloDiff} (right)` : "tied"}
               </span>
             )}
           </div>
-          <button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-white/10">✕</button>
+          <button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg text-muted hover:bg-surface-2"><X className="h-4 w-4" /></button>
         </div>
-        <div className="grid flex-1 grid-cols-1 divide-y divide-white/10 overflow-y-auto md:grid-cols-2 md:divide-x md:divide-y-0">
+        <div className="grid flex-1 grid-cols-1 divide-y divide-line overflow-y-auto md:grid-cols-2 md:divide-x md:divide-y-0">
           <Column h={a} />
           <Column h={b} />
         </div>
