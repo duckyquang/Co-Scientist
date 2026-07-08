@@ -134,7 +134,8 @@ export const api = {
     ).then((d: any) => (typeof d === "string" ? d : d.markdown)),
 
   create: (body: {
-    goal: string; budget_usd: number; n_initial: number; provider?: string; speed?: number;
+    goal: string; budget_tokens: number; wall_clock_seconds: number;
+    n_initial: number; provider?: string; speed?: number;
   }) => {
     // No backend? Run the session entirely in the browser — free, no key.
     if (isSimulatedMode()) {

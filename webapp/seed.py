@@ -261,8 +261,8 @@ def build_session(conn: sqlite3.Connection, *, goal: str, status: str,
 
     final_overview = None
     if with_overview:
-        top_titles = [h["title"] for h in hyps[:5]]
-        ov_md = content.make_overview(goal, top_titles)
+        top_hyps = sorted(hyps, key=lambda h: -h["elo"])[:5]
+        ov_md = content.make_overview(goal, top_hyps)
         import os
         from .store import REPO_ROOT
         ov_dir = REPO_ROOT / "data" / "artifacts" / sid / "final"

@@ -65,7 +65,8 @@ def export(db_path: Path, out: Path) -> None:
             "ranking_pairwise": "llama-3.3-70b-versatile",
             "metareview_final": "llama-3.3-70b-versatile",
         },
-        "defaults": {"budget_usd": 5.0, "n_initial": 4, "wall_clock_seconds": 1800},
+        "defaults": {"budget_usd": 5.0, "budget_tokens": 5_000_000,
+                     "n_initial": 4, "wall_clock_seconds": 1800},
     })
     _write(out / "stats.json", global_stats(conn))
     _write(out / "sessions.json", {"sessions": list_sessions(conn)})

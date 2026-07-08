@@ -15,7 +15,7 @@ import json
 import mimetypes
 import re
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
@@ -112,7 +112,8 @@ class Handler(BaseHTTPRequestHandler):
                         "ranking_pairwise": "llama-3.3-70b-versatile",
                         "metareview_final": "llama-3.3-70b-versatile",
                     },
-                    "defaults": {"budget_usd": 5.0, "n_initial": 4, "wall_clock_seconds": 1800},
+                    "defaults": {"budget_usd": 5.0, "budget_tokens": 5_000_000,
+                                 "n_initial": 4, "wall_clock_seconds": 1800},
                 })
             if path == "/api/stats":
                 return _json(self, store.global_stats(conn))
@@ -261,11 +262,17 @@ class Handler(BaseHTTPRequestHandler):
         goal = (b.get("goal") or "").strip()
         if not goal:
             return self._json_err(400, "goal is required")
-        budget = float(b.get("budget_usd", 5.0))
+        budget_tokens = int(b.get("budget_tokens", 5_000_000))
+        wall_seconds = int(b.get("wall_clock_seconds", 1800))
+        # Legacy dollar cap is optional; the simulator uses it only for its
+        # invented per-call cost accounting (displayed as an estimate, not a limit).
+        budget = float(b.get("budget_usd", budget_tokens / 220_000))
         n_initial = max(2, min(int(b.get("n_initial", 4)), 8))
         speed = float(b.get("speed", 1.0))
         sid = "sess_" + hashlib.sha256(f"{goal}{time.time()}".encode()).hexdigest()[:16]
-        now = datetime.now(UTC).isoformat()
+        now_dt = datetime.now(UTC)
+        now = now_dt.isoformat()
+        wall_deadline = (now_dt + timedelta(seconds=wall_seconds)).isoformat()
         from . import content
         plan = content.make_plan(goal)
         conn.execute(
@@ -277,11 +284,11 @@ class Handler(BaseHTTPRequestHandler):
             (sid, now, now, "running", goal, json.dumps(plan),
              json.dumps({"llm": {"provider": b.get("provider", "groq")},
                          "models": content.MODELS}),
-             5_000_000, budget, 0, 0.0, None, None))
+             budget_tokens, budget, 0, 0.0, wall_deadline, None))
         conn.execute(
             "INSERT INTO events (ts, session_id, agent, event, payload) VALUES (?,?,?,?,?)",
             (int(time.time() * 1000), sid, "supervisor", "session_started",
-             json.dumps({"goal": goal[:200], "n_initial": n_initial, "budget_usd": budget})))
+             json.dumps({"goal": goal[:200], "n_initial": n_initial, "budget_tokens": budget_tokens})))
         conn.commit()
         simulator.start(DB_PATH, sid, goal, budget, n_initial=n_initial, speed=speed)
         return _json(self, {"ok": True, "session_id": sid}, 201)

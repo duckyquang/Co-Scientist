@@ -28,10 +28,21 @@ export default {
           600: "#2563eb",  // blue-600
           700: "#1d4ed8",  // blue-700
         },
+        // Green/teal accent — "insight / converged / success" states (OrbitAI-inspired)
+        accent: {
+          50:  "#ecfdf5",  // emerald-50
+          300: "#6ee7b7",  // emerald-300
+          400: "#34d399",  // emerald-400
+          500: "#10b981",  // emerald-500
+          600: "#059669",  // emerald-600
+          700: "#047857",  // emerald-700
+        },
       },
       boxShadow: {
         // Blue glow
         glow: "0 0 0 1px rgba(59,130,246,0.20), 0 8px 32px -8px rgba(59,130,246,0.40)",
+        // Green insight glow
+        glowAccent: "0 0 0 1px rgba(16,185,129,0.22), 0 8px 32px -8px rgba(16,185,129,0.40)",
         card: "0 1px 0 0 rgba(255,255,255,0.03) inset, 0 4px 24px -8px rgba(0,0,0,0.6)",
         // Sidebar right edge
         sidebar: "1px 0 0 0 rgba(255,255,255,0.05)",

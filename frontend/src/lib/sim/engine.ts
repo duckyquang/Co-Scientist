@@ -20,14 +20,17 @@ import { eloUpdate, makeHypothesis, makeOverview, makePlan, makeReview, SIM_MODE
 import { makeRng } from "./rng";
 
 const STORAGE_KEY = "cosci_sim_sessions_v1";
-const BUDGET_TOKENS = 5_000_000;
+const DEFAULT_BUDGET_TOKENS = 5_000_000;
+const DEFAULT_WALL_CLOCK_SECONDS = 1800;
 const TOKENS_PER_USD = 220_000;
 
 /* ── Persisted record ──────────────────────────────────────── */
 export interface SimRecord {
   id: string;
   goal: string;
-  budget_usd: number;
+  budget_tokens: number;
+  wall_clock_seconds: number;
+  budget_usd?: number; // legacy records only; cost is now a derived stat
   n_initial: number;
   speed: number; // seconds multiplier (lower = faster), matches NewSession
   created_ms: number;
@@ -140,7 +143,7 @@ function buildPlan(rec: SimRecord): Plan {
   };
 
   // ── Phase 0: session start ──
-  emit("supervisor", "session_started", { goal: goal.slice(0, 200), n_initial: n, budget_usd: rec.budget_usd });
+  emit("supervisor", "session_started", { goal: goal.slice(0, 200), n_initial: n, budget_tokens: rec.budget_tokens });
 
   // ── Phase 1: generation ──
   emit("generation", "task_started", { agent: "generation", action: "CreateInitialHypotheses" });
@@ -177,7 +180,9 @@ function buildPlan(rec: SimRecord): Plan {
   const finalRank = [...hyps].sort((x, y) => elo.get(y.id)! - elo.get(x.id)!);
   const pinnedId = finalRank.length ? finalRank[0].id : null;
   transcript("metareview", "metareview.final", 0.05, 0.15);
-  const overview = makeOverview(goal, finalRank.slice(0, 5).map((h) => h.title));
+  const overview = makeOverview(goal, finalRank.slice(0, 5).map((h) => ({
+    title: h.title, summary: h.summary, strategy: h.strategy, elo: elo.get(h.id) ?? null,
+  })));
   emit("metareview", "session_done", { stop_reason: "ELO_STABLE" });
   const metaFeedback: Feedback = {
     id: `fb_${simId}_meta`, created_at: isoAt(rec, tEnd), source: "meta_review",
@@ -320,10 +325,11 @@ function sessionRow(s: Snapshot): SessionRow {
     research_goal: s.rec.goal,
     created_at: new Date(s.rec.created_ms).toISOString(),
     updated_at: isoAt(s.rec, s.el),
-    budget_usd: s.rec.budget_usd,
+    budget_usd: s.rec.budget_usd ?? round4(cost),
     budget_used_usd: cost,
-    budget_tokens: BUDGET_TOKENS,
+    budget_tokens: s.rec.budget_tokens ?? DEFAULT_BUDGET_TOKENS,
     budget_used_tokens: u.input_tokens + u.output_tokens || Math.round(cost * TOKENS_PER_USD),
+    wall_clock_seconds: s.rec.wall_clock_seconds ?? DEFAULT_WALL_CLOCK_SECONDS,
     final_overview: s.status === "done" ? `artifacts/${s.rec.id}/final/overview.md` : null,
     n_hyps: vis.length,
     n_tournament: vis.filter((h) => hypState(s, h) === "in_tournament").length,
@@ -383,14 +389,15 @@ export function isSimSession(id: string | undefined): boolean {
 }
 
 export function createSimSession(input: {
-  goal: string; budget_usd: number; n_initial: number; speed?: number;
+  goal: string; budget_tokens: number; wall_clock_seconds: number; n_initial: number; speed?: number;
 }): string {
   const rand = Math.floor(Math.random() * 1e9).toString(36);
   const id = `sim_${Date.now().toString(36)}${rand}`;
   const rec: SimRecord = {
     id,
     goal: input.goal,
-    budget_usd: input.budget_usd,
+    budget_tokens: input.budget_tokens > 0 ? input.budget_tokens : DEFAULT_BUDGET_TOKENS,
+    wall_clock_seconds: input.wall_clock_seconds > 0 ? input.wall_clock_seconds : DEFAULT_WALL_CLOCK_SECONDS,
     n_initial: Math.max(2, Math.min(input.n_initial, 8)),
     speed: input.speed && input.speed > 0 ? input.speed : 0.5,
     created_ms: Date.now(),

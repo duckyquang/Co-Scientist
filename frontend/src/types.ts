@@ -10,6 +10,7 @@ export interface SessionRow {
   budget_used_usd: number;
   budget_tokens: number;
   budget_used_tokens: number;
+  wall_clock_seconds?: number;
   final_overview: string | null;
   n_hyps: number;
   n_tournament: number;
@@ -184,6 +185,31 @@ export interface Meta {
   models: Record<string, string>;
   defaults: { budget_usd: number; n_initial: number; wall_clock_seconds: number };
 }
+
+/** A run-effort preset shown on the New Session screen. */
+export interface RunPreset {
+  id: "quick" | "standard" | "deep";
+  label: string;
+  blurb: string;
+  budget_tokens: number;
+  wall_clock_seconds: number;
+  n_initial: number;
+}
+
+export const RUN_PRESETS: RunPreset[] = [
+  {
+    id: "quick", label: "Quick", blurb: "A fast first pass — a few ideas, a short tournament.",
+    budget_tokens: 1_000_000, wall_clock_seconds: 900, n_initial: 3,
+  },
+  {
+    id: "standard", label: "Standard", blurb: "A balanced run — more ideas, deeper ranking.",
+    budget_tokens: 5_000_000, wall_clock_seconds: 1800, n_initial: 4,
+  },
+  {
+    id: "deep", label: "Deep", blurb: "An exhaustive search — the most ideas and evolution rounds.",
+    budget_tokens: 20_000_000, wall_clock_seconds: 3600, n_initial: 6,
+  },
+];
 
 export interface GlobalStats {
   n_sessions: number;

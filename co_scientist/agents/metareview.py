@@ -174,7 +174,7 @@ class MetaReviewAgent(BaseAgent):
             user_blocks=[CachedBlock(prompt, cache=False)],
             tools=[],            # No tools — write the markdown directly
             tool_choice=None,
-            max_output_tokens=8192,
+            max_output_tokens=16384,   # detailed research-proposal document
         )
         ctx = CallContext(
             session_id=session.id, task_id=task.id,
