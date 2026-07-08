@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { Bot, Rocket } from "lucide-react";
 import { api } from "../api";
 import { Loader } from "../components/ui";
 import { fmtCompact, fmtDuration } from "../lib/format";
 import { isSimulatedMode } from "../lib/live";
+import { activeProvider } from "../lib/llm";
 import { RUN_PRESETS, type RunPreset } from "../types";
 
 const EXAMPLES = [
@@ -26,8 +28,37 @@ export default function NewSession() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const simulated = isSimulatedMode();
   const preset = RUN_PRESETS.find((p) => p.id === presetId)!;
+
+  // What actually answers this session: a live model when a credential is baked
+  // in (Groq key / Pollinations token), else a prompt-aware in-browser
+  // simulation. The copy is honest about each.
+  const inBrowser = isSimulatedMode();
+  const provider = inBrowser ? activeProvider() : "server";
+  const chip =
+    provider === "server"
+      ? {
+          title: "Powered by Groq · Llama 3.3 70B",
+          sub: "Free · no API key required · runs on our server",
+          privacy: null as string | null,
+        }
+      : provider === "groq"
+        ? {
+            title: "Powered by Groq · Llama 3.3 70B",
+            sub: "Free · reads your prompt live · runs in your browser",
+            privacy: "Your prompt is sent to Groq to generate hypotheses.",
+          }
+        : provider === "keyless"
+          ? {
+              title: "Reads your prompt live · free AI",
+              sub: "Free · no account · an offline demo covers you if the AI is unreachable",
+              privacy: "Your prompt is sent to a free third-party AI (Pollinations) to generate hypotheses — nothing is stored by us.",
+            }
+          : {
+              title: "Prompt-aware simulation · runs in your browser",
+              sub: "Free · no key, no account · nothing leaves your device",
+              privacy: "Hypotheses are generated locally from your prompt. Bake in a free Groq key for a live model's reasoning.",
+            };
 
   // Resolve the effective run limits: advanced overrides, else the chosen preset.
   const budgetTokens = advanced ? Math.round(tokensM * 1_000_000) : preset.budget_tokens;
@@ -72,12 +103,12 @@ export default function NewSession() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col justify-center py-6">
       <div className="mb-6">
-        <h1 className="text-2xl font-extrabold tracking-tight text-white">
+        <h1 className="text-2xl font-extrabold tracking-tight text-fg">
           Start a research session
         </h1>
-        <p className="mt-1 text-sm text-slate-400">
+        <p className="mt-1 text-sm text-muted">
           Describe what you want to discover. Six AI agents generate hypotheses
           and rank them through an Elo tournament — live.
         </p>
@@ -99,7 +130,7 @@ export default function NewSession() {
               <button
                 key={ex}
                 onClick={() => setGoal(ex)}
-                className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-[12px] text-slate-400 transition hover:border-brand-500/40 hover:text-slate-200"
+                className="rounded-full border border-line bg-surface-2 px-3 py-1 text-[12px] text-muted transition hover:border-blue-500/40 hover:text-fg"
               >
                 {ex.length > 52 ? ex.slice(0, 52) + "…" : ex}
               </button>
@@ -113,7 +144,7 @@ export default function NewSession() {
             <label className="label">How hard should it work?</label>
             <button
               onClick={() => setAdvanced((v) => !v)}
-              className="text-[11px] font-medium text-brand-400 hover:text-brand-300"
+              className="text-[11px] font-medium text-brand-600 dark:text-brand-400 hover:text-brand-500"
             >
               {advanced ? "Use presets" : "Advanced"}
             </button>
@@ -130,17 +161,17 @@ export default function NewSession() {
                     className={`rounded-xl border p-3.5 text-left transition ${
                       active
                         ? "border-accent-500/50 bg-accent-500/[0.07] shadow-glowAccent"
-                        : "border-white/[0.07] bg-white/[0.02] hover:border-white/[0.14]"
+                        : "border-line bg-surface-2 hover:border-blue-500/40"
                     }`}
                   >
                     <div className="flex items-center justify-between">
-                      <span className={`text-sm font-bold ${active ? "text-accent-300" : "text-slate-200"}`}>
+                      <span className={`text-sm font-bold ${active ? "text-accent-600 dark:text-accent-300" : "text-fg"}`}>
                         {p.label}
                       </span>
                       {active && <span className="h-2 w-2 rounded-full bg-accent-400 shadow-glowAccent" />}
                     </div>
-                    <p className="mt-1.5 text-[11.5px] leading-snug text-slate-500">{p.blurb}</p>
-                    <div className="mt-3 space-y-0.5 text-[11px] text-slate-400">
+                    <p className="mt-1.5 text-[11.5px] leading-snug text-faint">{p.blurb}</p>
+                    <div className="mt-3 space-y-0.5 text-[11px] text-muted">
                       <div>≤ {fmtCompact(p.budget_tokens)} tokens</div>
                       <div>≤ {fmtDuration(p.wall_clock_seconds)} run time</div>
                       <div>{p.n_initial} starting ideas</div>
@@ -154,7 +185,7 @@ export default function NewSession() {
               <div>
                 <div className="flex justify-between">
                   <label className="label">Token cap</label>
-                  <span className="text-sm font-semibold text-white">{tokensM}M tokens</span>
+                  <span className="text-sm font-semibold text-fg">{tokensM}M tokens</span>
                 </div>
                 <input type="range" min={0.5} max={30} step={0.5} value={tokensM}
                   onChange={(e) => setTokensM(+e.target.value)}
@@ -163,7 +194,7 @@ export default function NewSession() {
               <div>
                 <div className="flex justify-between">
                   <label className="label">Time limit</label>
-                  <span className="text-sm font-semibold text-white">{fmtDuration(minutes * 60)}</span>
+                  <span className="text-sm font-semibold text-fg">{fmtDuration(minutes * 60)}</span>
                 </div>
                 <input type="range" min={5} max={120} step={5} value={minutes}
                   onChange={(e) => setMinutes(+e.target.value)}
@@ -172,13 +203,13 @@ export default function NewSession() {
               <div>
                 <div className="flex justify-between">
                   <label className="label">Starting ideas</label>
-                  <span className="text-sm font-semibold text-white">{nInitial}</span>
+                  <span className="text-sm font-semibold text-fg">{nInitial}</span>
                 </div>
                 <input type="range" min={2} max={8} step={1} value={nInitial}
                   onChange={(e) => setNInitial(+e.target.value)}
                   className="mt-3 w-full accent-brand-500" />
               </div>
-              <p className="text-[11px] text-slate-500">
+              <p className="text-[11px] text-faint">
                 The run stops when it hits whichever limit comes first — the token cap or the time limit.
               </p>
             </div>
@@ -186,40 +217,37 @@ export default function NewSession() {
         </div>
 
         {/* Run-mode chip — honest about where the session actually runs */}
-        <div className="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3">
-          <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand-600/20 text-sm">
-            {simulated ? "🧪" : "🤖"}
-          </div>
-          <div>
-            <div className="text-sm font-medium text-white">
-              {simulated
-                ? "Interactive simulation · runs in your browser"
-                : "Powered by Groq · Llama 3.3 70B"}
+        <div>
+          <div className="flex items-center gap-3 rounded-xl border border-line bg-surface-2 px-4 py-3">
+            <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand-600/20 text-blue-600 dark:text-blue-400">
+              <Bot className="h-4 w-4" />
             </div>
-            <div className="text-[11px] text-zinc-500">
-              {simulated
-                ? "Free · no API key, no account · nothing leaves your device"
-                : "Free · no API key required · runs on our server"}
+            <div>
+              <div className="text-sm font-medium text-fg">{chip.title}</div>
+              <div className="text-[11px] text-faint">{chip.sub}</div>
             </div>
+            <span className="ml-auto rounded-full bg-accent-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-accent-600 dark:text-accent-400 ring-1 ring-accent-500/25">
+              FREE
+            </span>
           </div>
-          <span className="ml-auto rounded-full bg-accent-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-accent-400 ring-1 ring-accent-500/25">
-            FREE
-          </span>
+          {chip.privacy && (
+            <p className="mt-1.5 px-1 text-[11px] leading-snug text-faint">{chip.privacy}</p>
+          )}
         </div>
 
         {/* Launch */}
         <div className="card flex flex-col items-start justify-between gap-4 p-5 sm:flex-row sm:items-center">
-          <div className="text-sm text-slate-400">
-            Runs up to <span className="font-semibold text-white">{fmtCompact(budgetTokens)} tokens</span> or{" "}
-            <span className="font-semibold text-white">{fmtDuration(wallSeconds)}</span>.
+          <div className="text-sm text-muted">
+            Runs up to <span className="font-semibold text-fg">{fmtCompact(budgetTokens)} tokens</span> or{" "}
+            <span className="font-semibold text-fg">{fmtDuration(wallSeconds)}</span>.
           </div>
           <button onClick={submit} className="btn-primary w-full py-2.5 sm:w-auto sm:px-8">
-            🚀 Launch session
+            <Rocket className="h-4 w-4" /> Launch session
           </button>
         </div>
 
         {error && (
-          <div className="rounded-xl border border-zinc-600/40 bg-zinc-800/60 px-4 py-3 text-sm text-zinc-300">
+          <div className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-sm text-muted">
             {error}
           </div>
         )}

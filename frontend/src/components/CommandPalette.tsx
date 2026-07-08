@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Sparkles, Home, FlaskConical, type LucideIcon } from "lucide-react";
 import { api } from "../api";
 import type { SessionRow } from "../types";
 
@@ -7,7 +8,7 @@ interface Cmd {
   id: string;
   label: string;
   hint?: string;
-  icon: string;
+  icon: LucideIcon;
   run: () => void;
 }
 
@@ -43,14 +44,14 @@ export function CommandPalette({
 
   const cmds = useMemo<Cmd[]>(() => {
     const base: Cmd[] = [
-      { id: "new", label: "Start new research session", icon: "✨", hint: "create", run: () => nav("/new") },
-      { id: "home", label: "Go to dashboard", icon: "🏠", run: () => nav("/") },
+      { id: "new", label: "Start new research session", icon: Sparkles, hint: "create", run: () => nav("/new") },
+      { id: "home", label: "Go to dashboard", icon: Home, run: () => nav("/") },
     ];
     const sess: Cmd[] = sessions.map((s) => ({
       id: s.id,
       label: s.research_goal,
       hint: `${s.status} · ${s.n_hyps} hyps`,
-      icon: "🧪",
+      icon: FlaskConical,
       run: () => nav(`/s/${s.id}`),
     }));
     return [...base, ...sess];
@@ -75,7 +76,7 @@ export function CommandPalette({
       <div className="card w-full max-w-xl overflow-hidden animate-fade-up" onClick={(e) => e.stopPropagation()}>
         <input
           ref={inputRef}
-          className="w-full border-b border-white/10 bg-transparent px-5 py-4 text-base text-slate-100 outline-none placeholder:text-slate-500"
+          className="w-full border-b border-line bg-transparent px-5 py-4 text-base text-fg outline-none placeholder:text-faint"
           placeholder="Search sessions or run a command…"
           value={q}
           onChange={(e) => { setQ(e.target.value); setActive(0); }}
@@ -86,25 +87,28 @@ export function CommandPalette({
           }}
         />
         <div className="max-h-[50vh] overflow-auto p-2">
-          {filtered.length === 0 && <div className="px-3 py-6 text-center text-sm text-slate-500">No matches</div>}
-          {filtered.map((c, i) => (
+          {filtered.length === 0 && <div className="px-3 py-6 text-center text-sm text-faint">No matches</div>}
+          {filtered.map((c, i) => {
+            const Icon = c.icon;
+            return (
             <button
               key={c.id}
               onMouseEnter={() => setActive(i)}
               onClick={() => choose(i)}
               className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition
-                ${i === active ? "bg-brand-500/20 text-white" : "text-slate-300 hover:bg-white/5"}`}
+                ${i === active ? "bg-brand-500/20 text-fg" : "text-muted hover:bg-surface-2"}`}
             >
-              <span className="text-base">{c.icon}</span>
+              <Icon className="h-4 w-4 shrink-0" />
               <span className="flex-1 truncate">{c.label}</span>
-              {c.hint && <span className="text-[11px] text-slate-500">{c.hint}</span>}
+              {c.hint && <span className="text-[11px] text-faint">{c.hint}</span>}
             </button>
-          ))}
+            );
+          })}
         </div>
-        <div className="flex items-center gap-3 border-t border-white/10 px-4 py-2 text-[11px] text-slate-500">
-          <span><kbd className="rounded bg-white/10 px-1">↑↓</kbd> navigate</span>
-          <span><kbd className="rounded bg-white/10 px-1">↵</kbd> open</span>
-          <span><kbd className="rounded bg-white/10 px-1">esc</kbd> close</span>
+        <div className="flex items-center gap-3 border-t border-line px-4 py-2 text-[11px] text-faint">
+          <span><kbd className="rounded bg-surface-2 px-1">↑↓</kbd> navigate</span>
+          <span><kbd className="rounded bg-surface-2 px-1">↵</kbd> open</span>
+          <span><kbd className="rounded bg-surface-2 px-1">esc</kbd> close</span>
         </div>
       </div>
     </div>

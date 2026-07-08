@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
+import {
+  Sparkles, Trophy, Swords, GitBranch, Radar, BarChart3, Radio, FileText,
+  Ban, Pause, Play, Square, Scale,
+} from "lucide-react";
 import { api } from "../api";
 import {
   ActivityFeed, AnalyticsPanel, FeedbackPanel, Leaderboard, OverviewPanel, TournamentPanel,
@@ -28,14 +32,14 @@ interface Bundle {
 }
 
 const TABS = [
-  { id: "overview", label: "Overview", icon: "✨" },
-  { id: "leaderboard", label: "Leaderboard", icon: "🏆" },
-  { id: "tournament", label: "Tournament", icon: "⚔️" },
-  { id: "lineage", label: "Lineage", icon: "🌱" },
-  { id: "clusters", label: "Clusters", icon: "🛰️" },
-  { id: "analytics", label: "Analytics", icon: "📊" },
-  { id: "activity", label: "Activity", icon: "📡" },
-  { id: "report", label: "Final report", icon: "📄" },
+  { id: "overview", label: "Overview", icon: Sparkles },
+  { id: "leaderboard", label: "Leaderboard", icon: Trophy },
+  { id: "tournament", label: "Tournament", icon: Swords },
+  { id: "lineage", label: "Lineage", icon: GitBranch },
+  { id: "clusters", label: "Clusters", icon: Radar },
+  { id: "analytics", label: "Analytics", icon: BarChart3 },
+  { id: "activity", label: "Activity", icon: Radio },
+  { id: "report", label: "Final report", icon: FileText },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -47,8 +51,8 @@ function Gauge({ label, used, total, fmt, color }: {
   return (
     <div className="min-w-[180px] flex-1">
       <div className="mb-1 flex justify-between text-[11px]">
-        <span className="text-slate-500">{label}</span>
-        <span className="font-semibold text-slate-300">{fmt(used)} / {fmt(total)}</span>
+        <span className="text-faint">{label}</span>
+        <span className="font-semibold text-muted">{fmt(used)} / {fmt(total)}</span>
       </div>
       <Progress value={used} max={total} color={color} />
     </div>
@@ -57,9 +61,9 @@ function Gauge({ label, used, total, fmt, color }: {
 
 function MetricChip({ label, value, accent }: { label: string; value: string | number; accent?: string }) {
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-2.5">
+    <div className="rounded-xl border border-line bg-surface px-4 py-2.5">
       <div className="text-lg font-bold leading-none" style={accent ? { color: accent } : undefined}>{value}</div>
-      <div className="mt-1 text-[10px] uppercase tracking-wider text-slate-500">{label}</div>
+      <div className="mt-1 text-[10px] uppercase tracking-wider text-faint">{label}</div>
     </div>
   );
 }
@@ -145,9 +149,9 @@ export default function Session() {
   if (error && !data) {
     return (
       <div className="mx-auto max-w-md py-16 text-center">
-        <div className="text-4xl">🚫</div>
-        <h2 className="mt-3 text-lg font-bold text-white">Session not found</h2>
-        <p className="mt-1 text-sm text-slate-400">{error}</p>
+        <Ban className="mx-auto h-9 w-9 text-faint" strokeWidth={1.5} />
+        <h2 className="mt-3 text-lg font-bold text-fg">Session not found</h2>
+        <p className="mt-1 text-sm text-muted">{error}</p>
         <Link to="/" className="btn-ghost mt-5 inline-flex">← Back to dashboard</Link>
       </div>
     );
@@ -162,29 +166,29 @@ export default function Session() {
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-3">
               <StatusBadge status={session.status} />
-              <span className={`inline-flex items-center gap-1.5 text-[11px] ${connected ? "text-blue-400" : "text-slate-500"}`}>
+              <span className={`inline-flex items-center gap-1.5 text-[11px] ${connected ? "text-blue-400" : "text-faint"}`}>
                 <span className={`h-1.5 w-1.5 rounded-full ${connected ? "bg-blue-500 animate-pulseDot" : "bg-slate-600"}`} />
                 {connected ? "live stream connected" : "stream idle"}
               </span>
             </div>
-            <h1 className="mt-3 text-2xl font-extrabold leading-tight tracking-tight text-white">
+            <h1 className="mt-3 text-2xl font-extrabold leading-tight tracking-tight text-fg">
               {session.research_goal}
             </h1>
             {session.research_plan?.objective && (
-              <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-400">
+              <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted">
                 {session.research_plan.objective}
               </p>
             )}
           </div>
           <div className="flex shrink-0 gap-2">
             {live && (
-              <button disabled={busy} onClick={() => control("pause")} className="btn-ghost h-9">⏸ Pause</button>
+              <button disabled={busy} onClick={() => control("pause")} className="btn-ghost h-9"><Pause className="h-4 w-4" /> Pause</button>
             )}
             {status === "paused" && (
-              <button disabled={busy} onClick={() => control("resume")} className="btn-primary h-9">▶ Resume</button>
+              <button disabled={busy} onClick={() => control("resume")} className="btn-primary h-9"><Play className="h-4 w-4" /> Resume</button>
             )}
             {(live || status === "paused") && (
-              <button disabled={busy} onClick={() => control("abort")} className="btn-ghost h-9 text-zinc-400">⏹ Abort</button>
+              <button disabled={busy} onClick={() => control("abort")} className="btn-ghost h-9 text-muted"><Square className="h-3.5 w-3.5" /> Abort</button>
             )}
           </div>
         </div>
@@ -207,7 +211,7 @@ export default function Session() {
           <MetricChip label="LLM calls" value={metrics.n_calls} />
         </div>
         {metrics.cost_usd > 0 && (
-          <div className="mt-2 text-[11px] text-slate-600">
+          <div className="mt-2 text-[11px] text-faint">
             Estimated compute cost: {fmtUsd(metrics.cost_usd)} · free to you
           </div>
         )}
@@ -215,14 +219,14 @@ export default function Session() {
 
       {/* compare-mode banner */}
       {compareBase && (
-        <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-blue-500/30 bg-blue-500/[0.08] px-4 py-2.5 text-sm text-blue-200">
-          <span>⚖ Compare mode — pick another hypothesis to compare against the selected one.</span>
-          <button onClick={() => setCompareBase(null)} className="text-blue-300 hover:text-white">Cancel</button>
+        <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-blue-500/30 bg-blue-500/[0.08] px-4 py-2.5 text-sm text-blue-700 dark:text-blue-200">
+          <span className="flex items-center gap-2"><Scale className="h-4 w-4" /> Compare mode — pick another hypothesis to compare against the selected one.</span>
+          <button onClick={() => setCompareBase(null)} className="text-blue-600 dark:text-blue-300 hover:text-fg">Cancel</button>
         </div>
       )}
 
       {/* ── Tabs ─────────────────────────────────────────────── */}
-      <div className="mt-6 flex flex-wrap gap-1.5 border-b border-white/[0.06] pb-px">
+      <div className="mt-6 flex flex-wrap gap-1.5 border-b border-line pb-px">
         {tabsWithBadges.map((t) => {
           const active = tab === t.id;
           const disabled = t.id === "report" && !overviewReady;
@@ -230,13 +234,13 @@ export default function Session() {
             <button key={t.id} disabled={disabled}
               onClick={() => setTab(t.id)}
               className={`relative flex items-center gap-2 rounded-t-lg px-4 py-2.5 text-sm font-medium transition ${
-                active ? "bg-white/[0.06] text-white"
-                  : disabled ? "cursor-not-allowed text-slate-600"
-                  : "text-slate-400 hover:text-slate-200"
+                active ? "bg-surface-2 text-fg"
+                  : disabled ? "cursor-not-allowed text-faint"
+                  : "text-muted hover:text-fg"
               }`}>
-              <span>{t.icon}</span>{t.label}
+              <t.icon className="h-4 w-4" />{t.label}
               {t.badge != null && (
-                <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] font-bold text-slate-300">{t.badge}</span>
+                <span className="rounded-full bg-surface-2 px-1.5 py-0.5 text-[10px] font-bold text-muted">{t.badge}</span>
               )}
               {active && <span className="absolute inset-x-3 -bottom-px h-0.5 rounded-full bg-brand-500" />}
             </button>
@@ -248,7 +252,6 @@ export default function Session() {
       <div className="mt-6">
         {tab === "overview" && (
           <Overview
-            goal={session.research_goal}
             metrics={metrics}
             hyps={data.hyps}
             overviewReady={overviewReady}

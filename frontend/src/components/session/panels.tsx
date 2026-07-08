@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
+import { Check, Dot, FlaskConical, ClipboardList } from "lucide-react";
 import { api } from "../../api";
 import {
-  agentColor, clockTime, eloColor, fmtCompact, fmtUsd, timeAgo,
+  EVENT_ICON, agentColor, clockTime, eloColor, fmtCompact, fmtUsd, timeAgo,
 } from "../../lib/format";
 import { Donut, EloRace } from "../charts";
 import { AgentTag, Empty, Markdown, StateBadge, StrategyTag } from "../ui";
@@ -20,7 +21,7 @@ export function Leaderboard({
   eloSeries: Record<string, { i: number; elo: number }[]>;
 }) {
   if (hyps.length === 0)
-    return <Empty icon="⚗️" title="No hypotheses yet" hint="The Generation agent is working — they'll appear here." />;
+    return <Empty icon={FlaskConical} title="No hypotheses yet" hint="The Generation agent is working — they'll appear here." />;
   const ranked = [...hyps].filter((h) => h.state !== "rejected");
   const rejected = hyps.filter((h) => h.state === "rejected");
   return (
@@ -30,7 +31,7 @@ export function Leaderboard({
       ))}
       {rejected.length > 0 && (
         <details className="pt-2">
-          <summary className="cursor-pointer text-xs uppercase tracking-wider text-slate-500">
+          <summary className="cursor-pointer text-xs uppercase tracking-wider text-faint">
             {rejected.length} rejected
           </summary>
           <div className="mt-2 space-y-2 opacity-60">
@@ -50,17 +51,17 @@ function Row({ h, rank, onSelect, spark }: {
       className="card card-hover flex w-full items-center gap-4 p-3.5 text-left animate-fade-up">
       <div className="w-8 shrink-0 text-center">
         {rank > 0
-          ? <span className={`text-lg font-bold ${rank <= 3 ? "text-blue-400" : "text-slate-500"}`}>{rank}</span>
-          : <span className="text-slate-600">—</span>}
+          ? <span className={`text-lg font-bold ${rank <= 3 ? "text-blue-400" : "text-faint"}`}>{rank}</span>
+          : <span className="text-faint">—</span>}
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="truncate text-[14px] font-semibold text-slate-100">{h.title}</span>
+          <span className="truncate text-[14px] font-semibold text-fg">{h.title}</span>
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-2">
           <StateBadge state={h.state} />
           <StrategyTag strategy={h.strategy} />
-          <span className="text-[11px] text-slate-500">{h.matches_played} matches · {h.n_reviews ?? 0} reviews</span>
+          <span className="text-[11px] text-faint">{h.matches_played} matches · {h.n_reviews ?? 0} reviews</span>
         </div>
       </div>
       {spark && spark.length > 1 && (
@@ -70,7 +71,7 @@ function Row({ h, rank, onSelect, spark }: {
       )}
       <div className="w-16 shrink-0 text-right">
         <div className={`text-xl font-bold ${eloColor(h.elo)}`}>{h.elo ? Math.round(h.elo) : "—"}</div>
-        <div className="text-[10px] uppercase tracking-wider text-slate-500">elo</div>
+        <div className="text-[10px] uppercase tracking-wider text-faint">elo</div>
       </div>
     </button>
   );
@@ -117,7 +118,7 @@ export function TournamentPanel({
       <div className="card p-5">
         <div className="label mb-3">Recent matches ({matches.length})</div>
         {matches.length === 0 ? (
-          <div className="text-sm text-slate-500">No tournament matches yet.</div>
+          <div className="text-sm text-faint">No tournament matches yet.</div>
         ) : (
           <div className="space-y-2">
             {matches.slice(0, 40).map((m) => <MatchRow key={m.id} m={m} onSelect={onSelect} />)}
@@ -133,22 +134,22 @@ function MatchRow({ m, onSelect }: { m: Match; onSelect: (id: string) => void })
   const Side = ({ id, title, won, eloAfter }: { id: string; title?: string; won: boolean; eloAfter: number | null }) => (
     <button onClick={() => onSelect(id)}
       className={`min-w-0 flex-1 truncate rounded-lg px-2.5 py-1.5 text-left text-[13px] transition ${
-        won ? "bg-blue-500/10 text-blue-200 ring-1 ring-blue-500/20" : "bg-white/[0.03] text-slate-400"
+        won ? "bg-blue-500/10 text-blue-700 dark:text-blue-200 ring-1 ring-blue-500/20" : "bg-surface-2 text-muted"
       }`}>
-      {won && "✓ "}{title || id.slice(0, 10)}
+      {won && <Check className="mr-0.5 inline h-3 w-3" />}{title || id.slice(0, 10)}
       {eloAfter != null && <span className="ml-1 font-mono text-[11px] opacity-70">{Math.round(eloAfter)}</span>}
     </button>
   );
   return (
-    <div className="rounded-xl border border-white/[0.05] bg-white/[0.01] p-2.5">
+    <div className="rounded-xl border border-line bg-surface-2 p-2.5">
       <div className="flex items-center gap-2">
         <Side id={m.hyp_a} title={m.title_a} won={aWon} eloAfter={m.elo_a_after} />
-        <span className="shrink-0 rounded-md bg-white/5 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+        <span className="shrink-0 rounded-md bg-surface-2 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-muted">
           {m.mode}
         </span>
         <Side id={m.hyp_b} title={m.title_b} won={!aWon && m.winner === "b"} eloAfter={m.elo_b_after} />
       </div>
-      {m.rationale && <div className="mt-1.5 px-1 text-[11px] italic text-slate-500">{m.rationale}</div>}
+      {m.rationale && <div className="mt-1.5 px-1 text-[11px] italic text-faint">{m.rationale}</div>}
     </div>
   );
 }
@@ -170,8 +171,8 @@ export function AnalyticsPanel({
             <Donut segments={segments} />
             <div className="absolute inset-0 grid place-items-center">
               <div className="text-center">
-                <div className="text-lg font-bold text-white">{fmtUsd(total)}</div>
-                <div className="text-[10px] uppercase tracking-wider text-slate-500">total</div>
+                <div className="text-lg font-bold text-fg">{fmtUsd(total)}</div>
+                <div className="text-[10px] uppercase tracking-wider text-faint">total</div>
               </div>
             </div>
           </div>
@@ -179,9 +180,9 @@ export function AnalyticsPanel({
             {byAgent.map((a) => (
               <div key={a.agent} className="flex items-center gap-2 text-sm">
                 <span className="h-2.5 w-2.5 rounded-full" style={{ background: agentColor(a.agent).hex }} />
-                <span className="capitalize text-slate-300">{a.agent}</span>
-                <span className="ml-auto font-mono text-slate-400">{fmtUsd(a.cost_usd)}</span>
-                <span className="w-10 text-right text-[11px] text-slate-600">
+                <span className="capitalize text-muted">{a.agent}</span>
+                <span className="ml-auto font-mono text-muted">{fmtUsd(a.cost_usd)}</span>
+                <span className="w-10 text-right text-[11px] text-faint">
                   {((a.cost_usd / total) * 100).toFixed(0)}%
                 </span>
               </div>
@@ -198,18 +199,18 @@ export function AnalyticsPanel({
           <TokenStat label="Cache reads" value={summary?.cache_read} color="#93c5fd" />
           <TokenStat label="LLM calls" value={summary?.n_calls} color="#3b82f6" raw />
         </div>
-        <div className="mt-5 border-t border-white/[0.06] pt-4">
+        <div className="mt-5 border-t border-line pt-4">
           <div className="label mb-2">Per-agent call breakdown</div>
           <div className="space-y-1.5">
             {byAgent.map((a) => {
               const max = Math.max(...byAgent.map((x) => x.n_calls), 1);
               return (
                 <div key={a.agent} className="flex items-center gap-2 text-xs">
-                  <span className="w-20 capitalize text-slate-400">{a.agent}</span>
-                  <div className="h-2 flex-1 rounded-full bg-white/[0.06]">
+                  <span className="w-20 capitalize text-muted">{a.agent}</span>
+                  <div className="h-2 flex-1 rounded-full bg-surface-2">
                     <div className="h-full rounded-full" style={{ width: `${(a.n_calls / max) * 100}%`, background: agentColor(a.agent).hex }} />
                   </div>
-                  <span className="w-8 text-right font-mono text-slate-500">{a.n_calls}</span>
+                  <span className="w-8 text-right font-mono text-faint">{a.n_calls}</span>
                 </div>
               );
             })}
@@ -222,28 +223,28 @@ export function AnalyticsPanel({
 
 function TokenStat({ label, value, color, raw }: { label: string; value: number; color: string; raw?: boolean }) {
   return (
-    <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
+    <div className="rounded-xl border border-line bg-surface-2 p-3">
       <div className="text-xl font-bold" style={{ color }}>{raw ? value ?? 0 : fmtCompact(value)}</div>
-      <div className="text-[10px] uppercase tracking-wider text-slate-500">{label}</div>
+      <div className="text-[10px] uppercase tracking-wider text-faint">{label}</div>
     </div>
   );
 }
 
 /* ----------------------------- Activity ----------------------------- */
-const EVENT_LABEL: Record<string, { icon: string; text: (p: any) => string }> = {
-  session_started: { icon: "🚀", text: () => "Session started" },
-  hypothesis_created: { icon: "💡", text: (p) => `New hypothesis: ${p?.title || ""}` },
-  review_completed: { icon: "🔬", text: () => "Hypothesis reviewed" },
-  match_complete: { icon: "⚔️", text: (p) => `Match (${p?.mode}) — ${p?.winner === "a" ? "A" : "B"} won` },
-  task_started: { icon: "▶️", text: (p) => `${p?.agent || "agent"} started ${p?.action || ""}` },
-  task_completed: { icon: "✅", text: (p) => `Task done (${p?.kind || ""})` },
-  task_failed: { icon: "⚠️", text: (p) => `Task failed: ${p?.err || ""}` },
-  human_feedback: { icon: "🗣️", text: (p) => `Feedback (${p?.kind}): ${p?.text || ""}` },
-  hypothesis_state_changed: { icon: "📌", text: (p) => `Marked ${p?.state}` },
-  session_done: { icon: "🏁", text: (p) => `Session complete — ${p?.stop_reason || ""}` },
-  session_paused: { icon: "⏸️", text: () => "Session paused" },
-  session_running: { icon: "▶️", text: () => "Session resumed" },
-  session_aborted: { icon: "🛑", text: () => "Session aborted" },
+const EVENT_LABEL: Record<string, (p: any) => string> = {
+  session_started: () => "Session started",
+  hypothesis_created: (p) => `New hypothesis: ${p?.title || ""}`,
+  review_completed: () => "Hypothesis reviewed",
+  match_complete: (p) => `Match (${p?.mode}) — ${p?.winner === "a" ? "A" : "B"} won`,
+  task_started: (p) => `${p?.agent || "agent"} started ${p?.action || ""}`,
+  task_completed: (p) => `Task done (${p?.kind || ""})`,
+  task_failed: (p) => `Task failed: ${p?.err || ""}`,
+  human_feedback: (p) => `Feedback (${p?.kind}): ${p?.text || ""}`,
+  hypothesis_state_changed: (p) => `Marked ${p?.state}`,
+  session_done: (p) => `Session complete — ${p?.stop_reason || ""}`,
+  session_paused: () => "Session paused",
+  session_running: () => "Session resumed",
+  session_aborted: () => "Session aborted",
 };
 
 export function ActivityFeed({ events, live }: { events: SSEvent[]; live: boolean }) {
@@ -251,33 +252,34 @@ export function ActivityFeed({ events, live }: { events: SSEvent[]; live: boolea
     <div className="card p-5">
       <div className="mb-3 flex items-center justify-between">
         <div className="label">Live activity</div>
-        <span className={`chip ${live ? "bg-blue-500/10 text-blue-400" : "bg-slate-500/15 text-slate-400"}`}>
+        <span className={`chip ${live ? "bg-blue-500/10 text-blue-400" : "bg-slate-500/15 text-muted"}`}>
           {live && <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulseDot" />}
           {live ? "streaming" : "idle"}
         </span>
       </div>
       {events.length === 0 ? (
-        <div className="py-8 text-center text-sm text-slate-500">Waiting for events…</div>
+        <div className="py-8 text-center text-sm text-faint">Waiting for events…</div>
       ) : (
         <div className="relative max-h-[560px] space-y-0 overflow-y-auto pl-1">
           {events.map((e, i) => {
-            const meta = EVENT_LABEL[e.event] || { icon: "•", text: () => e.event };
+            const label = EVENT_LABEL[e.event] || (() => e.event);
+            const Icon = EVENT_ICON[e.event] || Dot;
             const c = agentColor(e.agent);
             return (
               <div key={`${e.id}-${i}`} className="relative flex gap-3 pb-3 animate-fade-up">
                 <div className="flex flex-col items-center">
-                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs"
+                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full"
                     style={{ background: c.hex + "22", border: `1px solid ${c.hex}55` }}>
-                    {meta.icon}
+                    <Icon className="h-3.5 w-3.5" style={{ color: c.hex }} />
                   </span>
-                  {i < events.length - 1 && <span className="my-0.5 w-px flex-1 bg-white/10" />}
+                  {i < events.length - 1 && <span className="my-0.5 w-px flex-1 bg-surface-2" />}
                 </div>
                 <div className="min-w-0 flex-1 pb-1">
                   <div className="flex items-center gap-2">
                     {e.agent && <span className="text-[11px] font-semibold" style={{ color: c.hex }}>{e.agent}</span>}
-                    <span className="text-[10px] text-slate-600">{e.ts ? clockTime(e.ts) : ""}</span>
+                    <span className="text-[10px] text-faint">{e.ts ? clockTime(e.ts) : ""}</span>
                   </div>
-                  <div className="text-[13px] leading-snug text-slate-300">{meta.text(e.payload)}</div>
+                  <div className="text-[13px] leading-snug text-muted">{label(e.payload)}</div>
                 </div>
               </div>
             );
@@ -320,11 +322,11 @@ export function FeedbackPanel({
       {feedback.length > 0 && (
         <div className="mt-4 space-y-2">
           {feedback.map((f) => (
-            <div key={f.id} className="flex items-start gap-3 rounded-lg border border-white/[0.05] bg-white/[0.02] p-3 text-sm">
+            <div key={f.id} className="flex items-start gap-3 rounded-lg border border-line bg-surface-2 p-3 text-sm">
               <AgentTag agent={f.source === "meta_review" ? "metareview" : "human"} />
               <div className="flex-1">
-                <span className="text-slate-300">{f.text}</span>
-                <span className="ml-2 text-[11px] text-slate-600">{timeAgo(f.created_at)}</span>
+                <span className="text-muted">{f.text}</span>
+                <span className="ml-2 text-[11px] text-faint">{timeAgo(f.created_at)}</span>
               </div>
             </div>
           ))}
@@ -338,7 +340,7 @@ export function FeedbackPanel({
 export function OverviewPanel({ md }: { md: string | null }) {
   const [copied, setCopied] = useState(false);
   if (!md)
-    return <Empty icon="📋" title="No final overview yet" hint="The Meta-review agent writes this once Elo ratings stabilize." />;
+    return <Empty icon={ClipboardList} title="No final overview yet" hint="The Meta-review agent writes this once Elo ratings stabilize." />;
   return (
     <div className="card p-6">
       <div className="mb-4 flex items-center justify-between">

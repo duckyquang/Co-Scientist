@@ -125,7 +125,55 @@ export function usePoll<T>(
   return { data, error, loading, refresh: run };
 }
 
-// Dark mode is forced on — no light mode option available
-export function ensureDarkMode() {
-  document.documentElement.classList.add("dark");
+/* ── Theme (light / dark) ──────────────────────────────────── */
+export type Theme = "light" | "dark";
+const THEME_KEY = "cosci_theme";
+
+function systemTheme(): Theme {
+  return typeof window !== "undefined" &&
+    window.matchMedia?.("(prefers-color-scheme: dark)").matches
+    ? "dark"
+    : "light";
+}
+
+/** Resolve the active theme: explicit user choice, else system preference. */
+export function getTheme(): Theme {
+  try {
+    const saved = localStorage.getItem(THEME_KEY);
+    if (saved === "light" || saved === "dark") return saved;
+  } catch { /* ignore */ }
+  return systemTheme();
+}
+
+export function applyTheme(theme: Theme) {
+  document.documentElement.classList.toggle("dark", theme === "dark");
+}
+
+/** Apply the saved/system theme on first load (call once, before render). */
+export function initTheme() {
+  applyTheme(getTheme());
+}
+
+/** Reactive theme state + setter, synced to <html> and localStorage. */
+export function useTheme(): [Theme, (t: Theme) => void] {
+  const [theme, setThemeState] = useState<Theme>(getTheme);
+  const setTheme = useCallback((t: Theme) => {
+    setThemeState(t);
+    applyTheme(t);
+    try { localStorage.setItem(THEME_KEY, t); } catch { /* ignore */ }
+  }, []);
+  // Follow system changes only while the user hasn't pinned a choice.
+  useEffect(() => {
+    const mq = window.matchMedia?.("(prefers-color-scheme: dark)");
+    if (!mq) return;
+    const onChange = () => {
+      try { if (localStorage.getItem(THEME_KEY)) return; } catch { /* ignore */ }
+      const t = systemTheme();
+      setThemeState(t);
+      applyTheme(t);
+    };
+    mq.addEventListener?.("change", onChange);
+    return () => mq.removeEventListener?.("change", onChange);
+  }, []);
+  return [theme, setTheme];
 }

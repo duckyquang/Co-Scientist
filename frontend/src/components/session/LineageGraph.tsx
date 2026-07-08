@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Sprout } from "lucide-react";
 import { agentColor, eloColor } from "../../lib/format";
 import { Empty, InfoNote } from "../ui";
 import type { LineageNode } from "../../types";
@@ -74,12 +75,12 @@ export function LineageGraph({ nodes, edges, onSelect }: Props) {
     return keep;
   }, [hover, layout]);
 
-  if (nodes.length === 0) return <Empty icon="🌱" title="No hypotheses to chart yet" />;
+  if (nodes.length === 0) return <Empty icon={Sprout} title="No hypotheses to chart yet" />;
 
   return (
     <div>
       <InfoNote title="What is lineage?">
-        This traces how ideas <span className="text-white">evolve</span>. Boxes in the{" "}
+        This traces how ideas <span className="text-fg">evolve</span>. Boxes in the{" "}
         <span className="text-blue-300">first column</span> are original hypotheses from the
         Generation agent; each column to the right is a round of{" "}
         <span className="text-accent-300">offspring</span> the Evolution agent bred from top parents.
@@ -120,13 +121,13 @@ export function LineageGraph({ nodes, edges, onSelect }: Props) {
                 opacity={dim ? 0.35 : 1}
                 onMouseEnter={() => setHover(n.id)} onMouseLeave={() => setHover(null)}
                 onClick={() => onSelect(n.id)}>
-                <rect width="180" height="40" rx="10" fill="rgba(16,22,42,0.94)"
+                <rect width="180" height="40" rx="10" fill="rgb(var(--surface))"
                   stroke={hover === n.id ? "#34d399" : c.hex} strokeWidth={hover === n.id ? 2 : 1.3} />
                 <rect width="4" height="40" rx="2" fill={c.hex} />
-                <text x="13" y="17" fontSize="10.5" fill="#e2e8f0" className="font-semibold">
+                <text x="13" y="17" fontSize="10.5" fill="rgb(var(--fg))" className="font-semibold">
                   {n.title.length > 26 ? n.title.slice(0, 26) + "…" : n.title}
                 </text>
-                <text x="13" y="31" fontSize="9" fill="#64748b">{n.strategy}</text>
+                <text x="13" y="31" fontSize="9" fill="rgb(var(--faint))">{n.strategy}</text>
                 <text x="168" y="31" fontSize="11.5" textAnchor="end"
                   className={`font-bold ${eloColor(n.elo)}`} fill="currentColor">
                   {n.elo ? Math.round(n.elo) : "—"}
@@ -137,7 +138,7 @@ export function LineageGraph({ nodes, edges, onSelect }: Props) {
         </svg>
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-4 text-[11px] text-slate-400">
+      <div className="mt-3 flex flex-wrap items-center gap-4 text-[11px] text-muted">
         <span className="inline-flex items-center gap-1.5">
           <span className="h-2.5 w-2.5 rounded-sm" style={{ background: agentColor("generation").hex }} />
           Original (generation)

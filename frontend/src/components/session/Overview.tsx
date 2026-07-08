@@ -1,13 +1,21 @@
+import { Trophy, Swords, GitBranch, Radar, FileText } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { eloColor } from "../../lib/format";
 import { StrategyTag } from "../ui";
 import type { Hypothesis, Metrics } from "../../types";
 
+const LEGEND: [LucideIcon, string, string][] = [
+  [Trophy, "Elo rating", "Every hypothesis starts at 1200. It wins or loses Elo each time the Ranking agent pits it against another. Higher = it survived more debates."],
+  [Swords, "Tournament", "The list of head-to-head matches and how each idea's rating moved over time."],
+  [GitBranch, "Lineage", "How ideas evolved: original hypotheses on the left, offspring the Evolution agent bred from top parents on the right."],
+  [Radar, "Clusters", "A map where ideas exploring the same theme sit close together — so you can see where the agents converged."],
+];
+
 /** Plain-language landing view: what happened, the top proposals, and a legend
  *  so the power tabs (tournament / lineage / clusters) stop being cryptic. */
 export function Overview({
-  goal, metrics, hyps, overviewReady, onSelect, onOpenReport,
+  metrics, hyps, overviewReady, onSelect, onOpenReport,
 }: {
-  goal: string;
   metrics: Metrics;
   hyps: Hypothesis[];
   overviewReady: boolean;
@@ -27,19 +35,19 @@ export function Overview({
         <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-accent-500/[0.07] blur-3xl" />
         <div className="flex items-center gap-2">
           <span className="h-2 w-2 rounded-full bg-accent-400 shadow-glowAccent" />
-          <span className="label text-accent-400">What the agents found</span>
+          <span className="label text-accent-600 dark:text-accent-400">What the agents found</span>
         </div>
-        <p className="mt-3 text-[17px] leading-relaxed text-slate-200">
+        <p className="mt-3 text-[17px] leading-relaxed text-muted">
           Explored{" "}
-          <span className="font-bold text-white">{metrics.n_hypotheses} hypotheses</span>,{" "}
+          <span className="font-bold text-fg">{metrics.n_hypotheses} hypotheses</span>,{" "}
           ran{" "}
-          <span className="font-bold text-white">{metrics.n_matches} head-to-head matches</span>{" "}
+          <span className="font-bold text-fg">{metrics.n_matches} head-to-head matches</span>{" "}
           to rank them, and{" "}
           {topTitle ? (
             <>
               surfaced a leading idea:{" "}
               <button onClick={() => onSelect(top[0].id)}
-                className="font-semibold text-accent-300 underline decoration-accent-500/30 underline-offset-2 hover:text-accent-200">
+                className="font-semibold text-accent-600 dark:text-accent-300 underline decoration-accent-500/30 underline-offset-2 hover:text-accent-500">
                 {topTitle}
               </button>.
             </>
@@ -50,7 +58,7 @@ export function Overview({
         {overviewReady && (
           <button onClick={onOpenReport}
             className="btn-primary mt-4 h-9 bg-accent-600 hover:bg-accent-500 text-sm">
-            📄 Read the full research proposal
+            <FileText className="h-4 w-4" /> Read the full research proposal
           </button>
         )}
       </div>
@@ -59,31 +67,31 @@ export function Overview({
       {top.length > 0 && (
         <div>
           <div className="mb-3 flex items-center gap-2">
-            <h2 className="text-sm font-bold text-white">Top proposals</h2>
-            <span className="text-[11px] text-slate-500">ranked by tournament Elo</span>
+            <h2 className="text-sm font-bold text-fg">Top proposals</h2>
+            <span className="text-[11px] text-faint">ranked by tournament Elo</span>
           </div>
           <div className="grid gap-3 lg:grid-cols-3">
             {top.map((h, i) => (
               <button key={h.id} onClick={() => onSelect(h.id)}
                 className="card card-hover flex flex-col p-4 text-left">
                 <div className="flex items-center justify-between">
-                  <span className="grid h-6 w-6 place-items-center rounded-lg bg-accent-500/15 text-[12px] font-bold text-accent-300">
+                  <span className="grid h-6 w-6 place-items-center rounded-lg bg-accent-500/15 text-[12px] font-bold text-accent-600 dark:text-accent-300">
                     {i + 1}
                   </span>
                   <span className={`text-lg font-bold ${eloColor(h.elo)}`}>
                     {h.elo ? Math.round(h.elo) : "—"}
-                    <span className="ml-1 text-[9px] uppercase tracking-wider text-slate-600">elo</span>
+                    <span className="ml-1 text-[9px] uppercase tracking-wider text-faint">elo</span>
                   </span>
                 </div>
-                <h3 className="mt-2.5 line-clamp-2 text-[14px] font-semibold leading-snug text-slate-100">
+                <h3 className="mt-2.5 line-clamp-2 text-[14px] font-semibold leading-snug text-fg">
                   {h.title}
                 </h3>
-                <p className="mt-1.5 line-clamp-3 flex-1 text-[12px] leading-relaxed text-slate-500">
+                <p className="mt-1.5 line-clamp-3 flex-1 text-[12px] leading-relaxed text-faint">
                   {h.summary}
                 </p>
                 <div className="mt-3 flex items-center gap-2">
                   <StrategyTag strategy={h.strategy} />
-                  <span className="text-[10.5px] text-slate-600">{h.matches_played} matches</span>
+                  <span className="text-[10.5px] text-faint">{h.matches_played} matches</span>
                 </div>
               </button>
             ))}
@@ -95,17 +103,12 @@ export function Overview({
       <div className="card p-5">
         <div className="label mb-3">How to read this session</div>
         <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
-          {[
-            ["🏆", "Elo rating", "Every hypothesis starts at 1200. It wins or loses Elo each time the Ranking agent pits it against another. Higher = it survived more debates."],
-            ["⚔️", "Tournament", "The list of head-to-head matches and how each idea's rating moved over time."],
-            ["🌱", "Lineage", "How ideas evolved: original hypotheses on the left, offspring the Evolution agent bred from top parents on the right."],
-            ["🛰️", "Clusters", "A map where ideas exploring the same theme sit close together — so you can see where the agents converged."],
-          ].map(([icon, term, desc]) => (
+          {LEGEND.map(([Icon, term, desc]) => (
             <div key={term} className="flex gap-2.5">
-              <span className="mt-px shrink-0 text-base">{icon}</span>
+              <Icon className="mt-0.5 h-4 w-4 shrink-0 text-brand-600 dark:text-brand-400" />
               <div>
-                <div className="text-[12.5px] font-semibold text-slate-200">{term}</div>
-                <div className="text-[11.5px] leading-relaxed text-slate-500">{desc}</div>
+                <div className="text-[12.5px] font-semibold text-fg">{term}</div>
+                <div className="text-[11.5px] leading-relaxed text-faint">{desc}</div>
               </div>
             </div>
           ))}

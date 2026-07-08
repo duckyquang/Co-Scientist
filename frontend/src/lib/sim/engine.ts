@@ -1,14 +1,18 @@
-/** In-browser session simulator — the zero-backend "free for everyone" path.
+/** In-browser session engine — the zero-backend "free for everyone" path.
  *
- * A time-deterministic port of webapp/simulator.py. Instead of a background
- * thread that sleeps and mutates a DB, the whole tournament is expressed as a
- * deterministic *timeline* (built once per session id). Any read computes
- * "what state is this session in, given how much wall-clock has elapsed" — so
- * the leaderboard, gauges and activity feed animate live with no server.
+ * The whole tournament is expressed as a deterministic *timeline* (built once
+ * per session). Any read computes "what state is this session in, given how
+ * much wall-clock has elapsed" — so the leaderboard, gauges and activity feed
+ * animate live with no server. Sessions persist in localStorage, so a refresh
+ * resumes exactly where it was.
  *
- * Sessions persist in localStorage, so a refresh resumes exactly where it was.
- * Real LLM output is NOT produced here (see lib/live.ts isSimulatedMode); when
- * a real backend is configured (VITE_API_URL) the app bypasses this entirely.
+ * Two content sources feed the same timeline:
+ *  • GROQ mode (a build-time VITE_GROQ_API_KEY is present) — we call Groq to
+ *    generate hypotheses that genuinely READ the user's prompt, then run the
+ *    tournament over that real content.
+ *  • SIM mode (no key) — falls back to templated, prompt-seeded placeholder
+ *    content so the demo still works offline. Clearly labeled as a simulation.
+ * When a real backend is configured (VITE_API_URL) the app bypasses this file.
  */
 
 import type {
@@ -17,12 +21,20 @@ import type {
 } from "../../types";
 import type { LiveTick } from "../hooks";
 import { eloUpdate, makeHypothesis, makeOverview, makePlan, makeReview, SIM_MODEL, STRATEGIES } from "./content";
+import { generateSession, type GenHyp, type GeneratedContent } from "./generate";
+import { hasRealProvider } from "../llm";
 import { makeRng } from "./rng";
 
 const STORAGE_KEY = "cosci_sim_sessions_v1";
 const DEFAULT_BUDGET_TOKENS = 5_000_000;
 const DEFAULT_WALL_CLOCK_SECONDS = 1800;
 const TOKENS_PER_USD = 220_000;
+/** Hard ceiling on live generation before we fall back to the template. */
+const GEN_TIMEOUT_MS = 60_000;
+/** Session ids with a live generateSession promise in THIS tab. A record can
+ *  persist `generating: true` across a refresh, but the promise cannot — so the
+ *  pending spinner is only valid while the id is in here. */
+const _inFlight = new Set<string>();
 
 /* ── Persisted record ──────────────────────────────────────── */
 export interface SimRecord {
@@ -40,6 +52,11 @@ export interface SimRecord {
   frozenSimSec: number | null; // set on abort
   feedback: Feedback[];
   stateOverrides: Record<string, Hypothesis["state"]>;
+  // Real-content (Groq) fields:
+  mode?: "groq" | "sim";       // groq = real LLM read the prompt; sim = templates
+  generating?: boolean;        // groq call in flight (no content yet)
+  genError?: string | null;    // groq call failed
+  content?: GeneratedContent;  // real hypotheses + overview from Groq
 }
 
 /* ── Timeline (built deterministically, never persisted) ───── */
@@ -48,12 +65,18 @@ interface Step {
   cost: number; input_tokens: number; output_tokens: number;
   cache_read: number; cache_write: number;
 }
+interface HypReview {
+  verdict: string;
+  scores: { novelty: number; correctness: number; testability: number; feasibility: number };
+  body: string;
+}
 interface PlanHyp {
   id: string; idx: number; strategy: string;
   created_by: "generation" | "evolution"; parents: string[];
   tCreate: number; tReview: number;
   title: string; summary: string; full_text: string;
   citations: { title: string; url: string; excerpt: string | null; doi: string | null; year: number | null }[];
+  review: HypReview;
 }
 interface PlanMatch {
   id: string; t: number; hyp_a: string; hyp_b: string; mode: string;
@@ -65,6 +88,17 @@ interface Plan {
   steps: Step[]; hyps: PlanHyp[]; matches: PlanMatch[]; events: PlanEvent[];
   tEnd: number; pinnedId: string | null; overview: string;
   metaFeedback: Feedback;
+  pending?: boolean; // groq generation still in flight (or failed)
+  failed?: boolean;  // groq generation errored
+}
+
+/** Assemble a markdown body from Groq's structured hypothesis fields. */
+function assembleFullText(g: GenHyp): string {
+  const parts: string[] = [];
+  if (g.mechanism) parts.push(`## Mechanism\n\n${g.mechanism}`);
+  if (g.experiment) parts.push(`## Proposed experiment\n\n${g.experiment}`);
+  if (g.predicted_outcome) parts.push(`## Predicted outcome\n\n${g.predicted_outcome}`);
+  return parts.join("\n\n") || g.summary;
 }
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
@@ -75,7 +109,27 @@ const round4 = (n: number) => Math.round(n * 10000) / 10000;
 const _planCache = new Map<string, Plan>();
 
 function buildPlan(rec: SimRecord): Plan {
-  const cacheKey = `${rec.id}|${rec.goal}|${rec.n_initial}`;
+  // Still generating with a live model and within the time budget → a
+  // "preparing" placeholder plan (not cached, so the real plan builds the moment
+  // content lands). Past the budget (or once generating clears) we DON'T hang
+  // here — we fall through and build the tournament from the prompt-aware
+  // content.ts templates, so a session never gets stuck or hard-fails.
+  const generatingActive =
+    rec.mode === "groq" && !rec.content && rec.generating && _inFlight.has(rec.id) &&
+    Date.now() - rec.created_ms < GEN_TIMEOUT_MS + 5_000;
+  if (generatingActive) {
+    const events: PlanEvent[] = [
+      { t: 0, agent: "supervisor", event: "session_started", payload: { goal: rec.goal.slice(0, 200) } },
+      { t: 0, agent: "generation", event: "task_started", payload: { agent: "generation", action: "Reading your prompt — generating hypotheses…" } },
+    ];
+    return {
+      steps: [], hyps: [], matches: [], events, tEnd: Infinity, pinnedId: null, overview: "",
+      metaFeedback: { id: `fb_${rec.id}_meta`, created_at: new Date(rec.created_ms).toISOString(), source: "meta_review", kind: "system_feedback", target_id: null, active: 1, text: "" },
+      pending: true,
+    };
+  }
+
+  const cacheKey = `${rec.id}|${rec.goal}|${rec.n_initial}|${rec.content ? "g" : "s"}`;
   const cached = _planCache.get(cacheKey);
   if (cached) return cached;
 
@@ -101,12 +155,33 @@ function buildPlan(rec: SimRecord): Plan {
       cache_read: r.randint(0, it), cache_write: r.randint(0, 800),
     });
   };
-  const addHyp = (idx: number, strategy: string, createdBy: "generation" | "evolution", parents: string[]): PlanHyp => {
+  // idx doubles as the index into real (Groq) content; falls back to templates.
+  const hypContent = (idx: number, strategy: string) => {
+    const g = rec.content?.hyps[idx];
+    if (g) {
+      return {
+        title: g.title, summary: g.summary, full_text: assembleFullText(g),
+        citations: [] as PlanHyp["citations"],
+        review: {
+          verdict: g.verdict,
+          scores: { novelty: g.novelty, correctness: g.correctness, testability: g.testability, feasibility: g.feasibility },
+          body: g.critique,
+        } as HypReview,
+      };
+    }
     const c = makeHypothesis(goal, idx, strategy);
+    const rv = makeReview(goal, c.title, "full");
+    return {
+      title: c.title, summary: c.summary, full_text: c.full_text, citations: c.citations,
+      review: { verdict: rv.verdict, scores: rv.scores, body: rv.body } as HypReview,
+    };
+  };
+  const addHyp = (idx: number, strategy: string, createdBy: "generation" | "evolution", parents: string[]): PlanHyp => {
+    const c = hypContent(idx, strategy);
     const h: PlanHyp = {
       id: hypId(idx), idx, strategy, created_by: createdBy, parents,
       tCreate: t, tReview: t,
-      title: c.title, summary: c.summary, full_text: c.full_text, citations: c.citations,
+      title: c.title, summary: c.summary, full_text: c.full_text, citations: c.citations, review: c.review,
     };
     hyps.push(h);
     elo.set(h.id, 1200);
@@ -180,9 +255,10 @@ function buildPlan(rec: SimRecord): Plan {
   const finalRank = [...hyps].sort((x, y) => elo.get(y.id)! - elo.get(x.id)!);
   const pinnedId = finalRank.length ? finalRank[0].id : null;
   transcript("metareview", "metareview.final", 0.05, 0.15);
-  const overview = makeOverview(goal, finalRank.slice(0, 5).map((h) => ({
-    title: h.title, summary: h.summary, strategy: h.strategy, elo: elo.get(h.id) ?? null,
-  })));
+  const overview = rec.content?.overview?.trim()
+    || makeOverview(goal, finalRank.slice(0, 5).map((h) => ({
+      title: h.title, summary: h.summary, strategy: h.strategy, elo: elo.get(h.id) ?? null,
+    })));
   emit("metareview", "session_done", { stop_reason: "ELO_STABLE" });
   const metaFeedback: Feedback = {
     id: `fb_${simId}_meta`, created_at: isoAt(rec, tEnd), source: "meta_review",
@@ -190,7 +266,7 @@ function buildPlan(rec: SimRecord): Plan {
     text: "Top candidates converge on a shared pathway — a robust signal. Consider one more out-of-box round to stress-test the consensus.",
   };
 
-  const plan: Plan = { steps, hyps, matches, events, tEnd, pinnedId, overview, metaFeedback };
+  const plan: Plan = { steps, hyps, matches, events, tEnd, pinnedId, overview, metaFeedback, pending: false, failed: false };
   _planCache.set(cacheKey, plan);
   return plan;
 }
@@ -218,6 +294,10 @@ interface Snapshot {
 }
 function snapshot(rec: SimRecord, nowMs = Date.now()): Snapshot {
   const plan = buildPlan(rec);
+  // Live generation in flight — nothing to replay yet; show a "running" preparing state.
+  if (plan.pending) {
+    return { rec, plan, el: 0, status: "running" };
+  }
   let el: number;
   let status: SessionRow["status"];
   if (rec.status === "aborted") {
@@ -263,9 +343,6 @@ function hypState(s: Snapshot, h: PlanHyp): Hypothesis["state"] {
 }
 function clusterId(idx: number, n: number): string {
   return `clu_${idx % Math.max(2, Math.floor(n / 2))}`;
-}
-function reviewScores(goal: string, title: string) {
-  return makeReview(goal, title, "full").scores;
 }
 function stepsUpTo(s: Snapshot): Step[] {
   return s.plan.steps.filter((st) => st.t <= s.el);
@@ -355,7 +432,7 @@ function toHypothesis(s: Snapshot, h: PlanHyp): Hypothesis {
     state: hypState(s, h),
     dedup_cluster: clusterId(h.idx, s.rec.n_initial),
     n_reviews: reviewed ? 1 : 0,
-    scores: reviewed ? reviewScores(s.rec.goal, h.title) : {},
+    scores: reviewed ? h.review.scores : {},
   };
 }
 
@@ -393,12 +470,18 @@ export function createSimSession(input: {
 }): string {
   const rand = Math.floor(Math.random() * 1e9).toString(36);
   const id = `sim_${Date.now().toString(36)}${rand}`;
+  const n_initial = Math.max(2, Math.min(input.n_initial, 8));
+  // A real LLM provider is available only when a credential is baked in (Groq
+  // key or Pollinations token) — browsers can't call these anonymously. Without
+  // one, we go straight to the prompt-aware template (which still reflects the
+  // prompt), no pointless "generating" wait.
+  const live = hasRealProvider();
   const rec: SimRecord = {
     id,
     goal: input.goal,
     budget_tokens: input.budget_tokens > 0 ? input.budget_tokens : DEFAULT_BUDGET_TOKENS,
     wall_clock_seconds: input.wall_clock_seconds > 0 ? input.wall_clock_seconds : DEFAULT_WALL_CLOCK_SECONDS,
-    n_initial: Math.max(2, Math.min(input.n_initial, 8)),
+    n_initial,
     speed: input.speed && input.speed > 0 ? input.speed : 0.5,
     created_ms: Date.now(),
     pausedAccumMs: 0,
@@ -407,9 +490,40 @@ export function createSimSession(input: {
     frozenSimSec: null,
     feedback: [],
     stateOverrides: {},
+    mode: live ? "groq" : "sim",
+    generating: live,
   };
   saveRecords([rec, ...loadRecords()]);
+
+  if (live) {
+    // Generate against the real model, bounded by a hard timeout. generateSession
+    // resolves-always (prompt-aware template on any live failure), so the only
+    // rejection path is this abort → still degrades to the template.
+    _inFlight.add(id);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), GEN_TIMEOUT_MS);
+    generateSession(input.goal, n_initial + 2, ctrl.signal)
+      .then((content) => finishGenerating(id, content))
+      .catch(() => finishGenerating(id, undefined))
+      .finally(() => { clearTimeout(timer); _inFlight.delete(id); });
+  }
   return id;
+}
+
+/** Land generated content (or degrade to template) and reset the sim clock to
+ *  t=0. Re-anchors pause bookkeeping to the new origin so a pause taken during
+ *  the "Reading your prompt…" window can't corrupt elapsed-time math. */
+function finishGenerating(id: string, content: GeneratedContent | undefined): void {
+  const now = Date.now();
+  const rec = getRecord(id);
+  const paused = rec?.status === "paused";
+  patchRecord(id, {
+    ...(content ? { content } : {}),
+    generating: false,
+    created_ms: now,
+    pausedAccumMs: 0,
+    pauseStartedMs: paused ? now : null,
+  });
 }
 
 export function simListSessions(): SessionRow[] {
@@ -462,10 +576,9 @@ export function simHypothesis(id: string, hid: string): Hypothesis {
   if (!h || h.tCreate > s.el) throw new Error("hypothesis not found");
   const base = toHypothesis(s, h);
   const reviewed = h.tReview <= s.el;
-  const rv = reviewed ? makeReview(s.rec.goal, h.title, "full") : null;
-  const reviews = rv ? [{
-    id: `rev_${h.id}`, kind: rv.kind, verdict: rv.verdict, ...rv.scores,
-    body: rv.body, created_at: isoAt(s.rec, h.tReview),
+  const reviews = reviewed ? [{
+    id: `rev_${h.id}`, kind: "full", verdict: h.review.verdict, ...h.review.scores,
+    body: h.review.body, created_at: isoAt(s.rec, h.tReview),
   }] : [];
   const eloHist: { t: string; elo: number }[] = [];
   for (const m of s.plan.matches) {

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { Microscope, Rocket } from "lucide-react";
 import { api } from "../api";
 import { Sparkline } from "../components/charts";
 import { Loader, Progress, StatusBadge } from "../components/ui";
@@ -21,29 +22,29 @@ function SessionCard({ s }: { s: SessionRow }) {
     <Link to={`/s/${s.id}`} className="card card-hover group block p-5 animate-fade-up">
       <div className="flex items-start justify-between gap-3">
         <StatusBadge status={s.status} />
-        <span className="text-[11px] text-slate-500">{timeAgo(s.updated_at)}</span>
+        <span className="text-[11px] text-faint">{timeAgo(s.updated_at)}</span>
       </div>
-      <h3 className="mt-3 line-clamp-2 text-[15px] font-semibold leading-snug text-slate-100 group-hover:text-white">
+      <h3 className="mt-3 line-clamp-2 text-[15px] font-semibold leading-snug text-fg group-hover:text-fg">
         {s.research_goal}
       </h3>
       <div className="mt-4 grid grid-cols-3 gap-2 text-center">
         <div>
-          <div className="text-lg font-bold text-white">{s.n_hyps}</div>
-          <div className="text-[10px] uppercase tracking-wider text-slate-500">hypotheses</div>
+          <div className="text-lg font-bold text-fg">{s.n_hyps}</div>
+          <div className="text-[10px] uppercase tracking-wider text-faint">hypotheses</div>
         </div>
         <div>
           <div className={`text-lg font-bold ${eloColor(s.top_elo)}`}>
             {s.top_elo ? Math.round(s.top_elo) : "—"}
           </div>
-          <div className="text-[10px] uppercase tracking-wider text-slate-500">top elo</div>
+          <div className="text-[10px] uppercase tracking-wider text-faint">top elo</div>
         </div>
         <div>
-          <div className="text-lg font-bold text-white">{s.n_matches}</div>
-          <div className="text-[10px] uppercase tracking-wider text-slate-500">matches</div>
+          <div className="text-lg font-bold text-fg">{s.n_matches}</div>
+          <div className="text-[10px] uppercase tracking-wider text-faint">matches</div>
         </div>
       </div>
       <div className="mt-4">
-        <div className="mb-1 flex justify-between text-[11px] text-slate-400">
+        <div className="mb-1 flex justify-between text-[11px] text-muted">
           <span>{fmtCompact(s.budget_used_tokens)} / {fmtCompact(tokCap)} tokens</span>
           <span>{pct.toFixed(0)}%</span>
         </div>
@@ -57,21 +58,21 @@ function EmptyState() {
   return (
     <div className="card flex flex-col items-center gap-6 px-8 py-14 text-center">
       <div className="grid h-16 w-16 place-items-center rounded-2xl bg-blue-600/15 ring-1 ring-blue-500/25">
-        <span className="text-3xl">🔬</span>
+        <Microscope className="h-8 w-8 text-brand-400" />
       </div>
       <div>
-        <h2 className="text-xl font-bold text-white">Start your first research session</h2>
-        <p className="mt-2 max-w-md text-sm leading-relaxed text-slate-400">
+        <h2 className="text-xl font-bold text-fg">Start your first research session</h2>
+        <p className="mt-2 max-w-md text-sm leading-relaxed text-muted">
           Describe a scientific question and six AI agents will generate, debate, and
           Elo-rank novel hypotheses — live.
         </p>
       </div>
-      <Link to="/new" className="btn-primary px-6 py-2.5 text-sm font-semibold">
-        🚀 Launch a session →
+      <Link to="/new" className="btn-primary inline-flex items-center gap-2 px-6 py-2.5 text-sm font-semibold">
+        <Rocket className="h-4 w-4" /> Launch a session →
       </Link>
-      <div className="w-full border-t border-white/[0.06]" />
+      <div className="w-full border-t border-line" />
       <div className="w-full max-w-lg text-left">
-        <div className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
+        <div className="mb-3 text-xs font-semibold uppercase tracking-wider text-faint">
           Try one of these prompts
         </div>
         <div className="space-y-2">
@@ -79,7 +80,7 @@ function EmptyState() {
             <Link
               key={p}
               to={`/new?goal=${encodeURIComponent(p)}`}
-              className="block rounded-lg border border-white/[0.06] bg-white/[0.02] px-4 py-2.5 text-sm text-slate-300 transition hover:border-blue-500/30 hover:bg-blue-500/[0.06] hover:text-white"
+              className="block rounded-lg border border-line bg-surface-2 px-4 py-2.5 text-sm text-muted transition hover:border-blue-500/30 hover:bg-blue-500/[0.06] hover:text-fg"
             >
               {p}
             </Link>
@@ -117,9 +118,9 @@ export default function Dashboard() {
       <section>
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <h2 className="text-base font-bold text-white">Your sessions</h2>
+            <h2 className="text-base font-bold text-fg">Your sessions</h2>
             {userSessions.length > 0 && trend.length > 1 && (
-              <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
+              <div className="flex items-center gap-1.5 text-[11px] text-faint">
                 trend <Sparkline values={trend} width={64} height={20} />
               </div>
             )}
@@ -146,12 +147,12 @@ export default function Dashboard() {
             className="mb-4 flex w-full items-center justify-between text-left"
           >
             <div className="flex items-center gap-2">
-              <h2 className="text-sm font-semibold text-slate-400">Example sessions</h2>
-              <span className="rounded-full bg-white/[0.07] px-2 py-0.5 text-[11px] font-bold text-slate-500">
+              <h2 className="text-sm font-semibold text-muted">Example sessions</h2>
+              <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-bold text-faint">
                 {demoSessions.length}
               </span>
             </div>
-            <span className="text-[11px] text-slate-600 hover:text-slate-400 transition">
+            <span className="text-[11px] text-faint hover:text-muted transition">
               {showDemo ? "Hide ↑" : "Show ↓"}
             </span>
           </button>

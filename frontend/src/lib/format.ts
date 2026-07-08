@@ -34,57 +34,98 @@ export function fmtDuration(sec: number | null | undefined): string {
   return `${h}h ${m % 60}m`;
 }
 
-// ── Agent colors — blue mono palette ───────────────────────
+import type { LucideIcon } from "lucide-react";
+import {
+  BookOpen, Swords, GitMerge, Scissors, Lightbulb, Wrench, Search, Target,
+  Sparkles, Microscope, GitBranch, Network, ClipboardList, Cpu, User,
+  Rocket, Play, Pause, Check, TriangleAlert, MessageSquare, Pin, Flag, Ban,
+  Dot,
+} from "lucide-react";
+
+// ── Agent colors — blue mono palette (theme-aware text) ────
 export const AGENT_COLORS: Record<string, { hex: string; bg: string; text: string }> = {
-  generation: { hex: "#3b82f6", bg: "bg-blue-500/15", text: "text-blue-400" },
-  reflection:  { hex: "#60a5fa", bg: "bg-blue-400/15", text: "text-blue-300" },
-  ranking:     { hex: "#93c5fd", bg: "bg-blue-300/15", text: "text-blue-200" },
-  evolution:   { hex: "#1d4ed8", bg: "bg-blue-700/15", text: "text-blue-400" },
-  proximity:   { hex: "#2563eb", bg: "bg-blue-600/15", text: "text-blue-400" },
-  metareview:  { hex: "#bfdbfe", bg: "bg-blue-200/10", text: "text-blue-200" },
-  supervisor:  { hex: "#94a3b8", bg: "bg-zinc-500/15", text: "text-zinc-400" },
-  human:       { hex: "#e2e8f0", bg: "bg-zinc-200/10", text: "text-zinc-200" },
+  generation: { hex: "#3b82f6", bg: "bg-blue-500/15", text: "text-blue-600 dark:text-blue-400" },
+  reflection:  { hex: "#60a5fa", bg: "bg-blue-400/15", text: "text-blue-600 dark:text-blue-300" },
+  ranking:     { hex: "#93c5fd", bg: "bg-blue-300/15", text: "text-blue-600 dark:text-blue-200" },
+  evolution:   { hex: "#1d4ed8", bg: "bg-blue-700/15", text: "text-blue-700 dark:text-blue-400" },
+  proximity:   { hex: "#2563eb", bg: "bg-blue-600/15", text: "text-blue-600 dark:text-blue-400" },
+  metareview:  { hex: "#3b82f6", bg: "bg-blue-200/20 dark:bg-blue-200/10", text: "text-blue-600 dark:text-blue-200" },
+  supervisor:  { hex: "#71717a", bg: "bg-surface-2", text: "text-muted" },
+  human:       { hex: "#52525b", bg: "bg-surface-2", text: "text-fg" },
 };
 
 export const agentColor = (a: string | null | undefined) =>
   AGENT_COLORS[a || "supervisor"] || AGENT_COLORS.supervisor;
 
-// ── Session status — blue/white/zinc ───────────────────────
+// ── Session status — theme-aware ───────────────────────────
 export const STATUS_STYLE: Record<string, string> = {
-  running: "bg-blue-500/10 text-blue-400 ring-1 ring-blue-500/25",
-  paused:  "bg-zinc-500/10 text-zinc-400 ring-1 ring-zinc-500/20",
-  done:    "bg-white/10    text-white     ring-1 ring-white/15",
-  failed:  "bg-zinc-700/10 text-zinc-500 ring-1 ring-zinc-600/20",
-  aborted: "bg-zinc-700/10 text-zinc-600 ring-1 ring-zinc-700/15",
+  running: "bg-brand-500/10 text-brand-600 dark:text-brand-400 ring-1 ring-brand-500/25",
+  paused:  "bg-surface-2 text-muted ring-1 ring-line",
+  done:    "bg-surface-2 text-fg ring-1 ring-line",
+  failed:  "bg-surface-2 text-faint ring-1 ring-line",
+  aborted: "bg-surface-2 text-faint ring-1 ring-line",
 };
 
-// ── Hypothesis state — blue/zinc ───────────────────────────
+// ── Hypothesis state — theme-aware ─────────────────────────
 export const HYP_STATE_STYLE: Record<string, string> = {
-  pinned:        "bg-blue-500/10 text-blue-300 ring-1 ring-blue-500/20",
-  in_tournament: "bg-blue-600/10 text-blue-400 ring-1 ring-blue-600/20",
-  reviewed:      "bg-zinc-400/10 text-zinc-300 ring-1 ring-zinc-400/20",
-  draft:         "bg-zinc-600/10 text-zinc-500 ring-1 ring-zinc-600/15",
-  rejected:      "bg-zinc-700/10 text-zinc-600 ring-1 ring-zinc-700/20",
-  retired:       "bg-zinc-800/10 text-zinc-700 ring-1 ring-zinc-800/15",
-  quarantined:   "bg-zinc-500/10 text-zinc-500 ring-1 ring-zinc-500/20",
+  pinned:        "bg-brand-500/10 text-brand-600 dark:text-brand-300 ring-1 ring-brand-500/20",
+  in_tournament: "bg-brand-600/10 text-brand-600 dark:text-brand-400 ring-1 ring-brand-600/20",
+  reviewed:      "bg-surface-2 text-muted ring-1 ring-line",
+  draft:         "bg-surface-2 text-faint ring-1 ring-line",
+  rejected:      "bg-surface-2 text-faint ring-1 ring-line",
+  retired:       "bg-surface-2 text-faint ring-1 ring-line",
+  quarantined:   "bg-surface-2 text-faint ring-1 ring-line",
 };
 
-export const STRATEGY_ICON: Record<string, string> = {
-  literature:      "📚",
-  debate:          "⚔️",
-  combine:         "🧬",
-  simplify:        "✂️",
-  out_of_box:      "💡",
-  feasibility:     "🔧",
-  assumption:      "🔍",
-  feedback_driven: "🎯",
+// ── Strategy icons (lucide components) ─────────────────────
+export const STRATEGY_ICON: Record<string, LucideIcon> = {
+  literature:      BookOpen,
+  debate:          Swords,
+  combine:         GitMerge,
+  simplify:        Scissors,
+  out_of_box:      Lightbulb,
+  feasibility:     Wrench,
+  assumption:      Search,
+  feedback_driven: Target,
+};
+export const strategyIcon = (s: string): LucideIcon => STRATEGY_ICON[s] || Dot;
+
+// ── Agent icons (lucide components) ────────────────────────
+export const AGENT_ICON: Record<string, LucideIcon> = {
+  generation: Sparkles,
+  reflection: Microscope,
+  ranking:    Swords,
+  evolution:  GitBranch,
+  proximity:  Network,
+  metareview: ClipboardList,
+  supervisor: Cpu,
+  human:      User,
+};
+export const agentIcon = (a: string | null | undefined): LucideIcon =>
+  AGENT_ICON[a || "supervisor"] || Cpu;
+
+// ── Activity-event icons (lucide components) ───────────────
+export const EVENT_ICON: Record<string, LucideIcon> = {
+  session_started: Rocket,
+  hypothesis_created: Lightbulb,
+  review_completed: Microscope,
+  match_complete: Swords,
+  task_started: Play,
+  task_completed: Check,
+  task_failed: TriangleAlert,
+  human_feedback: MessageSquare,
+  hypothesis_state_changed: Pin,
+  session_done: Flag,
+  session_paused: Pause,
+  session_running: Play,
+  session_aborted: Ban,
 };
 
-// ── Elo color — white/blue/zinc only ─────────────────────
+// ── Elo color — theme-aware ────────────────────────────────
 export const eloColor = (elo: number | null | undefined) => {
-  if (elo == null)   return "text-zinc-600";
-  if (elo >= 1260)   return "text-white";
-  if (elo >= 1220)   return "text-blue-400";
-  if (elo >= 1180)   return "text-zinc-300";
-  return "text-zinc-500";
+  if (elo == null)   return "text-faint";
+  if (elo >= 1260)   return "text-fg";
+  if (elo >= 1220)   return "text-brand-600 dark:text-brand-400";
+  if (elo >= 1180)   return "text-muted";
+  return "text-faint";
 };
