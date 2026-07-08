@@ -279,36 +279,94 @@ export function makeReview(goal: string, hypTitle: string, kind: string): SimRev
   return { kind, verdict, scores, body };
 }
 
-export function makeOverview(goal: string, topTitles: string[]): string {
-  const bullets = topTitles.slice(0, 5).map((t, i) =>
-    `${i + 1}. **${t}** — ranked by tournament Elo; survives verification and is ready for triage.`,
-  ).join("\n");
-  return `# Research overview
+export interface OverviewProposal {
+  title: string;
+  summary: string;
+  strategy: string;
+  elo: number | null;
+}
 
-**Goal.** ${goal}
+/** Detailed research-proposal report. Mirrors the structure of the real
+ *  metareview_final.md prompt so demo/sim output matches live output. */
+export function makeOverview(goal: string, proposals: OverviewProposal[]): string {
+  const top = proposals.slice(0, 5);
+  const lead = top[0];
+
+  const sections = top.map((p, i) => {
+    const elo = p.elo != null ? Math.round(p.elo) : "—";
+    return `### Proposal ${i + 1}. ${p.title}
+
+**Tournament Elo:** ${elo} · **Generation strategy:** \`${p.strategy}\`
+
+**The hypothesis.** ${p.summary}
+
+**Why it's promising.** It survived repeated head-to-head debates against
+competing ideas, and reviewers scored it well on novelty and testability. The
+mechanism is specific enough to design a decisive experiment around.
+
+**Proposed first experiment.** Stand up the relevant model system and apply the
+intervention across a short dose range, reading out the primary phenotype with a
+quantitative assay plus an orthogonal molecular signature. Include vehicle and a
+mechanism-dead control so a positive result is interpretable.
+
+**Feasibility and risks.** Achievable within a standard wet-lab budget and a
+single quarter. The main risk is that the intervention does not reach an active
+concentration in the relevant compartment — worth a pilot exposure check first.
+
+**What would falsify it.** No dose-dependent shift in the primary readout at a
+clinically achievable exposure, or rescue by the mechanism-dead control.`;
+  }).join("\n\n---\n\n");
+
+  return `# Research proposal
+
+**Research goal.** ${goal}
+
+## Problem framing and significance
+
+The goal above defines a question where a testable, mechanism-anchored answer
+would materially change what a lab does next. Across a multi-agent tournament,
+the system generated candidate hypotheses, critiqued them, and ranked them
+head-to-head so that only ideas surviving repeated scrutiny rose to the top. The
+proposals below are the survivors, ordered by tournament Elo.
 
 ## Executive summary
 
-Across the tournament, the agents explored a diverse hypothesis space for this goal
-and converged on a small set of high-Elo candidates. The leading ideas share a
-common shape: a concrete lever, a measurable primary outcome, and a pre-registered
-threshold that makes each one cleanly falsifiable.
+The tournament converged on ${top.length} strong candidate${top.length === 1 ? "" : "s"},
+led by **${lead ? lead.title : "the top-ranked hypothesis"}**. The leading ideas
+share a bias toward interventions that are testable with existing models and,
+where possible, repurpose known agents to shorten the path from hypothesis to
+evidence.
 
-## Top-ranked hypotheses
+## The approach landscape
 
-${bullets}
+Independent generation strategies (literature-grounded, debate-driven,
+combination, and out-of-box) were each given room to explore, then forced to
+compete. Where several strategies nominated the same mechanism, that convergence
+is treated as a robustness signal rather than redundancy.
 
-## Cross-cutting themes
+## Ranked proposals
 
-- **Actionable levers over description.** The highest-ranked ideas name a specific intervention that could be run, not just a phenomenon to observe.
-- **Convergence on shared levers.** Independent generation strategies repeatedly nominated the same mechanisms — a useful signal of robustness.
-- **Clear falsification criteria.** Every surviving hypothesis specifies a quantitative success threshold, which is what let the Ranking agent separate them under debate.
+${sections}
 
-## Recommended next steps
+## Comparative assessment
 
-1. Triage the top-3 candidates with the cheapest viable method first.
-2. Run any combination arm early — a super-additive effect, if real, is the highest-value outcome.
-3. Pre-register the falsification thresholds before committing resources.
+The top proposals are not interchangeable: some converge on a shared pathway
+(mutually reinforcing evidence), while others are genuinely orthogonal bets worth
+running in parallel to hedge mechanism risk. Prefer starting with the highest-Elo
+idea that also has the cheapest decisive experiment.
+
+## Recommended path and sequencing
+
+1. Run the single cheapest decisive experiment for the top proposal first.
+2. If it clears, add the orthogonal runner-up to hedge mechanism risk.
+3. Pre-register every falsification threshold before wet-lab work begins.
+
+## Open questions and limitations
+
+Where the literature was thin, reviewer confidence is lower and a domain expert
+is most likely to disagree — treat those proposals as exploratory. The tournament
+optimizes for debate-survivability, not ground truth, so a high Elo is a strong
+prior, not a proof.
 
 *Generated by the Meta-review agent after Elo stabilization.*
 `;

@@ -58,7 +58,11 @@ async def _run_sync(fn, *args, **kwargs):
 
 class CreateSessionBody(BaseModel):
     goal: str
-    budget_usd: float = 5.0
+    # Run limits — the session stops at whichever is hit first. Both are already
+    # enforced end-to-end (termination.budget_exhausted / wall_clock_exceeded).
+    budget_tokens: int = Field(default=5_000_000, ge=100_000)
+    wall_clock_seconds: int = Field(default=1800, ge=60)
+    budget_usd: float | None = None  # optional legacy cap; None → keep config default
     n_initial: int = Field(default=4, ge=2, le=8)
     provider: str | None = None
     speed: float = 1.0  # accepted for API compat; real engine ignores demo pace
@@ -96,6 +100,7 @@ def create_react_router(base_cfg: Config, *, live_sessions: set[str]) -> APIRout
             "models": base_cfg.models.model_dump(),
             "defaults": {
                 "budget_usd": base_cfg.run.budget_usd,
+                "budget_tokens": base_cfg.run.budget_tokens,
                 "n_initial": 4,
                 "wall_clock_seconds": base_cfg.run.wall_clock_seconds,
             },
@@ -262,13 +267,19 @@ def create_react_router(base_cfg: Config, *, live_sessions: set[str]) -> APIRout
 
         if body.provider:
             cfg.llm.provider = body.provider
-        cfg.run.budget_usd = body.budget_usd
+        cfg.run.budget_tokens = body.budget_tokens
+        cfg.run.wall_clock_seconds = body.wall_clock_seconds
+        if body.budget_usd is not None:
+            cfg.run.budget_usd = body.budget_usd
         sup = Supervisor(cfg)
 
         async def _bg() -> None:
             live_sessions.add("_pending")
             try:
-                sid = await sup.run_session(goal, n_initial=body.n_initial)
+                sid = await sup.run_session(
+                    goal, n_initial=body.n_initial,
+                    wall_clock_seconds=body.wall_clock_seconds,
+                )
                 live_sessions.add(sid)
             except Exception:
                 log.exception("session_run_failed", goal=goal[:80])

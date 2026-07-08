@@ -23,6 +23,17 @@ export function timeAgo(iso: string): string {
 export const clockTime = (ms: number) =>
   new Date(ms).toLocaleTimeString(undefined, { hour12: false });
 
+/** Human duration from seconds, e.g. 90 → "1m 30s", 3600 → "60m". */
+export function fmtDuration(sec: number | null | undefined): string {
+  if (sec == null || sec <= 0) return "0s";
+  const s = Math.round(sec);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60), rem = s % 60;
+  if (m < 60) return rem ? `${m}m ${rem}s` : `${m}m`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
+}
+
 import type { LucideIcon } from "lucide-react";
 import {
   BookOpen, Swords, GitMerge, Scissors, Lightbulb, Wrench, Search, Target,

@@ -115,7 +115,8 @@ class Sim:
         _emit(conn, self.sid, created_by, "hypothesis_created",
               {"hypothesis_id": hid, "title": c["title"][:80], "strategy": strat}, now)
         self._bump(conn, cost)
-        h = {"id": hid, "title": c["title"], "elo": 1200.0, "matches": 0, "strategy": strat}
+        h = {"id": hid, "title": c["title"], "summary": c["summary"], "elo": 1200.0,
+             "matches": 0, "strategy": strat}
         self.hyps.append(h)
         return h
 
@@ -227,7 +228,7 @@ class Sim:
              _ts(_now()), "meta_review", "system_feedback", None,
              "Top candidates converge on a shared pathway — a robust signal. Consider "
              "one more out-of-box round to stress-test the consensus."))
-        ov_md = content.make_overview(self.goal, [h["title"] for h in top[:5]])
+        ov_md = content.make_overview(self.goal, top[:5])
         ov_dir = REPO_ROOT / "data" / "artifacts" / self.sid / "final"
         ov_dir.mkdir(parents=True, exist_ok=True)
         (ov_dir / "overview.md").write_text(ov_md)

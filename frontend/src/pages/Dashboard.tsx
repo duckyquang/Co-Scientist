@@ -4,7 +4,7 @@ import { Microscope, Rocket } from "lucide-react";
 import { api } from "../api";
 import { Sparkline } from "../components/charts";
 import { Loader, Progress, StatusBadge } from "../components/ui";
-import { eloColor, fmtUsd, timeAgo } from "../lib/format";
+import { eloColor, fmtCompact, timeAgo } from "../lib/format";
 import { usePoll } from "../lib/hooks";
 import type { SessionRow } from "../types";
 
@@ -16,7 +16,8 @@ const EXAMPLE_PROMPTS = [
 ];
 
 function SessionCard({ s }: { s: SessionRow }) {
-  const pct = s.budget_usd > 0 ? (s.budget_used_usd / s.budget_usd) * 100 : 0;
+  const tokCap = s.budget_tokens || 0;
+  const pct = tokCap > 0 ? (s.budget_used_tokens / tokCap) * 100 : 0;
   return (
     <Link to={`/s/${s.id}`} className="card card-hover group block p-5 animate-fade-up">
       <div className="flex items-start justify-between gap-3">
@@ -44,10 +45,10 @@ function SessionCard({ s }: { s: SessionRow }) {
       </div>
       <div className="mt-4">
         <div className="mb-1 flex justify-between text-[11px] text-muted">
-          <span>{fmtUsd(s.budget_used_usd)} / {fmtUsd(s.budget_usd)}</span>
+          <span>{fmtCompact(s.budget_used_tokens)} / {fmtCompact(tokCap)} tokens</span>
           <span>{pct.toFixed(0)}%</span>
         </div>
-        <Progress value={s.budget_used_usd} max={s.budget_usd} />
+        <Progress value={s.budget_used_tokens} max={tokCap} />
       </div>
     </Link>
   );

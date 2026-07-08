@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import {
-  Trophy, Swords, GitBranch, Radar, BarChart3, Radio, FileText,
+  Sparkles, Trophy, Swords, GitBranch, Radar, BarChart3, Radio, FileText,
   Ban, Pause, Play, Square, Scale,
 } from "lucide-react";
 import { api } from "../api";
@@ -12,8 +12,9 @@ import { ClusterMap } from "../components/session/ClusterMap";
 import { Compare } from "../components/session/Compare";
 import { HypothesisDrawer } from "../components/session/HypothesisDrawer";
 import { LineageGraph } from "../components/session/LineageGraph";
+import { Overview } from "../components/session/Overview";
 import { Loader, Progress, StatusBadge } from "../components/ui";
-import { fmtCompact, fmtUsd } from "../lib/format";
+import { fmtCompact, fmtDuration, fmtUsd } from "../lib/format";
 import { useSessionStream, usePoll } from "../lib/hooks";
 import type {
   ClusterPoint, CostByAgent, Feedback, Hypothesis, LineageNode, Match, SessionDetail,
@@ -31,6 +32,7 @@ interface Bundle {
 }
 
 const TABS = [
+  { id: "overview", label: "Overview", icon: Sparkles },
   { id: "leaderboard", label: "Leaderboard", icon: Trophy },
   { id: "tournament", label: "Tournament", icon: Swords },
   { id: "lineage", label: "Lineage", icon: GitBranch },
@@ -68,7 +70,7 @@ function MetricChip({ label, value, accent }: { label: string; value: string | n
 
 export default function Session() {
   const { id } = useParams<{ id: string }>();
-  const [tab, setTab] = useState<TabId>("leaderboard");
+  const [tab, setTab] = useState<TabId>("overview");
   const [selected, setSelected] = useState<string | null>(null);
   const [overview, setOverview] = useState<string | null>(null);
   const [compareBase, setCompareBase] = useState<string | null>(null);
@@ -125,6 +127,11 @@ export default function Session() {
 
   const tokenUsed = (metrics?.input_tokens || 0) + (metrics?.output_tokens || 0);
   const stateCounts = data?.detail.counts.hypothesis_states || {};
+
+  // Elapsed run time: to now while live, else frozen at last update.
+  const startMs = session ? new Date(session.created_at).getTime() : 0;
+  const endMs = live ? Date.now() : (session ? new Date(session.updated_at).getTime() : 0);
+  const elapsedSec = startMs ? Math.max(0, (endMs - startMs) / 1000) : 0;
 
   const overviewReady = !!(overview || session?.final_overview);
 
@@ -186,24 +193,28 @@ export default function Session() {
           </div>
         </div>
 
-        {/* gauges */}
+        {/* gauges — token cap + time limit (dollars retired) */}
         <div className="mt-6 flex flex-wrap gap-6">
-          <Gauge label="Budget" used={session.budget_used_usd} total={session.budget_usd}
-            fmt={fmtUsd} color="#6366f1" />
-          <Gauge label="Tokens" used={tokenUsed} total={session.budget_tokens || tokenUsed || 1}
+          <Gauge label="Tokens used" used={tokenUsed} total={session.budget_tokens || tokenUsed || 1}
             fmt={(n) => fmtCompact(n)} color="#60a5fa" />
+          <Gauge label="Run time" used={elapsedSec} total={session.wall_clock_seconds || elapsedSec || 1}
+            fmt={fmtDuration} color="#34d399" />
         </div>
 
-        {/* metric strip */}
+        {/* metric strip — grouped, dollars demoted to a hint */}
         <div className="mt-5 flex flex-wrap gap-2.5">
           <MetricChip label="Hypotheses" value={metrics.n_hypotheses} accent="#3b82f6" />
           <MetricChip label="In tournament" value={metrics.n_in_tournament} accent="#60a5fa" />
-          <MetricChip label="Matches" value={metrics.n_matches} accent="#3b82f6" />
+          <MetricChip label="Matches" value={metrics.n_matches} accent="#34d399" />
           <MetricChip label="Reviewed" value={metrics.n_reviewed} accent="#93c5fd" />
-          <MetricChip label="Pinned" value={stateCounts.pinned || metrics.n_pinned || 0} accent="#60a5fa" />
+          <MetricChip label="Pinned" value={stateCounts.pinned || metrics.n_pinned || 0} accent="#34d399" />
           <MetricChip label="LLM calls" value={metrics.n_calls} />
-          <MetricChip label="Spend" value={fmtUsd(metrics.cost_usd)} accent="#2563eb" />
         </div>
+        {metrics.cost_usd > 0 && (
+          <div className="mt-2 text-[11px] text-faint">
+            Estimated compute cost: {fmtUsd(metrics.cost_usd)} · free to you
+          </div>
+        )}
       </div>
 
       {/* compare-mode banner */}
@@ -239,6 +250,15 @@ export default function Session() {
 
       {/* ── Tab content ──────────────────────────────────────── */}
       <div className="mt-6">
+        {tab === "overview" && (
+          <Overview
+            metrics={metrics}
+            hyps={data.hyps}
+            overviewReady={overviewReady}
+            onSelect={onSelect}
+            onOpenReport={() => setTab("report")}
+          />
+        )}
         {tab === "leaderboard" && (
           <Leaderboard hyps={data.hyps} onSelect={onSelect} eloSeries={data.eloHistory} />
         )}

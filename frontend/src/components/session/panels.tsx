@@ -165,7 +165,7 @@ export function AnalyticsPanel({
   return (
     <div className="grid gap-5 lg:grid-cols-2">
       <div className="card p-5">
-        <div className="label mb-3">Spend by agent</div>
+        <div className="label mb-3">Estimated cost by agent</div>
         <div className="flex items-center gap-6">
           <div className="relative">
             <Donut segments={segments} />
