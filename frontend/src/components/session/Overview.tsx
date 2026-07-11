@@ -30,37 +30,40 @@ export function Overview({
 
   return (
     <div className="space-y-6">
-      {/* Headline — the one-sentence answer */}
-      <div className="card relative overflow-hidden p-6">
-        <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-accent-500/[0.07] blur-3xl" />
-        <div className="flex items-center gap-2">
-          <span className="h-2 w-2 rounded-full bg-accent-400 shadow-glowAccent" />
-          <span className="label text-accent-600 dark:text-accent-400">What the agents found</span>
-        </div>
-        <p className="mt-3 text-[17px] leading-relaxed text-muted">
-          Explored{" "}
-          <span className="font-bold text-fg">{metrics.n_hypotheses} hypotheses</span>,{" "}
-          ran{" "}
-          <span className="font-bold text-fg">{metrics.n_matches} head-to-head matches</span>{" "}
-          to rank them, and{" "}
-          {topTitle ? (
-            <>
-              surfaced a leading idea:{" "}
-              <button onClick={() => onSelect(top[0].id)}
-                className="font-semibold text-accent-600 dark:text-accent-300 underline decoration-accent-500/30 underline-offset-2 hover:text-accent-500">
-                {topTitle}
-              </button>.
-            </>
-          ) : (
-            <>are still building the first hypotheses.</>
+      {/* Headline — the one-sentence answer. Warm cream hero: the single
+          "highlight" accent that draws the eye (Emil: beauty as leverage). */}
+      <div className="card relative overflow-hidden border-warm-500/25 p-6">
+        <div className="pointer-events-none absolute -right-20 -top-24 h-56 w-56 rounded-full bg-warm-500/[0.10] blur-3xl" />
+        <div className="pointer-events-none absolute inset-0 bg-warm-500/[0.035] dark:bg-warm-500/[0.05]" />
+        <div className="relative">
+          <div className="flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-warm-400 ring-4 ring-warm-400/20" />
+            <span className="label text-warm-700 dark:text-warm-300">What the agents found</span>
+          </div>
+          <p className="mt-3 text-[17px] leading-relaxed text-muted">
+            Explored{" "}
+            <span className="font-bold text-fg">{metrics.n_hypotheses} hypotheses</span>,{" "}
+            ran{" "}
+            <span className="font-bold text-fg">{metrics.n_matches} head-to-head matches</span>{" "}
+            to rank them, and{" "}
+            {topTitle ? (
+              <>
+                surfaced a leading idea:{" "}
+                <button onClick={() => onSelect(top[0].id)}
+                  className="font-semibold text-brand-600 dark:text-brand-300 underline decoration-brand-500/30 underline-offset-2 hover:text-brand-500">
+                  {topTitle}
+                </button>.
+              </>
+            ) : (
+              <>are still building the first hypotheses.</>
+            )}
+          </p>
+          {overviewReady && (
+            <button onClick={onOpenReport} className="btn-primary mt-4 h-9 text-sm">
+              <FileText className="h-4 w-4" /> Read the full research proposal
+            </button>
           )}
-        </p>
-        {overviewReady && (
-          <button onClick={onOpenReport}
-            className="btn-primary mt-4 h-9 bg-accent-600 hover:bg-accent-500 text-sm">
-            <FileText className="h-4 w-4" /> Read the full research proposal
-          </button>
-        )}
+        </div>
       </div>
 
       {/* Top proposals */}
@@ -73,7 +76,8 @@ export function Overview({
           <div className="grid gap-3 lg:grid-cols-3">
             {top.map((h, i) => (
               <button key={h.id} onClick={() => onSelect(h.id)}
-                className="card card-hover flex flex-col p-4 text-left">
+                style={{ animationDelay: `${i * 55}ms` }}
+                className="card card-hover flex flex-col p-4 text-left animate-fade-up">
                 <div className="flex items-center justify-between">
                   <span className="grid h-6 w-6 place-items-center rounded-lg bg-accent-500/15 text-[12px] font-bold text-accent-600 dark:text-accent-300">
                     {i + 1}

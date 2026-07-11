@@ -15,11 +15,12 @@ const EXAMPLE_PROMPTS = [
   "Find testable strategies to extend the lifespan of human cardiac organoids",
 ];
 
-function SessionCard({ s }: { s: SessionRow }) {
+function SessionCard({ s, i = 0 }: { s: SessionRow; i?: number }) {
   const tokCap = s.budget_tokens || 0;
   const pct = tokCap > 0 ? (s.budget_used_tokens / tokCap) * 100 : 0;
   return (
-    <Link to={`/s/${s.id}`} className="card card-hover group block p-5 animate-fade-up">
+    <Link to={`/s/${s.id}`} style={{ animationDelay: `${Math.min(i, 8) * 45}ms` }}
+      className="card card-hover group block p-5 animate-fade-up">
       <div className="flex items-start justify-between gap-3">
         <StatusBadge status={s.status} />
         <span className="text-[11px] text-faint">{timeAgo(s.updated_at)}</span>
@@ -134,7 +135,7 @@ export default function Dashboard() {
           <EmptyState />
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {userSessions.map((s) => <SessionCard key={s.id} s={s} />)}
+            {userSessions.map((s, i) => <SessionCard key={s.id} s={s} i={i} />)}
           </div>
         )}
       </section>

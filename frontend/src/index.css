@@ -14,8 +14,13 @@
   --fg: 24 24 27;           /* primary text        */
   --muted: 82 82 91;        /* secondary text      */
   --faint: 113 113 122;     /* tertiary / labels   */
-  --bloom-a: 59 130 246;    /* accent bloom        */
-  --bloom-strength: 0.05;
+  --bloom-a: 59 130 246;    /* accent bloom (cool) */
+  --bloom-b: 245 158 11;    /* warm bloom (amber)  */
+  --bloom-strength: 0.06;
+  --bloom-warm: 0.04;
+  /* Soft, light-tuned elevation — floats on a warm blue-gray shadow */
+  --shadow-card: 0 1px 2px rgb(16 24 40 / 0.04), 0 12px 28px -14px rgb(16 24 40 / 0.14);
+  --shadow-card-hover: 0 2px 6px rgb(16 24 40 / 0.06), 0 20px 44px -16px rgb(16 24 40 / 0.20);
   color-scheme: light;
 }
 .dark {
@@ -26,17 +31,32 @@
   --fg: 244 244 245;
   --muted: 161 161 170;
   --faint: 113 113 122;
-  --bloom-strength: 0.07;
+  --bloom-strength: 0.08;
+  --bloom-warm: 0.05;
+  /* Dark elevation: subtle inset highlight + deep drop */
+  --shadow-card: 0 1px 0 0 rgb(255 255 255 / 0.03) inset, 0 4px 24px -8px rgb(0 0 0 / 0.6);
+  --shadow-card-hover: 0 1px 0 0 rgb(255 255 255 / 0.05) inset, 0 12px 32px -10px rgb(0 0 0 / 0.7);
   color-scheme: dark;
+}
+
+/* Strong ease-out for card lift / entrances (Emil / easing.dev) */
+:root { --ease-out: cubic-bezier(0.23, 1, 0.32, 1); }
+
+/* Respect reduced-motion: keep fades, drop movement */
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-up { animation: fade-in 0.2s ease both; }
+  .card-hover { transition: box-shadow 200ms ease; }
+  .card-hover:hover { transform: none; }
 }
 
 html, body, #root { height: 100%; }
 
 body {
   @apply bg-bg text-muted font-sans antialiased;
+  /* Diffused canvas — a cool bloom top-right, a faint warm bloom bottom-left */
   background-image:
-    radial-gradient(900px 600px at 70% -20%, rgb(var(--bloom-a) / var(--bloom-strength)), transparent 60%),
-    radial-gradient(700px 500px at -10% 80%, rgb(var(--bloom-a) / calc(var(--bloom-strength) * 0.7)), transparent 55%);
+    radial-gradient(900px 600px at 78% -18%, rgb(var(--bloom-a) / var(--bloom-strength)), transparent 60%),
+    radial-gradient(760px 520px at -12% 88%, rgb(var(--bloom-b) / var(--bloom-warm)), transparent 58%);
   background-attachment: fixed;
   transition: background-color 0.2s ease, color 0.2s ease;
 }
@@ -45,11 +65,23 @@ body {
 @layer components {
 
   .card {
-    @apply rounded-xl border border-line bg-surface shadow-card;
+    @apply rounded-2xl border border-line bg-surface shadow-card;
   }
+  /* Gentle lift on hover — no glow ring; soft shadow does the work (Emil) */
   .card-hover {
-    @apply transition-all duration-200
-           hover:border-brand-500/40 hover:shadow-glow hover:-translate-y-px;
+    transition: transform 200ms var(--ease-out), box-shadow 200ms var(--ease-out);
+  }
+  .card-hover:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-card-hover);
+  }
+
+  /* Highlight swatch behind key words in a heading (reference's "Welcome, Sam!") */
+  .hl {
+    @apply rounded-md px-1.5 text-fg;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+    background: rgb(var(--bloom-a) / 0.16);
   }
 
   /* Buttons */

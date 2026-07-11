@@ -106,7 +106,7 @@ export default function NewSession() {
     <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col justify-center py-6">
       <div className="mb-6">
         <h1 className="text-2xl font-extrabold tracking-tight text-fg">
-          Start a research session
+          Start a <span className="hl">research session</span>
         </h1>
         <p className="mt-1 text-sm text-muted">
           Describe what you want to discover. Six AI agents generate hypotheses

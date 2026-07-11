@@ -37,7 +37,7 @@ export default {
           600: "#2563eb",  // blue-600
           700: "#1d4ed8",  // blue-700
         },
-        // Green/teal accent — "insight / converged / success" states (OrbitAI-inspired)
+        // Green/teal accent — small "success / converged" pills
         accent: {
           50:  "#ecfdf5",  // emerald-50
           300: "#6ee7b7",  // emerald-300
@@ -46,13 +46,30 @@ export default {
           600: "#059669",  // emerald-600
           700: "#047857",  // emerald-700
         },
+        // Warm cream/amber — the single "highlight" accent (one hero card),
+        // inspired by the reference's butter-yellow file card.
+        warm: {
+          50:  "#fffbeb",  // amber-50
+          100: "#fef3c7",  // amber-100
+          300: "#fcd34d",  // amber-300
+          400: "#fbbf24",  // amber-400
+          500: "#f59e0b",  // amber-500
+          600: "#d97706",  // amber-600
+          700: "#b45309",  // amber-700
+        },
+      },
+      transitionTimingFunction: {
+        // Strong ease-out (easing.dev) — more punch than the built-in ease-out
+        "out-expo": "cubic-bezier(0.23, 1, 0.32, 1)",
       },
       boxShadow: {
         // Blue glow
         glow: "0 0 0 1px rgba(59,130,246,0.20), 0 8px 32px -8px rgba(59,130,246,0.40)",
         // Green insight glow
         glowAccent: "0 0 0 1px rgba(16,185,129,0.22), 0 8px 32px -8px rgba(16,185,129,0.40)",
-        card: "0 1px 0 0 rgba(255,255,255,0.03) inset, 0 4px 24px -8px rgba(0,0,0,0.6)",
+        // Soft, theme-aware card elevation (light: warm blue-gray; dark: deep)
+        card: "var(--shadow-card)",
+        cardHover: "var(--shadow-card-hover)",
         // Sidebar right edge
         sidebar: "1px 0 0 0 rgba(255,255,255,0.05)",
       },
@@ -72,7 +89,7 @@ export default {
         shimmer: { "100%": { transform: "translateX(100%)" } },
       },
       animation: {
-        "fade-up": "fade-up 0.3s ease both",
+        "fade-up": "fade-up 0.32s cubic-bezier(0.23,1,0.32,1) backwards",
         "fade-in": "fade-in 0.2s ease both",
         pulseDot:  "pulseDot 1.4s ease-in-out infinite",
       },
