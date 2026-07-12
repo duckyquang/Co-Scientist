@@ -1,8 +1,8 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { Link, Route, Routes, useLocation } from "react-router-dom";
+import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import {
-  FlaskConical, LayoutDashboard, Plus, Search, Settings, Menu, Sun, Moon,
+  FlaskConical, LayoutGrid, Plus, Search, Settings, Menu, Sun, Moon,
 } from "lucide-react";
 import { CommandPalette } from "./components/CommandPalette";
 import { OnboardingModal } from "./components/OnboardingModal";
@@ -16,8 +16,8 @@ import { api } from "./api";
 // Apply the saved / system theme before first paint.
 initTheme();
 import Dashboard from "./pages/Dashboard";
-import NewSession from "./pages/NewSession";
-import Session from "./pages/Session";
+import Chat from "./pages/Chat";
+import { timeAgo } from "./lib/format";
 import type { SessionRow } from "./types";
 
 /* ── Mode badge ─────────────────────────────────────────── */
@@ -57,7 +57,7 @@ function Sidebar({
   const { data: sessions } = usePoll<SessionRow[]>(() => api.sessions(), [], 8000);
   const [theme, setTheme] = useTheme();
   // Only show real user sessions in the sidebar — never demo:: seeded ones
-  const recent = (sessions || []).filter((s) => !s.id.startsWith("demo::")).slice(0, 6);
+  const recent = (sessions || []).filter((s) => !s.id.startsWith("demo::")).slice(0, 30);
 
   return (
     <aside className="sidebar">
@@ -74,42 +74,41 @@ function Sidebar({
 
       {/* Primary nav */}
       <div className="px-3 pt-1 pb-2 space-y-0.5">
-        <SLink to="/" exact>
-          <LayoutDashboard className="h-4 w-4 shrink-0" />
-          Dashboard
-        </SLink>
-        <Link to="/new" className="nav-item group">
+        <Link to="/" className="nav-item group">
           <span className="grid h-4 w-4 shrink-0 place-items-center rounded bg-brand-600/20 text-brand-500 group-hover:bg-brand-600/30">
             <Plus className="h-3 w-3" strokeWidth={2.5} />
           </span>
           New session
         </Link>
+        <SLink to="/sessions">
+          <LayoutGrid className="h-4 w-4 shrink-0" />
+          All sessions
+        </SLink>
       </div>
 
-      {/* Recent sessions */}
+      {/* Conversation history */}
       {recent.length > 0 && (
-        <div className="px-3 pt-3 pb-2">
-          <div className="label mb-2 px-2.5">Recent</div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-3 pt-3">
+          <div className="label mb-2 px-2.5">Chats</div>
           <div className="space-y-0.5">
             {recent.map((s) => (
               <SLink key={s.id} to={`/s/${s.id}`}>
                 <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${
                   s.status === "running" ? "bg-blue-400 animate-pulseDot" :
                   s.status === "paused"  ? "bg-zinc-400" :
-                  s.status === "done"    ? "bg-brand-400" : "bg-zinc-600"
+                  s.status === "done"    ? "bg-accent-400" : "bg-zinc-600"
                 }`} />
-                <span className="truncate text-[12.5px]">
-                  {s.research_goal.length > 32
-                    ? s.research_goal.slice(0, 32) + "…"
-                    : s.research_goal}
+                <span className="min-w-0 flex-1 truncate text-[12.5px]">
+                  {s.research_goal.length > 30 ? s.research_goal.slice(0, 30) + "…" : s.research_goal}
                 </span>
+                <span className="shrink-0 text-[10px] text-faint">{timeAgo(s.updated_at)}</span>
               </SLink>
             ))}
           </div>
         </div>
       )}
 
-      <div className="flex-1" />
+      {!recent.length && <div className="flex-1" />}
 
       {/* Bottom utilities */}
       <div className="px-3 pb-4 pt-2 border-t border-line space-y-0.5 mt-2">
@@ -152,7 +151,18 @@ function MobileBar({
         <span className="text-sm font-bold text-fg">Co-Scientist</span>
       </Link>
       <div className="ml-auto">
-        <Link to="/new" className="btn-primary h-8 text-xs px-3">+ New</Link>
+        <Link to="/" className="btn-primary h-8 text-xs px-3">+ New</Link>
+      </div>
+    </div>
+  );
+}
+
+/* ── All-sessions grid (kept, its own scroll) ─────────────── */
+function DashboardScroll() {
+  return (
+    <div className="h-full overflow-y-auto">
+      <div className="mx-auto max-w-[1400px] px-5 py-7">
+        <Dashboard />
       </div>
     </div>
   );
@@ -190,22 +200,18 @@ export default function App() {
         </div>
       )}
 
-      {/* Mobile top bar */}
-      <MobileBar onMenu={() => setMobileOpen(true)} />
-
-      {/* Main content — offset by sidebar on desktop, always ≥ viewport tall */}
-      <div className="flex min-h-screen flex-col md:pl-56">
-        <main className="mx-auto flex w-full max-w-[1400px] flex-1 flex-col px-5 py-7">
+      {/* Main content — fixed viewport height so the chat composer can dock */}
+      <div className="flex h-dvh flex-col overflow-hidden md:pl-56">
+        <MobileBar onMenu={() => setMobileOpen(true)} />
+        <main className="min-h-0 flex-1">
           <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/new" element={<NewSession />} />
-            <Route path="/s/:id" element={<Session />} />
-            <Route path="*" element={<Dashboard />} />
+            <Route path="/" element={<Chat />} />
+            <Route path="/s/:id" element={<Chat />} />
+            <Route path="/sessions" element={<DashboardScroll />} />
+            <Route path="/new" element={<Navigate to="/" replace />} />
+            <Route path="*" element={<Chat />} />
           </Routes>
         </main>
-        <footer className="px-5 py-5 text-xs text-faint border-t border-line">
-          Co-Scientist · multi-agent hypothesis generation · by Quang Bui
-        </footer>
       </div>
 
       <CommandPalette open={palette} setOpen={setPalette} />

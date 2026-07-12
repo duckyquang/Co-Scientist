@@ -47,4 +47,4 @@ What the system did not explore, where the literature was thin, and where a doma
 ## References
 List the literature URLs actually cited above, deduplicated. Do not invent references.
 
-Use markdown formatting. Cite hypothesis IDs as `[H-...]` inline. Do not invent citations or data.
+Use markdown formatting. GitHub-flavored tables and inline/display math (`$...$`, `$$...$$`, rendered with KaTeX) are supported — use a compact comparison table or an equation where it genuinely clarifies, not as decoration. A figures section with scorecard, lineage diagram, and the rating model is appended automatically after your text, so do not fabricate charts or numeric data yourself. Cite hypothesis IDs as `[H-...]` inline. Do not invent citations or data.

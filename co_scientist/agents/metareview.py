@@ -10,6 +10,7 @@ Two actions:
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 
 from .. import ids
@@ -28,6 +29,98 @@ from .base import BaseAgent
 from .schemas import RECORD_SYSTEM_FEEDBACK_TOOL
 
 log = get_logger("metareview")
+
+
+def _mm_id(s: str) -> str:
+    return "n" + "".join(c for c in s if c.isalnum())
+
+
+def _mm_label(s: str) -> str:
+    return s.replace('"', " ").replace("\n", " ")[:30]
+
+
+def _cell(s: str) -> str:
+    """Escape GFM table-cell delimiters so a '|' in a title can't shift columns."""
+    return s.replace("|", "\\|")
+
+
+def _analysis_block(top: list, reviews_by_hyp: dict) -> str:
+    """Deterministic figures section rendered by the frontend Markdown component:
+    a scorecard table + a ```chart scores block + a strategy-mix donut + a
+    ```mermaid lineage graph + a KaTeX rating-model formula. Mirrors the shared
+    subset of frontend/src/lib/sim/content.ts buildAnalysis; the in-browser demo
+    additionally shows an Elo-trajectory chart (it has full match history in
+    hand, which this path would need to fetch)."""
+    scored = []
+    for h in top[:5]:
+        sc = next((r.scores for r in reviews_by_hyp.get(h.id, []) if r.scores), None)
+        if sc is not None:
+            scored.append((h, sc))
+
+    parts = ["## Analysis"]
+
+    if scored:
+        rows = "\n".join(
+            f"| {i + 1}. {_cell(h.title[:40])} | {sc.novelty:.2f} | {sc.correctness:.2f} "
+            f"| {sc.testability:.2f} | {sc.feasibility:.2f} |"
+            for i, (h, sc) in enumerate(scored)
+        )
+        spec = {
+            "type": "scores", "title": "Reviewer scores by proposal",
+            "proposals": [
+                {"label": f"{i + 1}. {h.title[:32]}", "scores": {
+                    "novelty": sc.novelty, "correctness": sc.correctness,
+                    "testability": sc.testability, "feasibility": sc.feasibility}}
+                for i, (h, sc) in enumerate(scored)
+            ],
+        }
+        parts.append(
+            "### Proposal scorecard\n\n"
+            "Reviewer scores for each finalist (0–1; higher is better).\n\n"
+            "| Proposal | Novelty | Correctness | Testability | Feasibility |\n"
+            "|---|---|---|---|---|\n" + rows + "\n\n"
+            "```chart\n" + json.dumps(spec) + "\n```"
+        )
+
+    # Strategy mix across the top hypotheses → donut.
+    strat_counts: dict = {}
+    for h in top[:5]:
+        strat_counts[h.strategy] = strat_counts.get(h.strategy, 0) + 1
+    if strat_counts:
+        entries = sorted(strat_counts.items(), key=lambda kv: -kv[1])
+        srows = "\n".join(f"| {k} | {v} |" for k, v in entries)
+        dspec = {"type": "donut", "title": "Hypotheses by generation strategy",
+                 "segments": [{"label": k, "value": v} for k, v in entries]}
+        parts.append(
+            "### Where the ideas came from\n\n"
+            "| Generation strategy | Hypotheses |\n|---|---|\n" + srows + "\n\n"
+            "```chart\n" + json.dumps(dspec) + "\n```"
+        )
+
+    # Lineage over the top hypotheses (edges kept only within the shown set).
+    ids_shown = {h.id for h in top[:5]}
+    nodes = "\n".join(f'  {_mm_id(h.id)}["{_mm_label(h.title)}"]' for h in top[:5])
+    edges = "\n".join(
+        f"  {_mm_id(p)} --> {_mm_id(h.id)}"
+        for h in top[:5] for p in (h.parent_ids or []) if p in ids_shown
+    )
+    if nodes:
+        parts.append(
+            "### Idea lineage\n\n"
+            "Original hypotheses and the offspring the Evolution agent bred from "
+            "top parents.\n\n"
+            "```mermaid\ngraph LR\n" + nodes + ("\n" + edges if edges else "") + "\n```"
+        )
+
+    parts.append(
+        "### Rating model\n\n"
+        "Each match updates a hypothesis's Elo rating $R$ by\n\n"
+        r"$$R'_a = R_a + K\,(S_a - E_a), \qquad "
+        r"E_a = \frac{1}{1 + 10^{(R_b - R_a)/400}}$$"
+        "\n\nwhere $S_a \\in \\{0, 1\\}$ is the match outcome for idea $a$ against "
+        "idea $b$, and $K$ is the update rate (larger for newer ideas)."
+    )
+    return "\n\n".join(parts)
 
 
 class MetaReviewAgent(BaseAgent):
@@ -184,6 +277,12 @@ class MetaReviewAgent(BaseAgent):
         text = self._final_text(resp)
         if not text.strip():
             text = "# Research overview\n\n_(No content was generated; see transcripts.)_"
+
+        # Append a deterministic figures section (scorecard + chart + lineage +
+        # rating-model math) built from real data — always correct regardless of
+        # the LLM's prose. Rendered on-site as SVG/Mermaid/KaTeX; copies as
+        # markdown (table + fenced blocks).
+        text = text.rstrip() + "\n\n" + _analysis_block(top, reviews_by_hyp)
 
         overview_path = await write_text(
             self.deps.cfg, session.id, "final", "overview", ".md", text
