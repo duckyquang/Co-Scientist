@@ -125,6 +125,29 @@ export function usePoll<T>(
   return { data, error, loading, refresh: run };
 }
 
+/* ── Stick-to-bottom (chat thread) ─────────────────────────────
+   Auto-scrolls a container to the bottom when new content arrives, but ONLY
+   when the user is already near the bottom — so reading history is never
+   yanked down. `dep` should change whenever content grows (e.g. message count). */
+export function useStickToBottom(dep: unknown) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const atBottomRef = useRef(true);
+
+  const onScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+  }, []);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el && atBottomRef.current) el.scrollTop = el.scrollHeight;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dep]);
+
+  return { scrollRef, onScroll };
+}
+
 /* ── Theme (light / dark) ──────────────────────────────────── */
 export type Theme = "light" | "dark";
 const THEME_KEY = "cosci_theme";

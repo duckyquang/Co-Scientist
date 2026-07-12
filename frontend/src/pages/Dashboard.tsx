@@ -68,7 +68,7 @@ function EmptyState() {
           Elo-rank novel hypotheses — live.
         </p>
       </div>
-      <Link to="/new" className="btn-primary inline-flex items-center gap-2 px-6 py-2.5 text-sm font-semibold">
+      <Link to="/" className="btn-primary inline-flex items-center gap-2 px-6 py-2.5 text-sm font-semibold">
         <Rocket className="h-4 w-4" /> Launch a session →
       </Link>
       <div className="w-full border-t border-line" />
@@ -80,7 +80,7 @@ function EmptyState() {
           {EXAMPLE_PROMPTS.map((p) => (
             <Link
               key={p}
-              to={`/new?goal=${encodeURIComponent(p)}`}
+              to={`/?goal=${encodeURIComponent(p)}`}
               className="block rounded-lg border border-line bg-surface-2 px-4 py-2.5 text-sm text-muted transition hover:border-blue-500/30 hover:bg-blue-500/[0.06] hover:text-fg"
             >
               {p}
@@ -127,7 +127,7 @@ export default function Dashboard() {
             )}
           </div>
           {userSessions.length > 0 && (
-            <Link to="/new" className="btn-primary h-8 px-3 text-xs">+ New session</Link>
+            <Link to="/" className="btn-primary h-8 px-3 text-xs">+ New session</Link>
           )}
         </div>
 
