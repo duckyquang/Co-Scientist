@@ -1,5 +1,10 @@
-import { marked } from "marked";
 import type { ReactNode } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import { Mermaid } from "./report/Mermaid";
+import { ReportChart } from "./report/ReportChart";
 import { Info, Telescope, type LucideIcon } from "lucide-react";
 import {
   HYP_STATE_STYLE, STATUS_STYLE, agentColor, strategyIcon,
@@ -62,8 +67,32 @@ export function Progress({ value, max, color = "#3b82f6" }: { value: number; max
 }
 
 export function Markdown({ md }: { md: string }) {
-  const html = marked.parse(md, { async: false }) as string;
-  return <div className="prose-sci" dangerouslySetInnerHTML={{ __html: html }} />;
+  return (
+    <div className="prose-sci">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[rehypeKatex]}
+        components={{
+          // Unwrap ```mermaid / ```chart blocks so the chart isn't nested in <pre>.
+          pre({ children }) {
+            const child: any = Array.isArray(children) ? children[0] : children;
+            const cls: string = child?.props?.className || "";
+            if (/language-(mermaid|chart)/.test(cls)) return <>{child}</>;
+            return <pre className="report-pre overflow-x-auto">{children}</pre>;
+          },
+          code({ className, children, ...props }) {
+            const lang = /language-(\w+)/.exec(className || "")?.[1];
+            const text = String(children).replace(/\n$/, "");
+            if (lang === "mermaid") return <Mermaid chart={text} />;
+            if (lang === "chart") return <ReportChart raw={text} />;
+            return <code className={className} {...props}>{children}</code>;
+          },
+        }}
+      >
+        {md}
+      </ReactMarkdown>
+    </div>
+  );
 }
 
 export function Loader({ label = "Loading" }: { label?: string }) {

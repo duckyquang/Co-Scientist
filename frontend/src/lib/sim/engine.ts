@@ -20,7 +20,7 @@ import type {
   Metrics, SessionDetail, SessionRow, SSEvent,
 } from "../../types";
 import type { LiveTick } from "../hooks";
-import { eloUpdate, makeHypothesis, makeOverview, makePlan, makeReview, SIM_MODEL, STRATEGIES } from "./content";
+import { buildAnalysis, eloUpdate, makeHypothesis, makeOverview, makePlan, makeReview, SIM_MODEL, STRATEGIES } from "./content";
 import { generateSession, type GenHyp, type GeneratedContent } from "./generate";
 import { hasRealProvider } from "../llm";
 import { makeRng } from "./rng";
@@ -255,10 +255,33 @@ function buildPlan(rec: SimRecord): Plan {
   const finalRank = [...hyps].sort((x, y) => elo.get(y.id)! - elo.get(x.id)!);
   const pinnedId = finalRank.length ? finalRank[0].id : null;
   transcript("metareview", "metareview.final", 0.05, 0.15);
-  const overview = rec.content?.overview?.trim()
-    || makeOverview(goal, finalRank.slice(0, 5).map((h) => ({
-      title: h.title, summary: h.summary, strategy: h.strategy, elo: elo.get(h.id) ?? null,
-    })));
+  // Assemble deterministic figures from real session data (scores, strategy mix,
+  // lineage, Elo trajectories) so the proposal's charts are always correct.
+  const proposals = finalRank.slice(0, 5).map((h) => ({
+    title: h.title, summary: h.summary, strategy: h.strategy,
+    elo: elo.get(h.id) ?? null, scores: h.review.scores,
+  }));
+  const strategyCounts: Record<string, number> = {};
+  for (const h of hyps) strategyCounts[h.strategy] = (strategyCounts[h.strategy] || 0) + 1;
+  const lineage = hyps.map((h) => ({
+    id: h.id, label: h.title, parent: h.parents[0] ?? null,
+    kind: (h.created_by === "evolution" ? "evo" : "gen") as "gen" | "evo",
+  }));
+  const topIds = finalRank.slice(0, 5).map((h) => h.id);
+  const eloSeries: Record<string, { i: number; elo: number }[]> = {};
+  const eloLabels: Record<string, string> = {};
+  matches.forEach((m, mi) => {
+    if (topIds.includes(m.hyp_a)) (eloSeries[m.hyp_a] ||= []).push({ i: mi, elo: m.elo_a_after });
+    if (topIds.includes(m.hyp_b)) (eloSeries[m.hyp_b] ||= []).push({ i: mi, elo: m.elo_b_after });
+  });
+  for (const h of finalRank.slice(0, 5)) eloLabels[h.id] = h.title.slice(0, 24);
+  const figures = { strategyCounts, lineage, eloSeries, eloLabels };
+
+  // Groq gives a prompt-specific prose overview; still append the data analysis.
+  const groqProse = rec.content?.overview?.trim();
+  const overview = groqProse
+    ? `${groqProse}\n\n${buildAnalysis(proposals, figures)}`
+    : makeOverview(goal, proposals, figures);
   emit("metareview", "session_done", { stop_reason: "ELO_STABLE" });
   const metaFeedback: Feedback = {
     id: `fb_${simId}_meta`, created_at: isoAt(rec, tEnd), source: "meta_review",

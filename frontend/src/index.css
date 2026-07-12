@@ -167,6 +167,51 @@ body {
 .prose-sci blockquote {
   @apply border-l-2 border-brand-500/40 pl-4 my-3 italic text-faint;
 }
+.prose-sci hr { @apply my-6 border-line; }
+/* GFM tables */
+.prose-sci table {
+  @apply my-4 w-full border-collapse overflow-hidden rounded-lg text-[13px];
+}
+.prose-sci thead { @apply bg-surface-2; }
+.prose-sci th {
+  @apply border border-line px-3 py-2 text-left font-semibold text-fg;
+}
+.prose-sci td {
+  @apply border border-line px-3 py-2 text-muted;
+}
+.prose-sci tbody tr:nth-child(even) { background: rgb(var(--fg) / 0.02); }
+/* fenced code blocks (non-chart) */
+.report-pre {
+  @apply my-3 rounded-lg border border-line bg-surface-2 p-3 text-[12.5px]
+         font-mono leading-relaxed text-muted;
+}
+.report-figure, .prose-sci table { break-inside: avoid; page-break-inside: avoid; }
+/* KaTeX display math shouldn't overflow narrow columns */
+.prose-sci .katex-display { @apply overflow-x-auto overflow-y-hidden py-1; }
+
+/* ── Print / PDF ──────────────────────────────────────────────
+   The report prints as a clean document: app chrome hidden, forced light
+   theme, charts kept whole across page breaks, SVG charts stay vector-crisp. */
+@media print {
+  :root, .dark {
+    --bg: 255 255 255; --surface: 255 255 255; --surface-2: 245 245 247;
+    --border: 220 220 224; --fg: 17 17 20; --muted: 60 60 66; --faint: 100 100 108;
+    color-scheme: light;
+  }
+  body { background: #fff !important; }
+  /* Hide everything not marked printable, plus known chrome. */
+  .no-print, aside, nav, .sidebar, footer, button { display: none !important; }
+  /* Let the report fill the page. */
+  .md\:pl-56 { padding-left: 0 !important; }
+  main { max-width: none !important; padding: 0 !important; }
+  .card { box-shadow: none !important; border-color: #e4e4e7 !important; }
+  .report-figure, .prose-sci table, .prose-sci h1, .prose-sci h2, .prose-sci h3 {
+    break-inside: avoid; page-break-inside: avoid;
+  }
+  .prose-sci h1, .prose-sci h2, .prose-sci h3 { break-after: avoid; }
+  a { color: #1d4ed8 !important; text-decoration: underline; }
+  @page { size: A4; margin: 16mm; }
+}
 
 /* ── Grid background ──────────────────────────────────────── */
 .grid-bg {
