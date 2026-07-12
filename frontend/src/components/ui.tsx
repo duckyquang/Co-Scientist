@@ -76,16 +76,17 @@ export function Markdown({ md }: { md: string }) {
           // Unwrap ```mermaid / ```chart blocks so the chart isn't nested in <pre>.
           pre({ children }) {
             const child: any = Array.isArray(children) ? children[0] : children;
-            const cls: string = child?.props?.className || "";
-            if (/language-(mermaid|chart)/.test(cls)) return <>{child}</>;
+            const lang = /language-(\w+)/.exec(child?.props?.className || "")?.[1];
+            if (lang === "mermaid" || lang === "chart") return <>{child}</>;
             return <pre className="report-pre overflow-x-auto">{children}</pre>;
           },
-          code({ className, children, ...props }) {
+          // Drop react-markdown's `node`/extra props so they don't leak onto <code>.
+          code({ className, children }) {
             const lang = /language-(\w+)/.exec(className || "")?.[1];
             const text = String(children).replace(/\n$/, "");
             if (lang === "mermaid") return <Mermaid chart={text} />;
             if (lang === "chart") return <ReportChart raw={text} />;
-            return <code className={className} {...props}>{children}</code>;
+            return <code className={className}>{children}</code>;
           },
         }}
       >

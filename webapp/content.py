@@ -164,17 +164,23 @@ def _mm_id(s: str) -> str:
     return "n" + "".join(c for c in s if c.isalnum())
 
 
+def _cell(s: str) -> str:
+    """Escape GFM table-cell delimiters so a '|' in a title can't shift columns."""
+    return s.replace("|", "\\|")
+
+
 def _analysis_block(goal: str, top: list[dict]) -> str:
-    """Deterministic figures section (scorecard table + ```chart + ```mermaid
-    lineage + KaTeX). Mirrors frontend/src/lib/sim/content.ts buildAnalysis so
-    the self-host / seeded demo report matches live + in-browser output."""
+    """Deterministic figures section (scorecard table + ```chart + strategy-mix
+    donut + ```mermaid lineage + KaTeX). Mirrors the shared subset of
+    frontend/src/lib/sim/content.ts buildAnalysis; the in-browser demo
+    additionally shows an Elo-trajectory chart."""
     scored = []
     for p in top:
         sc = make_review(goal, p["title"], "full")["scores"]
         scored.append((p, sc))
 
     rows = "\n".join(
-        f"| {i+1}. {p['title'][:40]} | {sc['novelty']:.2f} | {sc['correctness']:.2f} "
+        f"| {i+1}. {_cell(p['title'][:40])} | {sc['novelty']:.2f} | {sc['correctness']:.2f} "
         f"| {sc['testability']:.2f} | {sc['feasibility']:.2f} |"
         for i, (p, sc) in enumerate(scored)
     )
@@ -193,10 +199,29 @@ def _analysis_block(goal: str, top: list[dict]) -> str:
         "|---|---|---|---|---|\n" + rows + "\n\n```chart\n" + json.dumps(spec) + "\n```",
     ]
 
+    # Strategy mix → donut.
+    strat_counts: dict = {}
+    for p in top:
+        s = p.get("strategy", "literature")
+        strat_counts[s] = strat_counts.get(s, 0) + 1
+    if strat_counts:
+        entries = sorted(strat_counts.items(), key=lambda kv: -kv[1])
+        srows = "\n".join(f"| {k} | {v} |" for k, v in entries)
+        dspec = {"type": "donut", "title": "Hypotheses by generation strategy",
+                 "segments": [{"label": k, "value": v} for k, v in entries]}
+        parts.append(
+            "### Where the ideas came from\n\n"
+            "| Generation strategy | Hypotheses |\n|---|---|\n" + srows + "\n\n"
+            "```chart\n" + json.dumps(dspec) + "\n```"
+        )
+
     # Lineage (only when the proposals carry parent ids, e.g. seeded demo).
     ids_shown = {p.get("id") for p in top}
     if any(p.get("parent_ids") for p in top):
-        nodes = "\n".join(f'  {_mm_id(p["id"])}["{p["title"][:30]}"]' for p in top if p.get("id"))
+        nodes = "\n".join(
+            f'  {_mm_id(p["id"])}["{p["title"].replace(chr(34), " ")[:30]}"]'
+            for p in top if p.get("id")
+        )
         edges = "\n".join(
             f'  {_mm_id(par)} --> {_mm_id(p["id"])}'
             for p in top for par in (p.get("parent_ids") or []) if par in ids_shown

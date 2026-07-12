@@ -59,7 +59,10 @@ export function deriveMessages(input: {
   const offspring = hyps.filter((h) => h.created_by === "evolution");
   if (offspring.length) msgs.push({ id: "evolving", role: "assistant", kind: "evolving", offspring });
 
-  for (const f of feedback) {
+  // Feedback endpoints return newest-first (correct for the Explore feed), but a
+  // top-to-bottom chat thread must read oldest-first like the rest of the thread.
+  const fbAsc = [...feedback].sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at));
+  for (const f of fbAsc) {
     msgs.push({
       id: `fb-${f.id}`,
       role: f.source === "human" ? "user" : "assistant",

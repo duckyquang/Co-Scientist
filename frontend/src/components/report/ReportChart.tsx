@@ -24,7 +24,7 @@ export function ReportChart({ raw }: { raw: string }) {
           {spec.title}
         </figcaption>
       )}
-      {spec.type === "scores" && (
+      {spec.type === "scores" && Array.isArray(spec.proposals) && (
         <div className="grid gap-4 sm:grid-cols-2">
           {spec.proposals.map((p, i) => (
             <div key={i}>
@@ -34,7 +34,7 @@ export function ReportChart({ raw }: { raw: string }) {
           ))}
         </div>
       )}
-      {spec.type === "donut" && (
+      {spec.type === "donut" && Array.isArray(spec.segments) && (
         <div className="flex flex-wrap items-center gap-6">
           <Donut segments={spec.segments.map((s, i) => ({
             value: s.value, color: s.color || DONUT_COLORS[i % DONUT_COLORS.length], label: s.label,
@@ -50,7 +50,7 @@ export function ReportChart({ raw }: { raw: string }) {
           </div>
         </div>
       )}
-      {spec.type === "elo" && (
+      {spec.type === "elo" && spec.series && typeof spec.series === "object" && (
         <EloRace series={spec.series} labels={spec.labels} height={200} />
       )}
     </figure>

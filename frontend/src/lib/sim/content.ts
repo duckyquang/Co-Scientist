@@ -301,6 +301,8 @@ export interface OverviewFigures {
 
 const mmId = (s: string) => "n" + s.replace(/[^a-zA-Z0-9]/g, "");
 const mmLabel = (s: string) => s.replace(/["\n]/g, " ").slice(0, 30);
+// Escape GFM table-cell delimiters so a title containing '|' can't shift columns.
+const cell = (s: string) => s.replace(/\|/g, "\\|");
 
 /** The deterministic "Analysis" section: tables + chart/mermaid blocks + KaTeX,
  *  assembled from real session data so the figures are always correct regardless
@@ -313,7 +315,7 @@ export function buildAnalysis(proposals: OverviewProposal[], figures?: OverviewF
   if (scored.length) {
     const rows = scored.map((p, i) => {
       const s = p.scores!;
-      return `| ${i + 1}. ${p.title.slice(0, 40)} | ${s.novelty.toFixed(2)} | ${s.correctness.toFixed(2)} | ${s.testability.toFixed(2)} | ${s.feasibility.toFixed(2)} |`;
+      return `| ${i + 1}. ${cell(p.title.slice(0, 40))} | ${s.novelty.toFixed(2)} | ${s.correctness.toFixed(2)} | ${s.testability.toFixed(2)} | ${s.feasibility.toFixed(2)} |`;
     }).join("\n");
     const spec = {
       type: "scores", title: "Reviewer scores by proposal",

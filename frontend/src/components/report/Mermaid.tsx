@@ -6,11 +6,19 @@ import { useEffect, useRef, useState } from "react";
 export function Mermaid({ chart }: { chart: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState(false);
-  // Unique-per-instance id without Math.random at module scope.
-  const idRef = useRef(`mmd-${Math.abs(hashCode(chart)).toString(36)}`);
+  // Bumped when the app theme flips, so the diagram re-renders in the new theme.
+  const [themeTick, setThemeTick] = useState(0);
+  const base = `mmd-${Math.abs(hashCode(chart)).toString(36)}`;
+
+  useEffect(() => {
+    const obs = new MutationObserver(() => setThemeTick((n) => n + 1));
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => obs.disconnect();
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
+    setFailed(false);
     const dark = document.documentElement.classList.contains("dark");
     (async () => {
       try {
@@ -21,14 +29,16 @@ export function Mermaid({ chart }: { chart: string }) {
           securityLevel: "strict",
           fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
         });
-        const { svg } = await mermaid.render(idRef.current, chart.trim());
+        // Fresh render id each time (mermaid injects a temp node by id — reusing
+        // one across theme re-renders can collide).
+        const { svg } = await mermaid.render(`${base}-${themeTick}`, chart.trim());
         if (!cancelled && ref.current) ref.current.innerHTML = svg;
       } catch {
         if (!cancelled) setFailed(true);
       }
     })();
     return () => { cancelled = true; };
-  }, [chart]);
+  }, [chart, themeTick]);
 
   if (failed) {
     return (

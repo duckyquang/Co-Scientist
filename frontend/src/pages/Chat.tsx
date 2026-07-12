@@ -30,7 +30,7 @@ export default function Chat() {
   const { id } = useParams<{ id: string }>();
   return (
     <div className="flex h-full flex-col px-4 md:px-6">
-      {id ? <Thread id={id} /> : (
+      {id ? <Thread key={id} id={id} /> : (
         <div className="flex-1 overflow-y-auto">
           <div className="flex min-h-full flex-col"><Landing /></div>
         </div>
@@ -147,10 +147,20 @@ function Thread({ id }: { id: string }) {
   }, [id]);
 
   const { data, error, loading, refresh } = usePoll<Bundle>(fetchAll, [id], null);
+  // Sim sessions drive `tick` (~1.1s); refresh the bundle on each.
   useEffect(() => { if (tick) refresh(); /* eslint-disable-next-line */ }, [tick]);
 
   const status = data?.detail.session.status;
   const live = status === "running";
+
+  // The real backend's SSE emits named events, not a periodic tick, so poll the
+  // bundle on an interval while live — this is what animates the thread on real
+  // runs (harmless duplicate refresh for the tick-driven sim).
+  useEffect(() => {
+    if (!live) return;
+    const t = setInterval(refresh, 2500);
+    return () => clearInterval(t);
+  }, [live, refresh]);
   const done = status === "done";
   const session = data?.detail.session;
   const metrics = data?.detail.metrics;
@@ -169,7 +179,10 @@ function Thread({ id }: { id: string }) {
     });
   }, [data, session, metrics, overview, live, done]);
 
-  const { scrollRef, onScroll } = useStickToBottom(messages.length + (live ? 1 : 0));
+  // Re-pin to bottom as content grows — including inside a single message (the
+  // generating list and match count grow without adding messages).
+  const growth = messages.length + (data?.hyps.length ?? 0) + (data?.matches.length ?? 0) + (live ? 1 : 0);
+  const { scrollRef, onScroll } = useStickToBottom(growth);
 
   function onSelect(hid: string) {
     if (compareBase && compareBase !== hid) {

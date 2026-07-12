@@ -25,6 +25,7 @@ export function Composer({
   }, [value]);
 
   function onKeyDown(e: React.KeyboardEvent) {
+    if ((e.nativeEvent as any).isComposing) return; // don't send on an IME commit-Enter
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       if (value.trim() && !sending) onSend();
