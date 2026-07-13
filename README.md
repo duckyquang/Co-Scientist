@@ -29,16 +29,74 @@ An open-source re-implementation of Google's **AI co-scientist** ([Gottweis et a
 
 > Independent project — not affiliated with Google or the paper's authors.
 
+### 🎚️ Hypothesis modes
+
+The New Session form has three modes controlling how many parallel generation
+agents run:
+
+| Mode | Initial hypotheses | When to use |
+|---|---|---|
+| **Quick** | 5 | Fast sanity check of an idea |
+| **Standard** *(default)* | 15 | Balanced breadth vs. runtime |
+| **Deep** | 50 | Exhaustive exploration of a goal |
+
+All three runtimes — the in-browser simulator, the `webapp` Python simulator,
+and the real engine — accept up to 50 parallel hypotheses.
+
+### 💬 Chat follow-ups
+
+Every session has a chat panel (`POST /api/sessions/{id}/chat`) that routes
+your message by intent:
+
+- **Questions about the output** → a grounded answer with a compact table and
+  hypothesis chips as illustrations.
+- **Tweak / update / fix requests** → the engine reruns as a **new session**
+  whose research goal is exactly:
+
+  ```text
+  ORIGINAL IDEA: {idea}
+
+  FEEDBACK / CHANGE WANTED: {user input (extended, if necessary, by the agent)}
+
+  Suggest a new method based on the original idea and the feedback / change wanted.
+  ```
+
+  The reply links to the new run.
+- **Out-of-scope requests** → the reply "Currently, Co-Scientist is unable to
+  do this."
+
+To steer a session **while it's still running**, the feedback endpoint
+(`POST /api/sessions/{id}/feedback`) still accepts directives, preferences,
+and per-hypothesis pin/reject.
+
+### 📚 Citations guaranteed
+
+Every research proposal ends with a numbered `## References` section, with
+inline `[n]` markers throughout the text. The real engine builds it only from
+papers actually fetched during literature search (`CitedPaper` records) and
+marks any entry the citation verifier couldn't confirm as `(unverified)`.
+Simulators show well-formed sample references.
+
 ---
 
 ## 🚀 Quick start — no setup required
 
 1. **Visit the live site** → [duckyquang.github.io/Co-Scientist](https://duckyquang.github.io/Co-Scientist/)
 2. Click **"Start a research session"**
-3. Type your research question and hit **Launch**
+3. Pick a mode — **Quick** (5), **Standard** (15, default), or **Deep** (50
+   initial hypotheses)
+4. Type your research question and hit **Launch**
 
 **No account. No API key. No configuration** — for the visitor. Type a prompt and six
-agents generate, debate, and Elo-rank hypotheses, then write a final overview.
+agents generate, debate, and Elo-rank hypotheses, then write a final overview —
+§-numbered sections, inline `[n]` citations, and a `## References` list included.
+When it's done, ask follow-up questions or request changes in the session's chat panel.
+
+The UI is an academic "graph-paper" design inspired by
+[GEML](https://saidlaboratory.github.io/GEML/): serif typography, mono
+micro-labels, a paper-and-grid background, flat 1px-rule cards, and a
+red/blue/green accent system. Light and dark follow your OS setting
+(`prefers-color-scheme`), and the hypothesis drawer slides in from the right.
 
 **How the live site answers prompts** depends on one repo setting:
 
