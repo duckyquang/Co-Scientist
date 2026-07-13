@@ -1,17 +1,15 @@
 import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { Check, Dot, FlaskConical, ClipboardList, Copy, Printer, Globe } from "lucide-react";
+import { Check, FlaskConical, ClipboardList, Copy, Printer, Globe } from "lucide-react";
 import { api } from "../../api";
 import {
-  EVENT_ICON, agentColor, clockTime, eloColor, fmtCompact, fmtUsd, timeAgo,
+  agentColor, clockTime, eloColor, fmtCompact, fmtUsd, timeAgo,
 } from "../../lib/format";
 import { Donut, EloRace } from "../charts";
 import { AgentTag, Empty, Markdown, StateBadge, StrategyTag } from "../ui";
 import type {
   CostByAgent, Feedback, Hypothesis, Match, SSEvent,
 } from "../../types";
-
-const AGENT_ORDER = ["generation", "reflection", "ranking", "evolution", "metareview", "proximity", "supervisor"];
 
 /* ----------------------------- Leaderboard ----------------------------- */
 export function Leaderboard({
@@ -32,7 +30,7 @@ export function Leaderboard({
       ))}
       {rejected.length > 0 && (
         <details className="pt-2">
-          <summary className="cursor-pointer text-xs uppercase tracking-wider text-faint">
+          <summary className="cursor-pointer font-mono text-[10.5px] uppercase tracking-[0.12em] text-ink-soft">
             {rejected.length} rejected
           </summary>
           <div className="mt-2 space-y-2 opacity-60">
@@ -49,20 +47,20 @@ function Row({ h, rank, onSelect, spark }: {
 }) {
   return (
     <button onClick={() => onSelect(h.id)}
-      className="card card-hover flex w-full items-center gap-4 p-3.5 text-left animate-fade-up">
+      className="card card-hover flex w-full items-center gap-4 p-3.5 text-left">
       <div className="w-8 shrink-0 text-center">
         {rank > 0
-          ? <span className={`text-lg font-bold ${rank <= 3 ? "text-blue-400" : "text-faint"}`}>{rank}</span>
-          : <span className="text-faint">—</span>}
+          ? <span className={`num text-lg font-bold ${rank <= 3 ? "text-accent" : "text-ink-soft"}`}>{rank}</span>
+          : <span className="text-ink-soft">—</span>}
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="truncate text-[14px] font-semibold text-fg">{h.title}</span>
+          <span className="truncate font-serif text-[15px] font-semibold text-ink">{h.title}</span>
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-2">
           <StateBadge state={h.state} />
           <StrategyTag strategy={h.strategy} />
-          <span className="text-[11px] text-faint">{h.matches_played} matches · {h.n_reviews ?? 0} reviews</span>
+          <span className="num text-[11px] text-ink-soft">{h.matches_played} matches · {h.n_reviews ?? 0} reviews</span>
         </div>
       </div>
       {spark && spark.length > 1 && (
@@ -71,8 +69,8 @@ function Row({ h, rank, onSelect, spark }: {
         </div>
       )}
       <div className="w-16 shrink-0 text-right">
-        <div className={`text-xl font-bold ${eloColor(h.elo)}`}>{h.elo ? Math.round(h.elo) : "—"}</div>
-        <div className="text-[10px] uppercase tracking-wider text-faint">elo</div>
+        <div className={`num text-xl font-bold ${eloColor(h.elo)}`}>{h.elo ? Math.round(h.elo) : "—"}</div>
+        <div className="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-soft">elo</div>
       </div>
     </button>
   );
@@ -87,7 +85,7 @@ function MiniSpark({ values }: { values: number[] }) {
     `${i ? "L" : "M"}${(i / (values.length - 1)) * w},${ht - ((v - min) / span) * ht}`).join(" ");
   return (
     <svg width={w} height={ht}>
-      <path d={d} fill="none" stroke={up ? "#60a5fa" : "#52525b"} strokeWidth="1.6" />
+      <path d={d} fill="none" stroke={up ? "var(--green)" : "var(--red)"} strokeWidth="1.6" />
     </svg>
   );
 }
@@ -119,7 +117,7 @@ export function TournamentPanel({
       <div className="card p-5">
         <div className="label mb-3">Recent matches ({matches.length})</div>
         {matches.length === 0 ? (
-          <div className="text-sm text-faint">No tournament matches yet.</div>
+          <div className="text-sm text-ink-soft">No tournament matches yet.</div>
         ) : (
           <div className="space-y-2">
             {matches.slice(0, 40).map((m) => <MatchRow key={m.id} m={m} onSelect={onSelect} />)}
@@ -134,23 +132,21 @@ function MatchRow({ m, onSelect }: { m: Match; onSelect: (id: string) => void })
   const aWon = m.winner === "a";
   const Side = ({ id, title, won, eloAfter }: { id: string; title?: string; won: boolean; eloAfter: number | null }) => (
     <button onClick={() => onSelect(id)}
-      className={`min-w-0 flex-1 truncate rounded-lg px-2.5 py-1.5 text-left text-[13px] transition ${
-        won ? "bg-blue-500/10 text-blue-700 dark:text-blue-200 ring-1 ring-blue-500/20" : "bg-surface-2 text-muted"
+      className={`min-w-0 flex-1 truncate border px-2.5 py-1.5 text-left text-[13px] transition-colors ${
+        won ? "border-green bg-green-soft text-green" : "border-rule text-ink-soft hover:text-ink"
       }`}>
       {won && <Check className="mr-0.5 inline h-3 w-3" />}{title || id.slice(0, 10)}
-      {eloAfter != null && <span className="ml-1 font-mono text-[11px] opacity-70">{Math.round(eloAfter)}</span>}
+      {eloAfter != null && <span className="num ml-1 text-[11px] opacity-70">{Math.round(eloAfter)}</span>}
     </button>
   );
   return (
-    <div className="rounded-xl border border-line bg-surface-2 p-2.5">
+    <div className="border border-rule bg-card p-2.5">
       <div className="flex items-center gap-2">
         <Side id={m.hyp_a} title={m.title_a} won={aWon} eloAfter={m.elo_a_after} />
-        <span className="shrink-0 rounded-md bg-surface-2 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-muted">
-          {m.mode}
-        </span>
+        <span className="tag shrink-0">{m.mode}</span>
         <Side id={m.hyp_b} title={m.title_b} won={!aWon && m.winner === "b"} eloAfter={m.elo_b_after} />
       </div>
-      {m.rationale && <div className="mt-1.5 px-1 text-[11px] italic text-faint">{m.rationale}</div>}
+      {m.rationale && <div className="mt-1.5 px-1 font-serif text-[12px] italic text-ink-soft">{m.rationale}</div>}
     </div>
   );
 }
@@ -172,8 +168,8 @@ export function AnalyticsPanel({
             <Donut segments={segments} />
             <div className="absolute inset-0 grid place-items-center">
               <div className="text-center">
-                <div className="text-lg font-bold text-fg">{fmtUsd(total)}</div>
-                <div className="text-[10px] uppercase tracking-wider text-faint">total</div>
+                <div className="num text-lg font-bold text-ink">{fmtUsd(total)}</div>
+                <div className="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-soft">total</div>
               </div>
             </div>
           </div>
@@ -181,9 +177,9 @@ export function AnalyticsPanel({
             {byAgent.map((a) => (
               <div key={a.agent} className="flex items-center gap-2 text-sm">
                 <span className="h-2.5 w-2.5 rounded-full" style={{ background: agentColor(a.agent).hex }} />
-                <span className="capitalize text-muted">{a.agent}</span>
-                <span className="ml-auto font-mono text-muted">{fmtUsd(a.cost_usd)}</span>
-                <span className="w-10 text-right text-[11px] text-faint">
+                <span className="capitalize text-ink-soft">{a.agent}</span>
+                <span className="num ml-auto text-ink">{fmtUsd(a.cost_usd)}</span>
+                <span className="num w-10 text-right text-[11px] text-ink-soft">
                   {((a.cost_usd / total) * 100).toFixed(0)}%
                 </span>
               </div>
@@ -195,23 +191,23 @@ export function AnalyticsPanel({
       <div className="card p-5">
         <div className="label mb-3">Token usage</div>
         <div className="grid grid-cols-2 gap-4">
-          <TokenStat label="Input tokens" value={summary?.input_tokens} color="#3b82f6" />
-          <TokenStat label="Output tokens" value={summary?.output_tokens} color="#60a5fa" />
-          <TokenStat label="Cache reads" value={summary?.cache_read} color="#93c5fd" />
-          <TokenStat label="LLM calls" value={summary?.n_calls} color="#3b82f6" raw />
+          <TokenStat label="Input tokens" value={summary?.input_tokens} color="var(--chart-1)" />
+          <TokenStat label="Output tokens" value={summary?.output_tokens} color="var(--chart-2)" />
+          <TokenStat label="Cache reads" value={summary?.cache_read} color="var(--chart-3)" />
+          <TokenStat label="LLM calls" value={summary?.n_calls} color="var(--chart-4)" raw />
         </div>
-        <div className="mt-5 border-t border-line pt-4">
+        <div className="mt-5 border-t border-rule pt-4">
           <div className="label mb-2">Per-agent call breakdown</div>
           <div className="space-y-1.5">
             {byAgent.map((a) => {
               const max = Math.max(...byAgent.map((x) => x.n_calls), 1);
               return (
                 <div key={a.agent} className="flex items-center gap-2 text-xs">
-                  <span className="w-20 capitalize text-muted">{a.agent}</span>
-                  <div className="h-2 flex-1 rounded-full bg-surface-2">
-                    <div className="h-full rounded-full" style={{ width: `${(a.n_calls / max) * 100}%`, background: agentColor(a.agent).hex }} />
+                  <span className="w-20 capitalize text-ink-soft">{a.agent}</span>
+                  <div className="h-2 flex-1 bg-[var(--grid)]">
+                    <div className="h-full" style={{ width: `${(a.n_calls / max) * 100}%`, background: agentColor(a.agent).hex }} />
                   </div>
-                  <span className="w-8 text-right font-mono text-faint">{a.n_calls}</span>
+                  <span className="num w-8 text-right text-ink-soft">{a.n_calls}</span>
                 </div>
               );
             })}
@@ -224,9 +220,9 @@ export function AnalyticsPanel({
 
 function TokenStat({ label, value, color, raw }: { label: string; value: number; color: string; raw?: boolean }) {
   return (
-    <div className="rounded-xl border border-line bg-surface-2 p-3">
-      <div className="text-xl font-bold" style={{ color }}>{raw ? value ?? 0 : fmtCompact(value)}</div>
-      <div className="text-[10px] uppercase tracking-wider text-faint">{label}</div>
+    <div className="border border-rule bg-card p-3">
+      <div className="num text-xl font-bold" style={{ color }}>{raw ? value ?? 0 : fmtCompact(value)}</div>
+      <div className="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-soft">{label}</div>
     </div>
   );
 }
@@ -248,39 +244,39 @@ const EVENT_LABEL: Record<string, (p: any) => string> = {
   session_aborted: () => "Session aborted",
 };
 
+const DONE_EVENTS = new Set(["task_completed", "session_done", "match_complete"]);
+
 export function ActivityFeed({ events, live }: { events: SSEvent[]; live: boolean }) {
   return (
     <div className="card p-5">
       <div className="mb-3 flex items-center justify-between">
         <div className="label">Live activity</div>
-        <span className={`chip ${live ? "bg-blue-500/10 text-blue-400" : "bg-slate-500/15 text-muted"}`}>
-          {live && <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulseDot" />}
+        <span className={`chip ${live ? "chip-blue" : "chip-mute"}`}>
+          {live && <span className="h-1.5 w-1.5 rounded-full bg-blue animate-pulseDot" />}
           {live ? "streaming" : "idle"}
         </span>
       </div>
       {events.length === 0 ? (
-        <div className="py-8 text-center text-sm text-faint">Waiting for events…</div>
+        <div className="py-8 text-center text-sm text-ink-soft">Waiting for events…</div>
       ) : (
         <div className="relative max-h-[560px] space-y-0 overflow-y-auto pl-1">
           {events.map((e, i) => {
             const label = EVENT_LABEL[e.event] || (() => e.event);
-            const Icon = EVENT_ICON[e.event] || Dot;
             const c = agentColor(e.agent);
+            const done = DONE_EVENTS.has(e.event);
             return (
-              <div key={`${e.id}-${i}`} className="relative flex gap-3 pb-3 animate-fade-up">
+              <div key={`${e.id}-${i}`} className="relative flex gap-3 pb-3">
                 <div className="flex flex-col items-center">
-                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full"
-                    style={{ background: c.hex + "22", border: `1px solid ${c.hex}55` }}>
-                    <Icon className="h-3.5 w-3.5" style={{ color: c.hex }} />
-                  </span>
-                  {i < events.length - 1 && <span className="my-0.5 w-px flex-1 bg-surface-2" />}
+                  <span className={`tl-dot mt-1 ${done ? "tl-dot-done" : ""}`}
+                    style={done ? undefined : { borderColor: c.hex }} />
+                  {i < events.length - 1 && <span className="my-0.5 w-px flex-1 bg-rule" />}
                 </div>
                 <div className="min-w-0 flex-1 pb-1">
                   <div className="flex items-center gap-2">
-                    {e.agent && <span className="text-[11px] font-semibold" style={{ color: c.hex }}>{e.agent}</span>}
-                    <span className="text-[10px] text-faint">{e.ts ? clockTime(e.ts) : ""}</span>
+                    {e.agent && <span className="font-mono text-[10.5px] uppercase tracking-[0.08em]" style={{ color: c.hex }}>{e.agent}</span>}
+                    <span className="font-mono text-[10px] text-ink-soft">{e.ts ? clockTime(e.ts) : ""}</span>
                   </div>
-                  <div className="text-[13px] leading-snug text-muted">{label(e.payload)}</div>
+                  <div className="font-serif text-[13px] leading-snug text-ink">{label(e.payload)}</div>
                 </div>
               </div>
             );
@@ -323,11 +319,11 @@ export function FeedbackPanel({
       {feedback.length > 0 && (
         <div className="mt-4 space-y-2">
           {feedback.map((f) => (
-            <div key={f.id} className="flex items-start gap-3 rounded-lg border border-line bg-surface-2 p-3 text-sm">
+            <div key={f.id} className="flex items-start gap-3 border border-rule bg-card p-3 text-sm">
               <AgentTag agent={f.source === "meta_review" ? "metareview" : "human"} />
               <div className="flex-1">
-                <span className="text-muted">{f.text}</span>
-                <span className="ml-2 text-[11px] text-faint">{timeAgo(f.created_at)}</span>
+                <span className="text-ink">{f.text}</span>
+                <span className="ml-2 font-mono text-[10px] text-ink-soft">{timeAgo(f.created_at)}</span>
               </div>
             </div>
           ))}
@@ -344,19 +340,19 @@ export function OverviewPanel({ md }: { md: string | null }) {
   if (!md)
     return <Empty icon={ClipboardList} title="No final overview yet" hint="The Meta-review agent writes this once Elo ratings stabilize." />;
   return (
-    <div className="card p-6">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+    <div className="card mx-auto max-w-[76ch] p-8 print:p-0">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2 no-print">
         <div className="label">Final research overview</div>
         <div className="flex flex-wrap gap-2">
           {id && (
-            <Link to={`/s/${id}/site`} className="btn-primary h-8 text-xs">
+            <Link to={`/s/${id}/site`} className="btn-primary h-8">
               <Globe className="h-3.5 w-3.5" /> View as website
             </Link>
           )}
-          <button className="btn-ghost h-8 text-xs" onClick={() => {
+          <button className="btn-ghost h-8" onClick={() => {
             navigator.clipboard.writeText(md); setCopied(true); setTimeout(() => setCopied(false), 1500);
           }}><Copy className="h-3.5 w-3.5" /> {copied ? "Copied!" : "Copy markdown"}</button>
-          <button className="btn-ghost h-8 text-xs" onClick={() => window.print()}>
+          <button className="btn-ghost h-8" onClick={() => window.print()}>
             <Printer className="h-3.5 w-3.5" /> Print / PDF
           </button>
         </div>

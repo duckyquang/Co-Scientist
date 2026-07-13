@@ -33,7 +33,7 @@ export function Composer({
   }
 
   return (
-    <div className="rounded-2xl border border-line bg-surface p-2 shadow-card focus-within:border-brand-500/50 focus-within:ring-2 focus-within:ring-brand-500/12">
+    <div className="border border-rule bg-card p-2 transition-[border-color,box-shadow] duration-150 focus-within:border-blue focus-within:shadow-[0_0_0_3px_var(--blue-soft)]">
       {accessory && <div className="px-1.5 pt-1 pb-2">{accessory}</div>}
       <div className="flex items-end gap-2">
         <textarea
@@ -44,13 +44,13 @@ export function Composer({
           onKeyDown={onKeyDown}
           rows={1}
           placeholder={placeholder}
-          className="max-h-[200px] flex-1 resize-none bg-transparent px-2.5 py-2 text-[15px] leading-relaxed text-fg placeholder:text-faint outline-none focus:outline-none focus-visible:outline-none"
+          className="max-h-[200px] flex-1 resize-none bg-transparent px-2.5 py-2 font-serif text-[15px] leading-relaxed text-ink placeholder:text-ink-soft outline-none focus:outline-none focus-visible:outline-none"
         />
         <button
           onClick={() => value.trim() && !sending && onSend()}
           disabled={!value.trim() || sending}
           aria-label="Send"
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand-600 text-white transition hover:bg-brand-500 active:scale-95 disabled:opacity-30 disabled:pointer-events-none"
+          className="grid h-9 w-9 shrink-0 place-items-center bg-blue text-paper transition-[filter] hover:brightness-90 disabled:opacity-30 disabled:pointer-events-none"
         >
           {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" strokeWidth={2.5} />}
         </button>

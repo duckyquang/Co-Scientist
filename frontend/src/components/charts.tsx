@@ -2,10 +2,10 @@ import { useState } from "react";
 import type { Scores } from "../types";
 
 export function Sparkline({
-  values, width = 120, height = 34, stroke = "#3b82f6", fill = true,
+  values, width = 120, height = 34, stroke = "var(--blue)", fill = true,
 }: { values: number[]; width?: number; height?: number; stroke?: string; fill?: boolean }) {
   if (values.length < 2) {
-    return <div className="text-[11px] text-faint">—</div>;
+    return <div className="text-[11px] text-ink-soft">—</div>;
   }
   const min = Math.min(...values);
   const max = Math.max(...values);
@@ -18,7 +18,7 @@ export function Sparkline({
   });
   const d = pts.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
   const last = pts[pts.length - 1];
-  const id = "sg" + stroke.replace("#", "");
+  const id = "sg" + stroke.replace(/[^a-z0-9-]/gi, "");
   return (
     <svg width={width} height={height} className="overflow-visible">
       <defs>
@@ -46,7 +46,7 @@ export function Donut({
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
       <g transform={`rotate(-90 ${size / 2} ${size / 2})`}>
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgb(var(--fg) / 0.08)" strokeWidth={thickness} />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--grid)" strokeWidth={thickness} />
         {segments.map((s, i) => {
           const len = (s.value / total) * c;
           const el = (
@@ -88,23 +88,23 @@ export function ScoreRadar({ scores, size = 168 }: { scores: Scores; size?: numb
         <polygon
           key={i}
           points={axes.map((_, j) => point(j, rr).join(",")).join(" ")}
-          fill="none" stroke="rgb(var(--fg) / 0.08)" strokeWidth="1"
+          fill="none" stroke="var(--grid)" strokeWidth="1"
         />
       ))}
       {axes.map((_, i) => {
         const [x, y] = point(i, 1);
-        return <line key={i} x1={cx} y1={cy} x2={x} y2={y} stroke="rgb(var(--fg) / 0.08)" />;
+        return <line key={i} x1={cx} y1={cy} x2={x} y2={y} stroke="var(--grid)" />;
       })}
-      <polygon points={poly} fill="rgba(59,130,246,0.20)" stroke="#3b82f6" strokeWidth="2" />
+      <polygon points={poly} fill="var(--blue-soft)" stroke="var(--blue)" strokeWidth="2" />
       {vals.map((v, i) => {
         const [x, y] = point(i, v);
-        return <circle key={i} cx={x} cy={y} r="3" fill="#60a5fa" />;
+        return <circle key={i} cx={x} cy={y} r="3" fill="var(--blue)" />;
       })}
       {axes.map((a, i) => {
         const [x, y] = point(i, 1.22);
         return (
-          <text key={a.key} x={x} y={y} fontSize="9.5" fill="rgb(var(--faint))"
-            textAnchor="middle" dominantBaseline="middle" className="font-semibold uppercase">
+          <text key={a.key} x={x} y={y} fontSize="9.5" fill="var(--ink-soft)"
+            textAnchor="middle" dominantBaseline="middle" className="font-mono uppercase">
             {a.label}
           </text>
         );
@@ -115,10 +115,10 @@ export function ScoreRadar({ scores, size = 168 }: { scores: Scores; size?: numb
 
 export function ScoreBars({ scores }: { scores: Scores }) {
   const rows = [
-    { key: "novelty", label: "Novelty", color: "#60a5fa" },
-    { key: "correctness", label: "Correctness", color: "#3b82f6" },
-    { key: "testability", label: "Testability", color: "#93c5fd" },
-    { key: "feasibility", label: "Feasibility", color: "#2563eb" },
+    { key: "novelty", label: "Novelty", color: "var(--chart-1)" },
+    { key: "correctness", label: "Correctness", color: "var(--chart-2)" },
+    { key: "testability", label: "Testability", color: "var(--chart-3)" },
+    { key: "feasibility", label: "Feasibility", color: "var(--chart-4)" },
   ] as const;
   return (
     <div className="space-y-2">
@@ -126,12 +126,12 @@ export function ScoreBars({ scores }: { scores: Scores }) {
         const v = (scores[r.key] ?? null) as number | null;
         return (
           <div key={r.key} className="flex items-center gap-3">
-            <div className="w-24 text-[11px] font-semibold uppercase tracking-wide text-muted">{r.label}</div>
-            <div className="h-2 flex-1 rounded-full bg-surface-2 overflow-hidden">
-              <div className="h-full rounded-full transition-all duration-700"
+            <div className="w-24 font-mono text-[10.5px] uppercase tracking-[0.08em] text-ink-soft">{r.label}</div>
+            <div className="h-2 flex-1 overflow-hidden bg-[var(--grid)]">
+              <div className="h-full transition-all duration-700"
                 style={{ width: `${(v ?? 0) * 100}%`, background: r.color }} />
             </div>
-            <div className="w-9 text-right text-xs font-mono text-muted">
+            <div className="num w-9 text-right text-xs text-ink-soft">
               {v == null ? "—" : v.toFixed(2)}
             </div>
           </div>
@@ -154,7 +154,7 @@ export function EloRace({
 }) {
   const [hoverId, setHoverId] = useState<string | null>(null);
   const entries = Object.entries(series).filter(([, v]) => v.length > 1);
-  if (!entries.length) return <div className="text-sm text-faint">Not enough matches yet.</div>;
+  if (!entries.length) return <div className="text-sm text-ink-soft">Not enough matches yet.</div>;
   const allElo = entries.flatMap(([, v]) => v.map((p) => p.elo));
   const maxI = Math.max(...entries.flatMap(([, v]) => v.map((p) => p.i)));
   const min = Math.min(...allElo) - 5;
@@ -164,7 +164,10 @@ export function EloRace({
   const pad = { l: 38, r: 12, t: 12, b: 22 };
   const x = (i: number) => pad.l + (i / (maxI || 1)) * (W - pad.l - pad.r);
   const y = (e: number) => pad.t + (1 - (e - min) / (max - min || 1)) * (H - pad.t - pad.b);
-  const palette = ["#bfdbfe", "#93c5fd", "#60a5fa", "#3b82f6", "#2563eb", "#1d4ed8", "#1e40af", "#1e3a8a"];
+  const palette = [
+    "var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)",
+    "var(--chart-5)", "var(--chart-6)", "var(--chart-7)", "var(--chart-8)",
+  ];
   const ticks = 4;
   const colorOf = (idx: number) => palette[idx % palette.length];
   const active = hoverId || highlight || null;
@@ -183,14 +186,14 @@ export function EloRace({
             const yy = y(e);
             return (
               <g key={k}>
-                <line x1={pad.l} y1={yy} x2={W - pad.r} y2={yy} stroke="rgb(var(--fg) / 0.08)" />
-                <text x={4} y={yy + 3} fontSize="9" fill="rgb(var(--faint))" className="font-mono">{Math.round(e)}</text>
+                <line x1={pad.l} y1={yy} x2={W - pad.r} y2={yy} stroke="var(--grid)" />
+                <text x={4} y={yy + 3} fontSize="9" fill="var(--ink-soft)" className="font-mono">{Math.round(e)}</text>
               </g>
             );
           })}
           {entries.map(([id, v], idx) => {
             const isHi = active === id;
-            const color = isHi ? "#60a5fa" : colorOf(idx);
+            const color = isHi ? "var(--red)" : colorOf(idx);
             const d = v.map((p, i) => `${i ? "L" : "M"}${x(p.i).toFixed(1)},${y(p.elo).toFixed(1)}`).join(" ");
             const last = v[v.length - 1];
             return (
@@ -212,9 +215,9 @@ export function EloRace({
           })}
         </svg>
         {active && (
-          <div className="pointer-events-none absolute left-3 top-2 max-w-[60%] truncate rounded-lg border border-line bg-surface/95 px-2.5 py-1.5 text-[12px] shadow-xl">
-            <span className="font-semibold text-fg">{labelOf(active)}</span>
-            <span className="ml-1.5 font-mono text-blue-300">{finalElo(active)}</span>
+          <div className="pointer-events-none absolute left-3 top-2 max-w-[60%] truncate border border-rule bg-card px-2.5 py-1.5 text-[12px]">
+            <span className="font-semibold text-ink">{labelOf(active)}</span>
+            <span className="num ml-1.5 text-blue">{finalElo(active)}</span>
           </div>
         )}
       </div>
@@ -227,18 +230,18 @@ export function EloRace({
             <button key={id}
               onClick={() => onSelect?.(id)}
               onMouseEnter={() => setHoverId(id)} onMouseLeave={() => setHoverId(null)}
-              className={`inline-flex max-w-[230px] items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[11px] transition ${
-                isHi ? "bg-surface-2 text-fg" : "text-muted hover:text-fg"
+              className={`inline-flex max-w-[230px] items-center gap-1.5 border px-1.5 py-0.5 text-[11px] transition-colors ${
+                isHi ? "border-rule bg-card text-ink" : "border-transparent text-ink-soft hover:text-ink"
               }`}>
-              <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: isHi ? "#60a5fa" : colorOf(idx) }} />
+              <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: isHi ? "var(--red)" : colorOf(idx) }} />
               <span className="truncate">{labelOf(id)}</span>
-              <span className="shrink-0 font-mono text-faint">{finalElo(id)}</span>
+              <span className="num shrink-0 text-ink-soft">{finalElo(id)}</span>
             </button>
           );
         })}
       </div>
       {onSelect && (
-        <div className="mt-2 text-[11px] text-faint">Click a line or label to open the hypothesis.</div>
+        <div className="mt-2 text-[11px] text-ink-soft">Click a line or label to open the hypothesis.</div>
       )}
     </div>
   );

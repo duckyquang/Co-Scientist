@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Microscope, Rocket } from "lucide-react";
+import { Microscope } from "lucide-react";
 import { api } from "../api";
 import { Sparkline } from "../components/charts";
 import { Loader, Progress, StatusBadge } from "../components/ui";
 import { eloColor, fmtCompact, timeAgo } from "../lib/format";
-import { usePoll } from "../lib/hooks";
+import { usePoll, useReveal } from "../lib/hooks";
 import type { SessionRow } from "../types";
 
 const EXAMPLE_PROMPTS = [
@@ -15,37 +15,37 @@ const EXAMPLE_PROMPTS = [
   "Find testable strategies to extend the lifespan of human cardiac organoids",
 ];
 
-function SessionCard({ s, i = 0 }: { s: SessionRow; i?: number }) {
+function SessionCard({ s }: { s: SessionRow }) {
   const tokCap = s.budget_tokens || 0;
   const pct = tokCap > 0 ? (s.budget_used_tokens / tokCap) * 100 : 0;
+  const ref = useReveal<HTMLAnchorElement>();
   return (
-    <Link to={`/s/${s.id}`} style={{ animationDelay: `${Math.min(i, 8) * 45}ms` }}
-      className="card card-hover group block p-5 animate-fade-up">
+    <Link ref={ref} to={`/s/${s.id}`} className="card card-hover reveal block p-5">
       <div className="flex items-start justify-between gap-3">
         <StatusBadge status={s.status} />
-        <span className="text-[11px] text-faint">{timeAgo(s.updated_at)}</span>
+        <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-soft">{timeAgo(s.updated_at)}</span>
       </div>
-      <h3 className="mt-3 line-clamp-2 text-[15px] font-semibold leading-snug text-fg group-hover:text-fg">
+      <h3 className="mt-3 line-clamp-2 font-serif text-[16px] font-semibold leading-snug text-ink">
         {s.research_goal}
       </h3>
       <div className="mt-4 grid grid-cols-3 gap-2 text-center">
         <div>
-          <div className="text-lg font-bold text-fg">{s.n_hyps}</div>
-          <div className="text-[10px] uppercase tracking-wider text-faint">hypotheses</div>
+          <div className="num text-lg font-bold text-ink">{s.n_hyps}</div>
+          <div className="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-soft">hypotheses</div>
         </div>
         <div>
-          <div className={`text-lg font-bold ${eloColor(s.top_elo)}`}>
+          <div className={`num text-lg font-bold ${eloColor(s.top_elo)}`}>
             {s.top_elo ? Math.round(s.top_elo) : "—"}
           </div>
-          <div className="text-[10px] uppercase tracking-wider text-faint">top elo</div>
+          <div className="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-soft">top elo</div>
         </div>
         <div>
-          <div className="text-lg font-bold text-fg">{s.n_matches}</div>
-          <div className="text-[10px] uppercase tracking-wider text-faint">matches</div>
+          <div className="num text-lg font-bold text-ink">{s.n_matches}</div>
+          <div className="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-soft">matches</div>
         </div>
       </div>
       <div className="mt-4">
-        <div className="mb-1 flex justify-between text-[11px] text-muted">
+        <div className="num mb-1 flex justify-between text-[11px] text-ink-soft">
           <span>{fmtCompact(s.budget_used_tokens)} / {fmtCompact(tokCap)} tokens</span>
           <span>{pct.toFixed(0)}%</span>
         </div>
@@ -58,22 +58,22 @@ function SessionCard({ s, i = 0 }: { s: SessionRow; i?: number }) {
 function EmptyState() {
   return (
     <div className="card flex flex-col items-center gap-6 px-8 py-14 text-center">
-      <div className="grid h-16 w-16 place-items-center rounded-2xl bg-blue-600/15 ring-1 ring-blue-500/25">
-        <Microscope className="h-8 w-8 text-brand-400" />
+      <div className="grid h-16 w-16 place-items-center border border-rule bg-blue-soft">
+        <Microscope className="h-8 w-8 text-blue" />
       </div>
       <div>
-        <h2 className="text-xl font-bold text-fg">Start your first research session</h2>
-        <p className="mt-2 max-w-md text-sm leading-relaxed text-muted">
+        <h2 className="font-serif text-xl font-semibold text-ink">Start your first research session</h2>
+        <p className="mt-2 max-w-md text-sm leading-relaxed text-ink-soft">
           Describe a scientific question and six AI agents will generate, debate, and
           Elo-rank novel hypotheses — live.
         </p>
       </div>
-      <Link to="/" className="btn-primary inline-flex items-center gap-2 px-6 py-2.5 text-sm font-semibold">
-        <Rocket className="h-4 w-4" /> Launch a session →
+      <Link to="/" className="btn-primary px-6 py-2.5">
+        Launch a session →
       </Link>
-      <div className="w-full border-t border-line" />
+      <div className="w-full border-t border-rule" />
       <div className="w-full max-w-lg text-left">
-        <div className="mb-3 text-xs font-semibold uppercase tracking-wider text-faint">
+        <div className="label mb-3">
           Try one of these prompts
         </div>
         <div className="space-y-2">
@@ -81,7 +81,7 @@ function EmptyState() {
             <Link
               key={p}
               to={`/?goal=${encodeURIComponent(p)}`}
-              className="block rounded-lg border border-line bg-surface-2 px-4 py-2.5 text-sm text-muted transition hover:border-blue-500/30 hover:bg-blue-500/[0.06] hover:text-fg"
+              className="block border border-rule bg-card px-4 py-2.5 text-sm text-ink-soft transition-colors hover:border-blue hover:text-ink"
             >
               {p}
             </Link>
@@ -109,8 +109,8 @@ export default function Dashboard() {
     <div className="animate-fade-up space-y-8">
       {/* Live sessions banner */}
       {running.length > 0 && (
-        <div className="flex items-center gap-3 rounded-xl border border-blue-500/20 bg-blue-500/[0.06] px-4 py-3 text-sm text-blue-200">
-          <span className="h-2 w-2 shrink-0 rounded-full bg-blue-400 animate-pulseDot" />
+        <div className="flex items-center gap-3 border border-blue bg-blue-soft px-4 py-3 text-sm text-ink">
+          <span className="h-2 w-2 shrink-0 rounded-full bg-blue animate-pulseDot" />
           {running.length} session{running.length > 1 ? "s" : ""} running — live updates streaming.
         </div>
       )}
@@ -119,15 +119,17 @@ export default function Dashboard() {
       <section>
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <h2 className="text-base font-bold text-fg">Your sessions</h2>
+            <h2 className="font-serif text-base font-semibold text-ink">
+              <span className="sec-no">§1</span>Your sessions
+            </h2>
             {userSessions.length > 0 && trend.length > 1 && (
-              <div className="flex items-center gap-1.5 text-[11px] text-faint">
+              <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-ink-soft">
                 trend <Sparkline values={trend} width={64} height={20} />
               </div>
             )}
           </div>
           {userSessions.length > 0 && (
-            <Link to="/" className="btn-primary h-8 px-3 text-xs">+ New session</Link>
+            <Link to="/" className="btn-primary h-8 px-3">+ New session</Link>
           )}
         </div>
 
@@ -135,7 +137,7 @@ export default function Dashboard() {
           <EmptyState />
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {userSessions.map((s, i) => <SessionCard key={s.id} s={s} i={i} />)}
+            {userSessions.map((s) => <SessionCard key={s.id} s={s} />)}
           </div>
         )}
       </section>
@@ -148,17 +150,17 @@ export default function Dashboard() {
             className="mb-4 flex w-full items-center justify-between text-left"
           >
             <div className="flex items-center gap-2">
-              <h2 className="text-sm font-semibold text-muted">Example sessions</h2>
-              <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-bold text-faint">
-                {demoSessions.length}
-              </span>
+              <h2 className="font-serif text-base font-semibold text-ink">
+                <span className="sec-no">§2</span>Example sessions
+              </h2>
+              <span className="chip chip-mute num">{demoSessions.length}</span>
             </div>
-            <span className="text-[11px] text-faint hover:text-muted transition">
+            <span className="font-mono text-[10.5px] uppercase tracking-[0.08em] text-ink-soft transition-colors hover:text-ink">
               {showDemo ? "Hide ↑" : "Show ↓"}
             </span>
           </button>
           {showDemo && (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 animate-fade-up">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {demoSessions.map((s) => <SessionCard key={s.id} s={s} />)}
             </div>
           )}

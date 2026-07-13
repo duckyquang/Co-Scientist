@@ -10,7 +10,10 @@ type Spec =
   | { type: "donut"; title?: string; segments: { label: string; value: number; color?: string }[] }
   | { type: "elo"; title?: string; series: Record<string, { i: number; elo: number }[]>; labels?: Record<string, string> };
 
-const DONUT_COLORS = ["#3b82f6", "#34d399", "#f59e0b", "#60a5fa", "#a78bfa", "#f472b6", "#2dd4bf", "#fb7185"];
+const DONUT_COLORS = [
+  "var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)",
+  "var(--chart-5)", "var(--chart-6)", "var(--chart-7)", "var(--chart-8)",
+];
 
 export function ReportChart({ raw }: { raw: string }) {
   let spec: Spec | null = null;
@@ -18,9 +21,9 @@ export function ReportChart({ raw }: { raw: string }) {
   if (!spec || typeof spec !== "object") return null;
 
   return (
-    <figure className="report-figure my-4 rounded-xl border border-line bg-surface-2/40 p-4">
+    <figure className="report-figure my-4 border border-rule bg-card p-4">
       {spec.title && (
-        <figcaption className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-faint">
+        <figcaption className="mb-3 font-mono text-[10.5px] font-semibold uppercase tracking-[0.14em] text-ink-soft">
           {spec.title}
         </figcaption>
       )}
@@ -28,7 +31,7 @@ export function ReportChart({ raw }: { raw: string }) {
         <div className="grid gap-4 sm:grid-cols-2">
           {spec.proposals.map((p, i) => (
             <div key={i}>
-              <div className="mb-1.5 truncate text-[12.5px] font-semibold text-fg">{p.label}</div>
+              <div className="mb-1.5 truncate font-serif text-[12.5px] font-semibold text-ink">{p.label}</div>
               <ScoreBars scores={p.scores} />
             </div>
           ))}
@@ -43,8 +46,8 @@ export function ReportChart({ raw }: { raw: string }) {
             {spec.segments.map((s, i) => (
               <div key={i} className="flex items-center gap-2 text-[12.5px]">
                 <span className="h-2.5 w-2.5 rounded-full" style={{ background: s.color || DONUT_COLORS[i % DONUT_COLORS.length] }} />
-                <span className="text-muted">{s.label}</span>
-                <span className="ml-auto font-mono text-faint">{s.value}</span>
+                <span className="text-ink-soft">{s.label}</span>
+                <span className="num ml-auto text-ink-soft">{s.value}</span>
               </div>
             ))}
           </div>

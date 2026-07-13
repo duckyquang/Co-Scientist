@@ -71,12 +71,12 @@ export function CommandPalette({
 
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 backdrop-blur-sm pt-[12vh]"
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-[12vh] animate-fade-in"
       onClick={() => setOpen(false)}>
       <div className="card w-full max-w-xl overflow-hidden animate-fade-up" onClick={(e) => e.stopPropagation()}>
         <input
           ref={inputRef}
-          className="w-full border-b border-line bg-transparent px-5 py-4 text-base text-fg outline-none placeholder:text-faint"
+          className="w-full border-b border-rule bg-transparent px-5 py-4 text-base text-ink outline-none placeholder:text-ink-soft"
           placeholder="Search sessions or run a command…"
           value={q}
           onChange={(e) => { setQ(e.target.value); setActive(0); }}
@@ -87,7 +87,7 @@ export function CommandPalette({
           }}
         />
         <div className="max-h-[50vh] overflow-auto p-2">
-          {filtered.length === 0 && <div className="px-3 py-6 text-center text-sm text-faint">No matches</div>}
+          {filtered.length === 0 && <div className="px-3 py-6 text-center text-sm text-ink-soft">No matches</div>}
           {filtered.map((c, i) => {
             const Icon = c.icon;
             return (
@@ -95,20 +95,20 @@ export function CommandPalette({
               key={c.id}
               onMouseEnter={() => setActive(i)}
               onClick={() => choose(i)}
-              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition
-                ${i === active ? "bg-brand-500/20 text-fg" : "text-muted hover:bg-surface-2"}`}
+              className={`flex w-full items-center gap-3 border-l-2 px-3 py-2.5 text-left text-sm transition-colors
+                ${i === active ? "border-accent bg-blue-soft text-ink" : "border-transparent text-ink-soft"}`}
             >
               <Icon className="h-4 w-4 shrink-0" />
               <span className="flex-1 truncate">{c.label}</span>
-              {c.hint && <span className="text-[11px] text-faint">{c.hint}</span>}
+              {c.hint && <span className="font-mono text-[10.5px] text-ink-soft">{c.hint}</span>}
             </button>
             );
           })}
         </div>
-        <div className="flex items-center gap-3 border-t border-line px-4 py-2 text-[11px] text-faint">
-          <span><kbd className="rounded bg-surface-2 px-1">↑↓</kbd> navigate</span>
-          <span><kbd className="rounded bg-surface-2 px-1">↵</kbd> open</span>
-          <span><kbd className="rounded bg-surface-2 px-1">esc</kbd> close</span>
+        <div className="flex items-center gap-3 border-t border-rule px-4 py-2 font-mono text-[10.5px] text-ink-soft">
+          <span><kbd className="border border-rule px-1">↑↓</kbd> navigate</span>
+          <span><kbd className="border border-rule px-1">↵</kbd> open</span>
+          <span><kbd className="border border-rule px-1">esc</kbd> close</span>
         </div>
       </div>
     </div>

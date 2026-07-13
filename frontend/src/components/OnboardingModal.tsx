@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { FlaskConical, FileText, Swords, FilePen, Check } from "lucide-react";
+import { FileText, Swords, FilePen, Check } from "lucide-react";
 import { setDeploymentMode } from "../lib/credentials";
 
 interface Props {
@@ -16,29 +16,22 @@ export function OnboardingModal({ open, onClose }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4 animate-fade-in">
       <div className="w-full max-w-lg animate-fade-up">
         <div className="card overflow-hidden">
-          <div className="h-1 w-full bg-blue-600" />
+          <div className="h-1 w-full" style={{ background: "var(--red)" }} />
           <div className="p-8">
-            {/* Logo */}
-            <div className="mb-6 flex items-center gap-3">
-              <div className="grid h-10 w-10 place-items-center rounded-xl bg-blue-600 text-white shadow-glow">
-                <FlaskConical className="h-5 w-5" />
-              </div>
-              <div>
-                <div className="text-lg font-bold text-fg">Co-Scientist</div>
-                <div className="text-[11px] uppercase tracking-widest text-faint">
-                  AI Research Engine
-                </div>
-              </div>
+            {/* Masthead */}
+            <div className="mb-6 border-b border-rule pb-4">
+              <div className="font-mono text-[13px] font-semibold uppercase tracking-[0.18em] text-ink">Co-Scientist</div>
+              <div className="mt-1 tag">AI Research Engine</div>
             </div>
 
-            <h2 className="text-2xl font-extrabold tracking-tight text-fg">
+            <h2 className="font-serif text-2xl font-semibold leading-[1.15] text-ink">
               Turn any question into<br />
-              <span className="text-blue-400">ranked research hypotheses.</span>
+              <em className="italic text-accent">ranked research hypotheses.</em>
             </h2>
-            <p className="mt-3 text-sm leading-relaxed text-muted">
+            <p className="mt-3 text-sm leading-relaxed text-ink-soft">
               Six specialised AI agents generate, critique, and tournament-rank ideas
               — so you can focus on the research, not the grunt work.
             </p>
@@ -51,24 +44,24 @@ export function OnboardingModal({ open, onClose }: Props) {
                 [FileText, "Get a final overview with the best findings"],
               ] as [LucideIcon, string][]).map(([Icon, text]) => (
                 <div key={text} className="flex items-start gap-3">
-                  <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted" />
-                  <span className="text-sm text-muted">{text}</span>
+                  <Icon className="mt-0.5 h-4 w-4 shrink-0 text-blue" />
+                  <span className="text-sm text-ink-soft">{text}</span>
                 </div>
               ))}
             </div>
 
             {/* Zero-setup callout */}
-            <div className="mt-6 flex items-center gap-3 rounded-xl border border-blue-500/20 bg-blue-500/[0.07] px-4 py-3">
-              <Check className="h-5 w-5 shrink-0 text-blue-400" />
-              <p className="text-sm text-blue-100/80">
-                <span className="font-semibold text-blue-300">No setup needed.</span>{" "}
+            <div className="mt-6 flex items-center gap-3 border border-rule border-l-2 border-l-green bg-green-soft px-4 py-3">
+              <Check className="h-5 w-5 shrink-0 text-green" />
+              <p className="text-sm text-ink-soft">
+                <span className="font-semibold text-green">No setup needed.</span>{" "}
                 Start researching instantly — no API key, no account required.
               </p>
             </div>
 
             <button
               onClick={start}
-              className="btn-primary mt-7 w-full py-3 text-base font-semibold"
+              className="btn-primary mt-7 w-full py-3"
             >
               Start researching →
             </button>

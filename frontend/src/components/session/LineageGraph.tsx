@@ -80,10 +80,10 @@ export function LineageGraph({ nodes, edges, onSelect }: Props) {
   return (
     <div>
       <InfoNote title="What is lineage?">
-        This traces how ideas <span className="text-fg">evolve</span>. Boxes in the{" "}
-        <span className="text-blue-300">first column</span> are original hypotheses from the
+        This traces how ideas <span className="text-ink font-semibold">evolve</span>. Boxes in the{" "}
+        <span className="text-ink font-semibold">first column</span> are original hypotheses from the
         Generation agent; each column to the right is a round of{" "}
-        <span className="text-accent-300">offspring</span> the Evolution agent bred from top parents.
+        <span className="text-ink font-semibold">offspring</span> the Evolution agent bred from top parents.
         Hover a box to light up its ancestry; the number is its Elo rating. Click to open it.
       </InfoNote>
 
@@ -91,8 +91,8 @@ export function LineageGraph({ nodes, edges, onSelect }: Props) {
         <svg width={Math.max(layout.width, 600)} height={layout.height} className="min-w-full">
           {/* tier headers */}
           {Array.from({ length: layout.maxTier + 1 }).map((_, d) => (
-            <text key={d} x={40 + d * 240} y={24} fontSize="11"
-              className="font-semibold uppercase" fill="#64748b" letterSpacing="0.05em">
+            <text key={d} x={40 + d * 240} y={24} fontSize="10.5"
+              className="font-mono uppercase" fill="var(--ink-soft)" letterSpacing="0.12em">
               {TIER_LABEL(d)}
             </text>
           ))}
@@ -106,7 +106,7 @@ export function LineageGraph({ nodes, edges, onSelect }: Props) {
             return (
               <path key={i}
                 d={`M${a.x + 180},${a.y + 19} C${mx},${a.y + 19} ${mx},${b.y + 19} ${b.x},${b.y + 19}`}
-                fill="none" stroke={on ? "#34d399" : "#334155"}
+                fill="none" stroke={on ? "var(--green)" : "var(--ink-soft)"}
                 strokeWidth={on ? 1.8 : 1.1} opacity={on ? 0.75 : 0.3} />
             );
           })}
@@ -121,15 +121,15 @@ export function LineageGraph({ nodes, edges, onSelect }: Props) {
                 opacity={dim ? 0.35 : 1}
                 onMouseEnter={() => setHover(n.id)} onMouseLeave={() => setHover(null)}
                 onClick={() => onSelect(n.id)}>
-                <rect width="180" height="40" rx="10" fill="rgb(var(--surface))"
-                  stroke={hover === n.id ? "#34d399" : c.hex} strokeWidth={hover === n.id ? 2 : 1.3} />
-                <rect width="4" height="40" rx="2" fill={c.hex} />
-                <text x="13" y="17" fontSize="10.5" fill="rgb(var(--fg))" className="font-semibold">
+                <rect width="180" height="40" rx="0" fill="var(--card)"
+                  stroke={hover === n.id ? "var(--green)" : c.hex} strokeWidth={hover === n.id ? 2 : 1.3} />
+                <rect width="4" height="40" fill={c.hex} />
+                <text x="13" y="17" fontSize="10.5" fill="var(--ink)" className="font-semibold">
                   {n.title.length > 26 ? n.title.slice(0, 26) + "…" : n.title}
                 </text>
-                <text x="13" y="31" fontSize="9" fill="rgb(var(--faint))">{n.strategy}</text>
+                <text x="13" y="31" fontSize="9" fill="var(--ink-soft)" className="font-mono">{n.strategy}</text>
                 <text x="168" y="31" fontSize="11.5" textAnchor="end"
-                  className={`font-bold ${eloColor(n.elo)}`} fill="currentColor">
+                  className={`font-mono font-bold ${eloColor(n.elo)}`} fill="currentColor">
                   {n.elo ? Math.round(n.elo) : "—"}
                 </text>
               </g>
@@ -138,17 +138,17 @@ export function LineageGraph({ nodes, edges, onSelect }: Props) {
         </svg>
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-4 text-[11px] text-muted">
+      <div className="mt-3 flex flex-wrap items-center gap-4 text-[11px] text-ink-soft">
         <span className="inline-flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-sm" style={{ background: agentColor("generation").hex }} />
+          <span className="h-2.5 w-2.5" style={{ background: agentColor("generation").hex }} />
           Original (generation)
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-sm" style={{ background: agentColor("evolution").hex }} />
+          <span className="h-2.5 w-2.5" style={{ background: agentColor("evolution").hex }} />
           Evolved (offspring)
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <svg width="22" height="8"><path d="M0,4 H22" stroke="#34d399" strokeWidth="1.8" /></svg>
+          <svg width="22" height="8"><path d="M0,4 H22" stroke="var(--green)" strokeWidth="1.8" /></svg>
           parent → offspring
         </span>
       </div>

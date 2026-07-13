@@ -89,13 +89,13 @@ function PhaseHeader({ kind, active }: { kind: string; active?: boolean }) {
   const Icon = m.icon;
   return (
     <div className="mb-2.5 flex items-center gap-2">
-      <span className="grid h-6 w-6 place-items-center rounded-lg bg-brand-500/12 text-brand-600 dark:text-brand-400">
+      <span className="grid h-6 w-6 place-items-center border border-rule bg-blue-soft text-blue">
         <Icon className="h-3.5 w-3.5" />
       </span>
-      <span className="text-[12.5px] font-semibold text-fg">{m.label}</span>
+      <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-ink">{m.label}</span>
       {active
-        ? <Loader2 className="h-3.5 w-3.5 animate-spin text-faint" />
-        : <Check className="h-3.5 w-3.5 text-accent-500" />}
+        ? <Loader2 className="h-3.5 w-3.5 animate-spin text-ink-soft" />
+        : <Check className="h-3.5 w-3.5 text-green" />}
     </div>
   );
 }
@@ -103,8 +103,8 @@ function PhaseHeader({ kind, active }: { kind: string; active?: boolean }) {
 function Assistant({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex gap-3 animate-fade-up">
-      <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-brand-600 shadow-glow">
-        <Sparkles className="h-3.5 w-3.5 text-white" />
+      <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center border border-rule bg-card text-blue">
+        <Sparkles className="h-3.5 w-3.5" />
       </span>
       <div className="min-w-0 flex-1">{children}</div>
     </div>
@@ -114,10 +114,10 @@ function Assistant({ children }: { children: React.ReactNode }) {
 function UserBubble({ text }: { text: string }) {
   return (
     <div className="flex justify-end gap-3 animate-fade-up">
-      <div className="max-w-[80%] rounded-2xl rounded-tr-md bg-brand-600 px-4 py-2.5 text-[14px] leading-relaxed text-white">
+      <div className="max-w-[80%] border border-blue bg-blue-soft px-4 py-2.5 text-[14px] leading-relaxed text-ink">
         {text}
       </div>
-      <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-surface-2 text-muted">
+      <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center border border-rule bg-card text-ink-soft">
         <User className="h-3.5 w-3.5" />
       </span>
     </div>
@@ -127,14 +127,14 @@ function UserBubble({ text }: { text: string }) {
 function HypRow({ h, rank, onSelect }: { h: Hypothesis; rank?: number; onSelect: (id: string) => void }) {
   return (
     <button onClick={() => onSelect(h.id)}
-      className="flex w-full items-center gap-3 rounded-lg border border-line bg-surface-2/40 px-3 py-2 text-left transition hover:border-brand-500/40">
+      className="flex w-full items-center gap-3 border border-rule bg-card px-3 py-2 text-left transition-colors hover:border-ink-soft">
       {rank != null && (
-        <span className="w-5 shrink-0 text-center text-[12px] font-bold text-faint">{rank}</span>
+        <span className={`num w-5 shrink-0 text-center text-[12px] font-bold ${rank <= 3 ? "text-accent" : "text-ink-soft"}`}>{rank}</span>
       )}
-      <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-fg">{h.title}</span>
+      <span className="min-w-0 flex-1 truncate font-serif text-[13px] font-medium text-ink">{h.title}</span>
       <StrategyTag strategy={h.strategy} />
       {h.elo != null && (
-        <span className={`shrink-0 text-[13px] font-bold ${eloColor(h.elo)}`}>{Math.round(h.elo)}</span>
+        <span className={`num shrink-0 text-[13px] font-bold ${eloColor(h.elo)}`}>{Math.round(h.elo)}</span>
       )}
     </button>
   );
@@ -148,14 +148,14 @@ export function ChatMessage({ msg, onSelect }: { msg: ChatMsg; onSelect: (id: st
     return (
       <Assistant>
         <PhaseHeader kind="understanding" />
-        <div className="rounded-xl border border-line bg-surface p-4 text-[13px]">
-          <p className="text-muted">{p.objective}</p>
+        <div className="border border-rule bg-card p-4 text-[13px]">
+          <p className="text-ink-soft">{p.objective}</p>
           <div className="mt-3 flex flex-wrap gap-1.5">
             {(p.preferences || []).map((x) => (
-              <span key={x} className="chip bg-brand-500/10 text-brand-600 dark:text-brand-300">{x}</span>
+              <span key={x} className="chip chip-blue">{x}</span>
             ))}
             {(p.constraints || []).map((x) => (
-              <span key={x} className="chip bg-surface-2 text-faint">{x}</span>
+              <span key={x} className="chip chip-mute">{x}</span>
             ))}
           </div>
         </div>
@@ -167,10 +167,10 @@ export function ChatMessage({ msg, onSelect }: { msg: ChatMsg; onSelect: (id: st
     return (
       <Assistant>
         <PhaseHeader kind="generating" active={msg.active} />
-        <p className="mb-2.5 text-[13px] text-muted">
-          Generated <span className="font-semibold text-fg">{msg.hyps.length}</span> initial{" "}
+        <p className="mb-2.5 text-[13px] text-ink-soft">
+          Generated <span className="num font-semibold text-ink">{msg.hyps.length}</span> initial{" "}
           hypothes{msg.hyps.length === 1 ? "is" : "es"}
-          {msg.reviewed > 0 && <> · reviewed <span className="font-semibold text-fg">{msg.reviewed}</span></>}.
+          {msg.reviewed > 0 && <> · reviewed <span className="num font-semibold text-ink">{msg.reviewed}</span></>}.
         </p>
         <div className="space-y-1.5">
           {msg.hyps.map((h) => <HypRow key={h.id} h={h} onSelect={onSelect} />)}
@@ -183,15 +183,15 @@ export function ChatMessage({ msg, onSelect }: { msg: ChatMsg; onSelect: (id: st
     return (
       <Assistant>
         <PhaseHeader kind="ranking" active={msg.active} />
-        <p className="mb-2.5 text-[13px] text-muted">
-          Ran <span className="font-semibold text-fg">{msg.matches}</span> head-to-head matches.
+        <p className="mb-2.5 text-[13px] text-ink-soft">
+          Ran <span className="num font-semibold text-ink">{msg.matches}</span> head-to-head matches.
           Current standings:
         </p>
         <div className="space-y-1.5">
           {msg.top.map((h, i) => <HypRow key={h.id} h={h} rank={i + 1} onSelect={onSelect} />)}
         </div>
         {Object.keys(msg.series).length > 0 && (
-          <div className="mt-3 rounded-xl border border-line bg-surface-2/40 p-4">
+          <div className="mt-3 border border-rule bg-card p-4">
             <div className="label mb-2">Elo over matches</div>
             <EloRace series={msg.series} onSelect={onSelect} height={180} />
           </div>
@@ -204,8 +204,8 @@ export function ChatMessage({ msg, onSelect }: { msg: ChatMsg; onSelect: (id: st
     return (
       <Assistant>
         <PhaseHeader kind="evolving" />
-        <p className="mb-2.5 text-[13px] text-muted">
-          Bred <span className="font-semibold text-fg">{msg.offspring.length}</span> offspring by
+        <p className="mb-2.5 text-[13px] text-ink-soft">
+          Bred <span className="num font-semibold text-ink">{msg.offspring.length}</span> offspring by
           combining and mutating the top-ranked parents.
         </p>
         <div className="space-y-1.5">
@@ -218,8 +218,8 @@ export function ChatMessage({ msg, onSelect }: { msg: ChatMsg; onSelect: (id: st
   if (msg.kind === "feedback") {
     return (
       <Assistant>
-        <div className="flex items-start gap-2 rounded-xl border border-line bg-surface-2/40 p-3 text-[13px] text-muted">
-          <MessageSquare className="mt-0.5 h-3.5 w-3.5 shrink-0 text-faint" />
+        <div className="flex items-start gap-2 border border-rule bg-card p-3 text-[13px] text-ink-soft">
+          <MessageSquare className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink-soft" />
           <span>{msg.text}</span>
         </div>
       </Assistant>
@@ -242,15 +242,15 @@ function ProposalMessage({ md }: { md: string }) {
   if (open) return <OverviewPanel md={md} />;
   return (
     <button onClick={() => setOpen(true)}
-      className="flex w-full items-center gap-3 rounded-xl border border-line bg-surface p-4 text-left transition hover:border-brand-500/40">
-      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-brand-500/12 text-brand-600 dark:text-brand-400">
+      className="flex w-full items-center gap-3 border border-rule bg-card p-4 text-left transition-colors hover:border-blue">
+      <span className="grid h-10 w-10 shrink-0 place-items-center border border-rule bg-blue-soft text-blue">
         <FileText className="h-5 w-5" />
       </span>
       <div className="min-w-0 flex-1">
-        <div className="text-[14px] font-semibold text-fg">Your research proposal is ready</div>
-        <div className="text-[12px] text-faint">Charts, scorecard, lineage, and next-step experiments · copy or download as PDF</div>
+        <div className="font-serif text-[14px] font-semibold text-ink">Your research proposal is ready</div>
+        <div className="text-[12px] text-ink-soft">Charts, scorecard, lineage, and next-step experiments · copy or download as PDF</div>
       </div>
-      <ChevronDown className="h-4 w-4 shrink-0 text-faint" />
+      <ChevronDown className="h-4 w-4 shrink-0 text-ink-soft" />
     </button>
   );
 }

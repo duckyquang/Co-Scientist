@@ -200,3 +200,22 @@ export function useTheme(): [Theme, (t: Theme) => void] {
   }, []);
   return [theme, setTheme];
 }
+
+/* ── Scroll reveal ─────────────────────────────────────────── */
+/** Adds `is-in` once the element scrolls into view, then disconnects.
+ *  Usage: <div ref={useReveal<HTMLDivElement>()} className="reveal"> */
+export function useReveal<T extends HTMLElement>() {
+  return useCallback((el: T | null) => {
+    if (!el) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          el.classList.add("is-in");
+          io.disconnect();
+        }
+      },
+      { threshold: 0.08 },
+    );
+    io.observe(el);
+  }, []);
+}

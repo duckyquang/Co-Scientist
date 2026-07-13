@@ -49,13 +49,13 @@ export function ExploreDrawer({
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-40 flex justify-end bg-black/40 backdrop-blur-sm no-print" onClick={onClose}>
+    <div className="fixed inset-0 z-40 flex justify-end bg-black/40 animate-fade-in no-print" onClick={onClose}>
       <div
-        className="flex h-full w-full max-w-3xl flex-col border-l border-line bg-bg shadow-2xl animate-fade-up"
+        className="flex h-full w-full max-w-3xl flex-col border-l border-rule bg-paper animate-slide-in-right"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-line px-4 py-3">
-          <div className="flex flex-wrap gap-1">
+        <div className="flex items-center justify-between border-b border-rule px-4 pt-2">
+          <div className="flex flex-wrap">
             {TABS.map((t) => {
               const active = tab === t.id;
               let badge: number | null = null;
@@ -63,19 +63,17 @@ export function ExploreDrawer({
               else if (t.id === "tournament") badge = matches.length;
               return (
                 <button key={t.id} onClick={() => setTab(t.id)}
-                  className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium transition ${
-                    active ? "bg-surface-2 text-fg" : "text-muted hover:text-fg"
+                  className={`-mb-px flex items-center gap-1.5 border-b-2 px-3 py-2 font-mono text-[11.5px] uppercase tracking-[0.08em] transition-colors ${
+                    active ? "border-accent text-ink" : "border-transparent text-ink-soft hover:text-ink"
                   }`}>
-                  <t.icon className="h-3.5 w-3.5" />{t.label}
-                  {badge != null && badge > 0 && (
-                    <span className="rounded-full bg-surface-2 px-1.5 text-[10px] font-bold text-muted">{badge}</span>
-                  )}
+                  {t.label}
+                  {badge != null && badge > 0 && <span className="num">({badge})</span>}
                 </button>
               );
             })}
           </div>
           <button onClick={onClose} aria-label="Close"
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-muted hover:bg-surface-2 hover:text-fg">
+            className="mb-2 grid h-8 w-8 shrink-0 place-items-center border border-transparent text-ink-soft hover:border-rule hover:text-ink">
             <X className="h-4 w-4" />
           </button>
         </div>

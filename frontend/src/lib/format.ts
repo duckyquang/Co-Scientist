@@ -42,39 +42,39 @@ import {
   Dot,
 } from "lucide-react";
 
-// ── Agent colors — blue mono palette (theme-aware text) ────
+// ── Agent colors — GEML chart vars; identity comes from a colored dot ──
 export const AGENT_COLORS: Record<string, { hex: string; bg: string; text: string }> = {
-  generation: { hex: "#3b82f6", bg: "bg-blue-500/15", text: "text-blue-600 dark:text-blue-400" },
-  reflection:  { hex: "#60a5fa", bg: "bg-blue-400/15", text: "text-blue-600 dark:text-blue-300" },
-  ranking:     { hex: "#93c5fd", bg: "bg-blue-300/15", text: "text-blue-600 dark:text-blue-200" },
-  evolution:   { hex: "#1d4ed8", bg: "bg-blue-700/15", text: "text-blue-700 dark:text-blue-400" },
-  proximity:   { hex: "#2563eb", bg: "bg-blue-600/15", text: "text-blue-600 dark:text-blue-400" },
-  metareview:  { hex: "#3b82f6", bg: "bg-blue-200/20 dark:bg-blue-200/10", text: "text-blue-600 dark:text-blue-200" },
-  supervisor:  { hex: "#71717a", bg: "bg-surface-2", text: "text-muted" },
-  human:       { hex: "#52525b", bg: "bg-surface-2", text: "text-fg" },
+  generation: { hex: "var(--chart-1)", bg: "chip-mute", text: "text-ink" },
+  reflection:  { hex: "var(--chart-2)", bg: "chip-mute", text: "text-ink" },
+  ranking:     { hex: "var(--chart-3)", bg: "chip-mute", text: "text-ink" },
+  evolution:   { hex: "var(--chart-5)", bg: "chip-mute", text: "text-ink" },
+  proximity:   { hex: "var(--chart-4)", bg: "chip-mute", text: "text-ink" },
+  metareview:  { hex: "var(--chart-6)", bg: "chip-mute", text: "text-ink" },
+  supervisor:  { hex: "var(--ink-soft)", bg: "chip-mute", text: "text-ink-soft" },
+  human:       { hex: "var(--ink)", bg: "chip-mute", text: "text-ink" },
 };
 
 export const agentColor = (a: string | null | undefined) =>
   AGENT_COLORS[a || "supervisor"] || AGENT_COLORS.supervisor;
 
-// ── Session status — theme-aware ───────────────────────────
+// ── Session status — blue=running, green=done, red=failed, mute=rest ──
 export const STATUS_STYLE: Record<string, string> = {
-  running: "bg-brand-500/10 text-brand-600 dark:text-brand-400 ring-1 ring-brand-500/25",
-  paused:  "bg-surface-2 text-muted ring-1 ring-line",
-  done:    "bg-surface-2 text-fg ring-1 ring-line",
-  failed:  "bg-surface-2 text-faint ring-1 ring-line",
-  aborted: "bg-surface-2 text-faint ring-1 ring-line",
+  running: "chip-blue",
+  paused:  "chip-mute",
+  done:    "chip-green",
+  failed:  "chip-red",
+  aborted: "chip-mute",
 };
 
-// ── Hypothesis state — theme-aware ─────────────────────────
+// ── Hypothesis state ───────────────────────────────────────
 export const HYP_STATE_STYLE: Record<string, string> = {
-  pinned:        "bg-brand-500/10 text-brand-600 dark:text-brand-300 ring-1 ring-brand-500/20",
-  in_tournament: "bg-brand-600/10 text-brand-600 dark:text-brand-400 ring-1 ring-brand-600/20",
-  reviewed:      "bg-surface-2 text-muted ring-1 ring-line",
-  draft:         "bg-surface-2 text-faint ring-1 ring-line",
-  rejected:      "bg-surface-2 text-faint ring-1 ring-line",
-  retired:       "bg-surface-2 text-faint ring-1 ring-line",
-  quarantined:   "bg-surface-2 text-faint ring-1 ring-line",
+  pinned:        "chip-green",
+  in_tournament: "chip-blue",
+  reviewed:      "chip-mute",
+  draft:         "chip-mute",
+  rejected:      "chip-red",
+  retired:       "chip-mute",
+  quarantined:   "chip-red",
 };
 
 // ── Strategy icons (lucide components) ─────────────────────
@@ -121,11 +121,11 @@ export const EVENT_ICON: Record<string, LucideIcon> = {
   session_aborted: Ban,
 };
 
-// ── Elo color — theme-aware ────────────────────────────────
+// ── Elo color ──────────────────────────────────────────────
 export const eloColor = (elo: number | null | undefined) => {
-  if (elo == null)   return "text-faint";
-  if (elo >= 1260)   return "text-fg";
-  if (elo >= 1220)   return "text-brand-600 dark:text-brand-400";
-  if (elo >= 1180)   return "text-muted";
-  return "text-faint";
+  if (elo == null)   return "text-ink-soft";
+  if (elo >= 1260)   return "text-green";
+  if (elo >= 1220)   return "text-blue";
+  if (elo >= 1180)   return "text-ink";
+  return "text-ink-soft";
 };
