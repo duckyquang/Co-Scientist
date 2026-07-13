@@ -10,14 +10,21 @@
  */
 
 import { extractJsonObject, messageText } from "./parse";
+import { getCredentials } from "../credentials";
 
 export const GROQ_MODEL = "llama-3.3-70b-versatile";
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 
-/** The build-time Groq key, or null if none was configured. */
+/** The Groq key to use from the browser: a build-time key if one was baked in,
+ *  else the user's own pasted Groq key (BYO). Groq is the only provider callable
+ *  directly from a browser (permissive CORS), so a BYO Groq key is what lights
+ *  up the in-browser LLM path — every real-inference check routes through here. */
 export function groqKey(): string | null {
-  const k = import.meta.env.VITE_GROQ_API_KEY;
-  return typeof k === "string" && k.trim() ? k.trim() : null;
+  const baked = import.meta.env.VITE_GROQ_API_KEY;
+  if (typeof baked === "string" && baked.trim()) return baked.trim();
+  const c = getCredentials();
+  if (c && c.provider === "groq" && c.apiKey.trim()) return c.apiKey.trim();
+  return null;
 }
 
 export function hasGroqKey(): boolean {
@@ -57,7 +64,7 @@ export async function groqJson<T>(opts: {
       const e = await res.json();
       detail = e?.error?.message || detail;
     } catch { /* non-JSON error body */ }
-    if (res.status === 401) detail = "Groq rejected the API key (401). Check VITE_GROQ_API_KEY.";
+    if (res.status === 401) detail = "Groq rejected the API key (401). Check the key in Settings.";
     if (res.status === 429) detail = "Groq rate limit reached (429). Try again in a moment.";
     throw new Error(detail);
   }

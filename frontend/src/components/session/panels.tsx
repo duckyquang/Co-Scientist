@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { Check, Dot, FlaskConical, ClipboardList } from "lucide-react";
+import { Link, useParams } from "react-router-dom";
+import { Check, Dot, FlaskConical, ClipboardList, Copy, Printer, Globe } from "lucide-react";
 import { api } from "../../api";
 import {
   EVENT_ICON, agentColor, clockTime, eloColor, fmtCompact, fmtUsd, timeAgo,
@@ -339,17 +340,25 @@ export function FeedbackPanel({
 /* ----------------------------- Overview ----------------------------- */
 export function OverviewPanel({ md }: { md: string | null }) {
   const [copied, setCopied] = useState(false);
+  const { id } = useParams<{ id: string }>();
   if (!md)
     return <Empty icon={ClipboardList} title="No final overview yet" hint="The Meta-review agent writes this once Elo ratings stabilize." />;
   return (
     <div className="card p-6">
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div className="label">Final research overview</div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          {id && (
+            <Link to={`/s/${id}/site`} className="btn-primary h-8 text-xs">
+              <Globe className="h-3.5 w-3.5" /> View as website
+            </Link>
+          )}
           <button className="btn-ghost h-8 text-xs" onClick={() => {
             navigator.clipboard.writeText(md); setCopied(true); setTimeout(() => setCopied(false), 1500);
-          }}>{copied ? "Copied!" : "Copy markdown"}</button>
-          <button className="btn-ghost h-8 text-xs" onClick={() => window.print()}>Print / PDF</button>
+          }}><Copy className="h-3.5 w-3.5" /> {copied ? "Copied!" : "Copy markdown"}</button>
+          <button className="btn-ghost h-8 text-xs" onClick={() => window.print()}>
+            <Printer className="h-3.5 w-3.5" /> Print / PDF
+          </button>
         </div>
       </div>
       <Markdown md={md} />

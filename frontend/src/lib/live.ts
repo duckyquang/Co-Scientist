@@ -1,22 +1,19 @@
 import { IS_STATIC_DEMO } from "./config";
-import { getCredentials, getDeploymentMode } from "./credentials";
 
 /** True when the client should call a live API instead of static demo JSON.
  *
  * Rules:
  * 1. Local dev / self-hosted → always live (IS_STATIC_DEMO is false).
- * 2. Static deploy (Vercel/Pages) with VITE_API_URL configured → live, no
- *    credentials required (the server-side key handles auth).
- * 3. Static deploy with credentials + VITE_API_URL → also live (power-user
- *    override).
- * 4. Static deploy, no VITE_API_URL → read-only demo mode.
+ * 2. Static deploy with VITE_API_URL configured → live (hosted backend).
+ * 3. Static deploy, no VITE_API_URL → in-browser sim. A user-pasted key does
+ *    NOT flip this: there is no server to receive it, and a browser Groq key
+ *    runs through the in-browser LLM path instead (see lib/llm/groq.ts). Sending
+ *    a live POST here would just hit a bundled static JSON file and fail.
  */
 export function canUseLiveApi(): boolean {
   if (!IS_STATIC_DEMO) return true;
-  // A configured backend URL is enough — no browser-stored key required.
   if (import.meta.env.VITE_API_URL) return true;
-  // Legacy: user manually pasted a key in Settings.
-  return getDeploymentMode() === "cloud" && Boolean(getCredentials());
+  return false;
 }
 
 /** True when sessions run as an in-browser simulation (no backend, no key).

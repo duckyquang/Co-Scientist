@@ -11,7 +11,7 @@ export function OnboardingModal({ open, onClose }: Props) {
   if (!open) return null;
 
   function start() {
-    setDeploymentMode("cloud"); // marks onboarding done
+    setDeploymentMode("default"); // free path; also marks onboarding done
     onClose();
   }
 

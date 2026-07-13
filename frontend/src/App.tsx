@@ -17,6 +17,7 @@ import { api } from "./api";
 initTheme();
 import Dashboard from "./pages/Dashboard";
 import Chat from "./pages/Chat";
+import Microsite from "./pages/Microsite";
 import { timeAgo } from "./lib/format";
 import type { SessionRow } from "./types";
 
@@ -26,9 +27,9 @@ function ModeBadge() {
     return <span className="badge-pill bg-blue-500/15 text-blue-400">Local</span>;
   if (canUseLiveApi())
     return <span className="badge-pill bg-brand-500/15 text-brand-400">Cloud</span>;
-  if (getDeploymentMode() === "local")
-    return <span className="badge-pill bg-brand-500/15 text-brand-400">Local AI</span>;
-  return <span className="badge-pill bg-surface-2 text-faint">Demo</span>;
+  if (getDeploymentMode() === "byok" && getCredentials())
+    return <span className="badge-pill bg-brand-500/15 text-brand-400">Your key</span>;
+  return <span className="badge-pill bg-surface-2 text-faint">Free</span>;
 }
 
 /* ── Sidebar nav link ───────────────────────────────────── */
@@ -206,6 +207,7 @@ export default function App() {
         <main className="min-h-0 flex-1">
           <Routes>
             <Route path="/" element={<Chat />} />
+            <Route path="/s/:id/site" element={<Microsite />} />
             <Route path="/s/:id" element={<Chat />} />
             <Route path="/sessions" element={<DashboardScroll />} />
             <Route path="/new" element={<Navigate to="/" replace />} />
