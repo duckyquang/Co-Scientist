@@ -16,8 +16,10 @@ from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
 from .. import ids
+from ..agents.chat import handle_chat
 from ..agents.supervisor import Supervisor
 from ..config import Config, has_llm_key
+from ..llm.budgets import TokenBudget
 from ..logging import get_logger
 from ..models import SystemFeedback
 from ..orchestrator.events import GLOBAL_BUS
@@ -76,6 +78,45 @@ class FeedbackBody(BaseModel):
 
 class HypStateBody(BaseModel):
     state: str
+
+
+class ChatBody(BaseModel):
+    message: str
+
+
+_CHAT_DDL = (
+    "CREATE TABLE IF NOT EXISTS chat_messages ("
+    " id TEXT PRIMARY KEY, session_id TEXT NOT NULL, created_at TEXT NOT NULL,"
+    " role TEXT NOT NULL, intent TEXT, text TEXT NOT NULL, new_session_id TEXT)"
+)
+
+
+async def _ensure_chat_table(conn) -> None:
+    # Defensive: the canonical DDL ships in migration 0006, but the web server
+    # may run against a DB that predates it. IF NOT EXISTS makes this a no-op.
+    await conn.execute(_CHAT_DDL)
+    await conn.commit()
+
+
+async def _insert_chat(conn, session_id: str, role: str, text: str, *,
+                       intent: str | None = None, new_session_id: str | None = None) -> None:
+    await conn.execute(
+        "INSERT INTO chat_messages (id, session_id, created_at, role, intent, text, new_session_id)"
+        " VALUES (?,?,?,?,?,?,?)",
+        (ids.chat_id(), session_id, datetime.now(UTC).isoformat(),
+         role, intent, text, new_session_id),
+    )
+    await conn.commit()
+
+
+async def _list_chat(conn, session_id: str) -> list[dict]:
+    async with conn.execute(
+        "SELECT id, session_id, created_at, role, intent, text, new_session_id"
+        " FROM chat_messages WHERE session_id=? ORDER BY created_at ASC, rowid ASC",
+        (session_id,),
+    ) as cur:
+        rows = await cur.fetchall()
+    return [dict(r) for r in rows]
 
 
 def create_react_router(base_cfg: Config, *, live_sessions: set[str]) -> APIRouter:
@@ -257,28 +298,18 @@ def create_react_router(base_cfg: Config, *, live_sessions: set[str]) -> APIRout
 
         return EventSourceResponse(_gen())
 
-    @router.post("/sessions")
-    async def create_session(request: Request, body: CreateSessionBody) -> JSONResponse:
-        cfg = _cfg(request)
-        require_llm_credentials(cfg)
-        goal = body.goal.strip()
-        if len(goal) < 12:
-            raise HTTPException(400, "goal is required (at least a sentence)")
-
-        if body.provider:
-            cfg.llm.provider = body.provider
-        cfg.run.budget_tokens = body.budget_tokens
-        cfg.run.wall_clock_seconds = body.wall_clock_seconds
-        if body.budget_usd is not None:
-            cfg.run.budget_usd = body.budget_usd
+    async def _spawn_session(cfg: Config, goal: str, *, n_initial: int,
+                             wall_clock_seconds: int) -> str:
+        """Kick off a Supervisor run in the background and return the new
+        session id once its row appears (polls list_sessions up to 45s)."""
         sup = Supervisor(cfg)
 
         async def _bg() -> None:
             live_sessions.add("_pending")
             try:
                 sid = await sup.run_session(
-                    goal, n_initial=body.n_initial,
-                    wall_clock_seconds=body.wall_clock_seconds,
+                    goal, n_initial=n_initial,
+                    wall_clock_seconds=wall_clock_seconds,
                 )
                 live_sessions.add(sid)
             except Exception:
@@ -299,10 +330,28 @@ def create_react_router(base_cfg: Config, *, live_sessions: set[str]) -> APIRout
             for row in rows:
                 if row["research_goal"] == goal and row["status"] in ("running", "paused"):
                     live_sessions.add(row["id"])
-                    return JSONResponse({"session_id": row["id"], "ok": True}, status_code=201)
+                    return row["id"]
             await asyncio.sleep(0.3)
 
         raise HTTPException(504, "session is starting — refresh the dashboard in a moment")
+
+    @router.post("/sessions")
+    async def create_session(request: Request, body: CreateSessionBody) -> JSONResponse:
+        cfg = _cfg(request)
+        require_llm_credentials(cfg)
+        goal = body.goal.strip()
+        if len(goal) < 12:
+            raise HTTPException(400, "goal is required (at least a sentence)")
+
+        if body.provider:
+            cfg.llm.provider = body.provider
+        cfg.run.budget_tokens = body.budget_tokens
+        cfg.run.wall_clock_seconds = body.wall_clock_seconds
+        if body.budget_usd is not None:
+            cfg.run.budget_usd = body.budget_usd
+        sid = await _spawn_session(cfg, goal, n_initial=body.n_initial,
+                                   wall_clock_seconds=body.wall_clock_seconds)
+        return JSONResponse({"session_id": sid, "ok": True}, status_code=201)
 
     async def _control(session_id: str, action: str) -> JSONResponse:
         status = {"pause": "paused", "resume": "running", "abort": "aborted"}[action]
@@ -348,6 +397,69 @@ def create_react_router(base_cfg: Config, *, live_sessions: set[str]) -> APIRout
                 "kind": body.kind, "target_id": body.target_id, "text": text[:200],
             })
             return JSONResponse({"ok": True, "feedback_id": fb.id})
+        finally:
+            await conn.close()
+
+    @router.get("/sessions/{session_id}/chat")
+    async def chat_history(session_id: str) -> JSONResponse:
+        conn = await db_mod.connect(base_cfg)
+        try:
+            await _ensure_chat_table(conn)
+            return JSONResponse({"messages": await _list_chat(conn, session_id)})
+        finally:
+            await conn.close()
+
+    @router.post("/sessions/{session_id}/chat")
+    async def chat(request: Request, session_id: str, body: ChatBody) -> JSONResponse:
+        from webapp import content
+
+        cfg = _cfg(request)
+        message = body.message.strip()
+        if not message:
+            raise HTTPException(400, "message required")
+
+        conn = await db_mod.connect(cfg)
+        try:
+            await _ensure_chat_table(conn)
+            await _insert_chat(conn, session_id, "user", message)
+
+            # No LLM key → friendly reply instead of a 500, and no spawn.
+            if not has_llm_key(cfg):
+                reply = ("I can't answer follow-ups here without an LLM API key "
+                         "configured. Add a key in settings and try again.")
+                await _insert_chat(conn, session_id, "assistant", reply, intent="question")
+                return JSONResponse({"reply_markdown": reply, "intent": "question",
+                                     "new_session_id": None})
+
+            budget = TokenBudget(cfg=cfg, budget_tokens=2_000_000,
+                                 budget_usd=cfg.run.budget_usd)
+            try:
+                out = await handle_chat(cfg, conn, budget, session_id, message)
+            except Exception:
+                log.exception("chat_failed", session_id=session_id)
+                reply = ("Something went wrong answering that. Please try "
+                         "rephrasing your question.")
+                await _insert_chat(conn, session_id, "assistant", reply, intent="question")
+                return JSONResponse({"reply_markdown": reply, "intent": "question",
+                                     "new_session_id": None})
+
+            intent = out["intent"]
+            new_sid = None
+            if intent == "out_of_scope":
+                reply = content.OUT_OF_SCOPE
+            elif intent == "tweak":
+                new_goal = content.compose_rerun_goal(out["idea"], out["change_request"])
+                new_sid = await _spawn_session(
+                    cfg, new_goal, n_initial=4,
+                    wall_clock_seconds=cfg.run.wall_clock_seconds)
+                reply = out["reply_markdown"] or "Started a new research run based on your change."
+            else:
+                reply = out["reply_markdown"] or "_(no answer generated)_"
+
+            await _insert_chat(conn, session_id, "assistant", reply,
+                               intent=intent, new_session_id=new_sid)
+            return JSONResponse({"reply_markdown": reply, "intent": intent,
+                                 "new_session_id": new_sid})
         finally:
             await conn.close()
 

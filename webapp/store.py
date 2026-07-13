@@ -9,9 +9,12 @@ Stdlib only — no aiosqlite/SQLAlchemy — so the website runs with bare python
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 import threading
+import time
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -287,6 +290,29 @@ def list_feedback(conn: sqlite3.Connection, sid: str) -> list[dict]:
     return _rows(
         conn,
         "SELECT * FROM system_feedback WHERE session_id=? ORDER BY created_at DESC",
+        (sid,),
+    )
+
+
+def insert_chat(conn: sqlite3.Connection, sid: str, role: str, text: str, *,
+                intent: str | None = None, new_session_id: str | None = None) -> str:
+    cid = "chat_" + hashlib.sha256(f"{sid}{role}{text}{time.time()}".encode()).hexdigest()[:16]
+    conn.execute(
+        """INSERT INTO chat_messages
+               (id, session_id, created_at, role, intent, text, new_session_id)
+           VALUES (?,?,?,?,?,?,?)""",
+        (cid, sid, datetime.now(UTC).isoformat(), role, intent, text, new_session_id),
+    )
+    conn.commit()
+    return cid
+
+
+def list_chat(conn: sqlite3.Connection, sid: str) -> list[dict]:
+    return _rows(
+        conn,
+        """SELECT id, session_id, created_at, role, intent, text, new_session_id
+             FROM chat_messages WHERE session_id=?
+            ORDER BY created_at ASC, rowid ASC""",
         (sid,),
     )
 

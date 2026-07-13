@@ -165,6 +165,8 @@ class Handler(BaseHTTPRequestHandler):
             return _json(self, {"events": store.recent_events(conn, sid, after)})
         if rest == "/overview":
             return self._overview(conn, sid)
+        if rest == "/chat":
+            return _json(self, {"messages": store.list_chat(conn, sid)})
         if rest == "/stream":
             return self._sse(sid)
         return self._json_err(404, "unknown session endpoint")
@@ -250,12 +252,44 @@ class Handler(BaseHTTPRequestHandler):
             fm = re.match(r"^/api/sessions/([^/]+)/feedback$", path)
             if fm:
                 return self._feedback(conn, unquote(fm.group(1)))
+            cm = re.match(r"^/api/sessions/([^/]+)/chat$", path)
+            if cm:
+                return self._chat(conn, unquote(cm.group(1)))
             hm = re.match(r"^/api/sessions/([^/]+)/hypotheses/([^/]+)/state$", path)
             if hm:
                 return self._set_hyp_state(conn, unquote(hm.group(1)), unquote(hm.group(2)))
             return self._json_err(404, "unknown endpoint")
         finally:
             conn.close()
+
+    def _start_session(self, conn, goal, *, budget_tokens=5_000_000, budget=None,
+                       wall_seconds=1800, n_initial=4, speed=1.0, provider="groq"):
+        """Insert a session row + start the simulator. Returns the new session id."""
+        from . import content
+        if budget is None:
+            budget = budget_tokens / 220_000
+        sid = "sess_" + hashlib.sha256(f"{goal}{time.time()}".encode()).hexdigest()[:16]
+        now_dt = datetime.now(UTC)
+        now = now_dt.isoformat()
+        wall_deadline = (now_dt + timedelta(seconds=wall_seconds)).isoformat()
+        plan = content.make_plan(goal)
+        conn.execute(
+            """INSERT INTO sessions
+               (id, created_at, updated_at, status, research_goal, research_plan,
+                config_snapshot, budget_tokens, budget_usd, budget_used_tokens,
+                budget_used_usd, wall_deadline, final_overview)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (sid, now, now, "running", goal, json.dumps(plan),
+             json.dumps({"llm": {"provider": provider},
+                         "models": content.MODELS}),
+             budget_tokens, budget, 0, 0.0, wall_deadline, None))
+        conn.execute(
+            "INSERT INTO events (ts, session_id, agent, event, payload) VALUES (?,?,?,?,?)",
+            (int(time.time() * 1000), sid, "supervisor", "session_started",
+             json.dumps({"goal": goal[:200], "n_initial": n_initial, "budget_tokens": budget_tokens})))
+        conn.commit()
+        simulator.start(DB_PATH, sid, goal, budget, n_initial=n_initial, speed=speed)
+        return sid
 
     def _create_session(self, conn):
         b = self._body_json()
@@ -269,29 +303,46 @@ class Handler(BaseHTTPRequestHandler):
         budget = float(b.get("budget_usd", budget_tokens / 220_000))
         n_initial = max(2, min(int(b.get("n_initial", 4)), 50))
         speed = float(b.get("speed", 1.0))
-        sid = "sess_" + hashlib.sha256(f"{goal}{time.time()}".encode()).hexdigest()[:16]
-        now_dt = datetime.now(UTC)
-        now = now_dt.isoformat()
-        wall_deadline = (now_dt + timedelta(seconds=wall_seconds)).isoformat()
-        from . import content
-        plan = content.make_plan(goal)
-        conn.execute(
-            """INSERT INTO sessions
-               (id, created_at, updated_at, status, research_goal, research_plan,
-                config_snapshot, budget_tokens, budget_usd, budget_used_tokens,
-                budget_used_usd, wall_deadline, final_overview)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (sid, now, now, "running", goal, json.dumps(plan),
-             json.dumps({"llm": {"provider": b.get("provider", "groq")},
-                         "models": content.MODELS}),
-             budget_tokens, budget, 0, 0.0, wall_deadline, None))
-        conn.execute(
-            "INSERT INTO events (ts, session_id, agent, event, payload) VALUES (?,?,?,?,?)",
-            (int(time.time() * 1000), sid, "supervisor", "session_started",
-             json.dumps({"goal": goal[:200], "n_initial": n_initial, "budget_tokens": budget_tokens})))
-        conn.commit()
-        simulator.start(DB_PATH, sid, goal, budget, n_initial=n_initial, speed=speed)
+        sid = self._start_session(
+            conn, goal, budget_tokens=budget_tokens, budget=budget,
+            wall_seconds=wall_seconds, n_initial=n_initial, speed=speed,
+            provider=b.get("provider", "groq"))
         return _json(self, {"ok": True, "session_id": sid}, 201)
+
+    def _chat(self, conn, sid):
+        from . import content
+        b = self._body_json()
+        message = (b.get("message") or "").strip()
+        if not message:
+            return self._json_err(400, "message required")
+        session = store.get_session(conn, sid)
+        if not session:
+            return self._json_err(404, "session not found")
+
+        intent = content.classify_intent(message)
+        store.insert_chat(conn, sid, "user", message)
+        new_sid = None
+
+        if intent == "out_of_scope":
+            reply = content.OUT_OF_SCOPE
+        elif intent == "tweak":
+            hyps = store.list_hypotheses(conn, sid)
+            idea = content.top_idea(hyps, session["research_goal"])
+            new_goal = content.compose_rerun_goal(idea, message)
+            new_sid = self._start_session(
+                conn, new_goal,
+                budget_tokens=int(session.get("budget_tokens") or 5_000_000),
+                budget=float(session.get("budget_usd") or 0) or None,
+                n_initial=4, speed=1.0)
+            reply = "Started a new research run based on your change."
+        else:  # question
+            hyps = store.list_hypotheses(conn, sid)
+            reply = content.make_chat_answer(session["research_goal"], hyps)
+
+        store.insert_chat(conn, sid, "assistant", reply,
+                          intent=intent, new_session_id=new_sid)
+        return _json(self, {"reply_markdown": reply, "intent": intent,
+                            "new_session_id": new_sid})
 
     def _feedback(self, conn, sid):
         b = self._body_json()

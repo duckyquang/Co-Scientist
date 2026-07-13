@@ -3,7 +3,7 @@ import { useNavigate, useParams, useSearchParams, Link } from "react-router-dom"
 import {
   Layers, Pause, Play, Square, Loader2, Sparkles,
 } from "lucide-react";
-import { api } from "../api";
+import { api, type ChatTurn } from "../api";
 import { Composer } from "../components/chat/Composer";
 import { ChatMessage, deriveMessages } from "../components/chat/messages";
 import { ExploreDrawer } from "../components/chat/ExploreDrawer";
@@ -126,6 +126,7 @@ interface Bundle {
   lineage: { nodes: LineageNode[]; edges: { source: string; target: string }[] };
   clusters: ClusterPoint[];
   eloHistory: Record<string, { i: number; elo: number }[]>;
+  chat: ChatTurn[];
 }
 
 function Thread({ id }: { id: string }) {
@@ -141,11 +142,12 @@ function Thread({ id }: { id: string }) {
   const { events, tick, connected } = useSessionStream(id);
 
   const fetchAll = useCallback(async (): Promise<Bundle> => {
-    const [detail, hyps, matches, cost, feedback, lineage, clusters, eloHistory] = await Promise.all([
+    const [detail, hyps, matches, cost, feedback, lineage, clusters, eloHistory, chat] = await Promise.all([
       api.session(id), api.hypotheses(id), api.matches(id), api.cost(id),
       api.feedback(id), api.lineage(id), api.clusters(id), api.eloHistory(id),
+      api.chatHistory(id).catch(() => [] as ChatTurn[]),
     ]);
-    return { detail, hyps, matches, cost, feedback, lineage, clusters, eloHistory };
+    return { detail, hyps, matches, cost, feedback, lineage, clusters, eloHistory, chat };
   }, [id]);
 
   const { data, error, loading, refresh } = usePoll<Bundle>(fetchAll, [id], null);
@@ -177,7 +179,7 @@ function Thread({ id }: { id: string }) {
       goal: session.research_goal, plan: session.research_plan,
       hyps: data.hyps, matches: data.matches, eloHistory: data.eloHistory,
       feedback: data.feedback, reviewed: metrics.n_reviewed,
-      overview, live, done,
+      overview, live, done, chat: data.chat,
     });
   }, [data, session, metrics, overview, live, done]);
 
@@ -193,10 +195,13 @@ function Thread({ id }: { id: string }) {
     setSelected(hid);
   }
 
+  // Follow-ups are routed: question → grounded answer, tweak → new run, else
+  // the fixed out-of-scope reply. Both turns are persisted and re-derived into
+  // the thread on refresh. (Steering a running session stays in Explore.)
   async function sendSteer() {
     if (!steer.trim()) return;
     setSending(true);
-    try { await api.sendFeedback(id, { text: steer.trim(), kind: "directive" }); setSteer(""); await refresh(); }
+    try { await api.chat(id, steer.trim()); setSteer(""); await refresh(); }
     finally { setSending(false); }
   }
 

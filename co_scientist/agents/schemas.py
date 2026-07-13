@@ -143,6 +143,38 @@ RECORD_SYSTEM_FEEDBACK_TOOL: dict[str, Any] = {
 }
 
 
+RESPOND_TO_CHAT_TOOL: dict[str, Any] = {
+    "name": "respond_to_chat",
+    "description": "Classify the scientist's chat message about a research session and respond.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "intent": {
+                "type": "string",
+                "enum": ["question", "tweak", "out_of_scope"],
+                "description": "How to handle the message.",
+            },
+            "reply_markdown": {
+                "type": "string",
+                "description": (
+                    "For 'question': the grounded answer (may include ONE compact "
+                    "markdown table). For 'tweak': a one-sentence confirmation. "
+                    "Leave empty for 'out_of_scope'."
+                ),
+            },
+            "change_request": {
+                "type": "string",
+                "description": (
+                    "For 'tweak' only: a clear, self-contained restatement of the "
+                    "requested change (expand vague asks; stay faithful, no new scope)."
+                ),
+            },
+        },
+        "required": ["intent", "reply_markdown"],
+    },
+}
+
+
 RECORD_RESEARCH_PLAN_TOOL: dict[str, Any] = {
     "name": "record_research_plan",
     "description": "Record the parsed research plan derived from the scientist's goal.",

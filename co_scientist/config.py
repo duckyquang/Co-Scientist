@@ -91,6 +91,7 @@ class ModelsCfg(BaseModel):
     metareview_final: str = "claude-opus-4-7"
     classifier: str = "claude-haiku-4-5-20251001"
     judge: str = "claude-sonnet-4-6"
+    chat: str = "claude-sonnet-4-6"
 
 
 class ThinkingCfg(BaseModel):

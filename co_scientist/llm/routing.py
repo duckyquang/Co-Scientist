@@ -173,6 +173,7 @@ def route(cfg: Config, agent: str, mode: str | None = None, *, degraded: bool = 
         ("parse_goal", None):          m.parse_goal,
         ("classifier", None):          m.classifier,
         ("judge", None):               m.judge,
+        ("chat", None):                m.chat,
     }.get((agent, mode), m.generation)
 
     full_mode = f"{agent}.{mode}" if mode else agent
