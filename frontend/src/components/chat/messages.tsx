@@ -252,7 +252,7 @@ export function ChatMessage({ msg, onSelect }: { msg: ChatMsg; onSelect: (id: st
   if (msg.kind === "answer") {
     return (
       <Assistant>
-        <div className="rounded-xl border border-line bg-surface p-4 text-[13px]">
+        <div className="card p-4 text-[13px]">
           <Markdown md={msg.md} />
           {msg.refs.length > 0 && (
             <div className="mt-3 space-y-1.5">
@@ -261,7 +261,7 @@ export function ChatMessage({ msg, onSelect }: { msg: ChatMsg; onSelect: (id: st
           )}
           {msg.newSessionId && (
             <Link to={`/s/${msg.newSessionId}`}
-              className="mt-3 inline-flex items-center gap-1.5 text-[13px] font-semibold text-brand-600 hover:underline dark:text-brand-400">
+              className="mt-3 inline-flex items-center gap-1.5 text-[13px] font-semibold text-blue hover:underline">
               Open the new run <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           )}
