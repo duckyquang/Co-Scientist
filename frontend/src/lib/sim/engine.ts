@@ -21,7 +21,7 @@ import type {
 } from "../../types";
 import type { LiveTick } from "../hooks";
 import { classifyIntent, composeRerunGoal, OUT_OF_SCOPE } from "./chatRouter";
-import { buildAnalysis, eloUpdate, makeHypothesis, makeOverview, makePlan, makeReview, referencesSection, SIM_MODEL, STRATEGIES } from "./content";
+import { eloUpdate, figureSet, insertAfterHeading, makeHypothesis, makeOverview, makePlan, makeReview, referencesSection, SIM_MODEL, STRATEGIES } from "./content";
 import { generateSession, type GenHyp, type GeneratedContent } from "./generate";
 import { hasRealProvider } from "../llm";
 import { makeRng } from "./rng";
@@ -289,17 +289,31 @@ function buildPlan(rec: SimRecord): Plan {
   for (const h of finalRank.slice(0, 5)) eloLabels[h.id] = h.title.slice(0, 24);
   const figures = { strategyCounts, lineage, eloSeries, eloLabels };
 
-  // Groq gives a prompt-specific prose overview. Wrap it in the same header
-  // shape the template uses (# title + **Research goal.** + ## sections) so every
-  // consumer — the report panel AND the microsite hero/TOC/body — treats both
-  // paths identically; then append the deterministic data analysis.
+  // Groq gives a prompt-specific prose overview with its own ## sections. Wrap it
+  // in the same header shape the template uses (# title + **Research goal.**) so
+  // every consumer — the report panel AND the microsite hero/TOC/body — treats
+  // both paths identically; weave the donut into the first section and the
+  // scorecard into the second, and trail the remaining figures under ## Analysis.
   // The browser LLM writes prose but retrieves no literature, so its proposal
   // gets an honest "no verifiable sources" References section rather than
   // fabricated citations. The template path (makeOverview) builds its own.
   const groqProse = rec.content?.overview?.trim();
-  const overview = groqProse
-    ? `# Research proposal\n\n**Research goal.** ${goal}\n\n## Overview\n\n${groqProse}\n\n${buildAnalysis(proposals, figures)}\n\n${referencesSection(null)}`
-    : makeOverview(goal, proposals, figures);
+  let overview: string;
+  if (groqProse) {
+    const prose = /^##\s/m.test(groqProse) ? groqProse : `## Overview\n\n${groqProse}`;
+    const nHeadings = (prose.match(/^##\s/gm) || []).length;
+    const figs = figureSet(proposals, figures);
+    let body = `# Research proposal\n\n**Research goal.** ${goal}\n\n${prose}`;
+    body = insertAfterHeading(body, 1, figs.donut);
+    if (nHeadings >= 2) body = insertAfterHeading(body, 2, figs.scores);
+    // If the model gave fewer than two sections, keep the scorecard rather than
+    // drop it — it trails with the remaining figures instead.
+    const trailing = [nHeadings >= 2 ? "" : figs.scores, figs.elo, figs.lineage, figs.ratingModel]
+      .filter(Boolean).join("\n\n");
+    overview = `${body}\n\n## Analysis\n\n${trailing}\n\n${referencesSection(null)}`;
+  } else {
+    overview = makeOverview(goal, proposals, figures);
+  }
   emit("metareview", "session_done", { stop_reason: "ELO_STABLE" });
   const metaFeedback: Feedback = {
     id: `fb_${simId}_meta`, created_at: isoAt(rec, tEnd), source: "meta_review",

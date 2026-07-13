@@ -101,3 +101,51 @@ async def test_apply_elo_update_is_idempotent(conn) -> None:
     assert hy.elo == 1184.0
     assert hx.matches_played == 1
     assert hy.matches_played == 1
+
+
+@pytest.mark.asyncio
+async def test_elo_series_builds_per_hypothesis_trajectory(conn) -> None:
+    """elo_series returns per-hypothesis [{i, elo}] over match history, ordered
+    by created_at, restricted to the requested ids and skipping unrecorded Elo."""
+    from datetime import timedelta
+
+    base = datetime.now(UTC)
+    await conn.execute(
+        """INSERT INTO sessions(id, created_at, updated_at, status, research_goal,
+                                 research_plan, config_snapshot, budget_tokens, budget_usd)
+           VALUES ('ses_s', ?, ?, 'running', 'test', '{}', '{}', 1000000, 10.0)""",
+        (base.isoformat(), base.isoformat()),
+    )
+    await conn.commit()
+
+    for hid in ("a", "b", "c"):
+        await hyp_repo.insert(conn, Hypothesis(
+            id=hid, session_id="ses_s", created_at=base,
+            created_by="generation", strategy="literature",
+            title="t", summary="s", full_text="f",
+            artifact_path=f"artifacts/ses_s/hypotheses/{hid}.json",
+            elo=1200, matches_played=0, state="in_tournament",
+        ))
+
+    # Three matches over two tracked hypotheses (a, b); c is untracked noise.
+    matches = [
+        ("a", "b", 1216.0, 1184.0),
+        ("a", "c", 1230.0, 1170.0),
+        ("b", "c", 1200.0, 1160.0),
+    ]
+    for i, (ha, hb, ea, eb) in enumerate(matches):
+        m = TournamentMatch(
+            id=f"m{i}", session_id="ses_s", created_at=base + timedelta(minutes=i),
+            hyp_a=ha, hyp_b=hb, mode="pairwise", winner="a",
+            elo_a_before=1200.0, elo_b_before=1200.0,
+            elo_a_after=ea, elo_b_after=eb, rationale="r",
+        )
+        await tourney_repo.insert_match(conn, m)
+
+    series = await tourney_repo.elo_series(conn, "ses_s", ["a", "b"])
+    # 'a' played matches 0 and 1; 'b' played matches 0 and 2. 'c' excluded.
+    assert set(series.keys()) == {"a", "b"}
+    assert series["a"] == [{"i": 0, "elo": 1216.0}, {"i": 1, "elo": 1230.0}]
+    assert series["b"] == [{"i": 0, "elo": 1184.0}, {"i": 2, "elo": 1200.0}]
+    # empty id list → empty result
+    assert await tourney_repo.elo_series(conn, "ses_s", []) == {}

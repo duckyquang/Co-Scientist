@@ -170,16 +170,25 @@ def _cell(s: str) -> str:
     return s.replace("|", "\\|")
 
 
-def _analysis_block(goal: str, top: list[dict]) -> str:
-    """Deterministic figures section (scorecard table + ```chart + strategy-mix
-    donut + ```mermaid lineage + KaTeX). Mirrors the shared subset of
-    frontend/src/lib/sim/content.ts buildAnalysis; the in-browser demo
-    additionally shows an Elo-trajectory chart."""
-    scored = []
-    for p in top:
-        sc = make_review(goal, p["title"], "full")["scores"]
-        scored.append((p, sc))
+# ---------------------------- figure helpers ------------------------------ #
+# Each returns a self-contained markdown figure body (table + ```chart, or a
+# ```mermaid graph) or None. `_figure_set` numbers them in document order and
+# adds captions; `make_overview` splices each into its matching upper section.
+# Mirrors the shared subset of frontend/src/lib/sim/content.ts.
 
+_RATING_MODEL_NOTE = (
+    "### Rating model\n\n"
+    "Each match updates a hypothesis's Elo rating $R$ by\n\n"
+    r"$$R'_a = R_a + K\,(S_a - E_a), \qquad "
+    r"E_a = \frac{1}{1 + 10^{(R_b - R_a)/400}}$$"
+    "\n\nwhere $S_a \\in \\{0, 1\\}$ is the match outcome and $K$ is the update rate."
+)
+
+
+def _scorecard_body(goal: str, top: list[dict]) -> str | None:
+    scored = [(p, make_review(goal, p["title"], "full")["scores"]) for p in top]
+    if not scored:
+        return None
     rows = "\n".join(
         f"| {i+1}. {_cell(p['title'][:40])} | {sc['novelty']:.2f} | {sc['correctness']:.2f} "
         f"| {sc['testability']:.2f} | {sc['feasibility']:.2f} |"
@@ -192,54 +201,67 @@ def _analysis_block(goal: str, top: list[dict]) -> str:
             for i, (p, sc) in enumerate(scored)
         ],
     }
-    parts = [
-        "## Analysis",
-        "### Proposal scorecard\n\n"
-        "Reviewer scores for each finalist (0–1; higher is better).\n\n"
+    return (
         "| Proposal | Novelty | Correctness | Testability | Feasibility |\n"
-        "|---|---|---|---|---|\n" + rows + "\n\n```chart\n" + json.dumps(spec) + "\n```",
-    ]
+        "|---|---|---|---|---|\n" + rows + "\n\n```chart\n" + json.dumps(spec) + "\n```"
+    )
 
-    # Strategy mix → donut.
+
+def _donut_body(top: list[dict]) -> str | None:
     strat_counts: dict = {}
     for p in top:
         s = p.get("strategy", "literature")
         strat_counts[s] = strat_counts.get(s, 0) + 1
-    if strat_counts:
-        entries = sorted(strat_counts.items(), key=lambda kv: -kv[1])
-        srows = "\n".join(f"| {k} | {v} |" for k, v in entries)
-        dspec = {"type": "donut", "title": "Hypotheses by generation strategy",
-                 "segments": [{"label": k, "value": v} for k, v in entries]}
-        parts.append(
-            "### Where the ideas came from\n\n"
-            "| Generation strategy | Hypotheses |\n|---|---|\n" + srows + "\n\n"
-            "```chart\n" + json.dumps(dspec) + "\n```"
-        )
-
-    # Lineage (only when the proposals carry parent ids, e.g. seeded demo).
-    ids_shown = {p.get("id") for p in top}
-    if any(p.get("parent_ids") for p in top):
-        nodes = "\n".join(
-            f'  {_mm_id(p["id"])}["{p["title"].replace(chr(34), " ")[:30]}"]'
-            for p in top if p.get("id")
-        )
-        edges = "\n".join(
-            f'  {_mm_id(par)} --> {_mm_id(p["id"])}'
-            for p in top for par in (p.get("parent_ids") or []) if par in ids_shown
-        )
-        parts.append(
-            "### Idea lineage\n\n```mermaid\ngraph LR\n" + nodes
-            + ("\n" + edges if edges else "") + "\n```"
-        )
-
-    parts.append(
-        "### Rating model\n\n"
-        "Each match updates a hypothesis's Elo rating $R$ by\n\n"
-        r"$$R'_a = R_a + K\,(S_a - E_a), \qquad "
-        r"E_a = \frac{1}{1 + 10^{(R_b - R_a)/400}}$$"
-        "\n\nwhere $S_a \\in \\{0, 1\\}$ is the match outcome and $K$ is the update rate."
+    if not strat_counts:
+        return None
+    entries = sorted(strat_counts.items(), key=lambda kv: -kv[1])
+    srows = "\n".join(f"| {k} | {v} |" for k, v in entries)
+    dspec = {"type": "donut", "title": "Hypotheses by generation strategy",
+             "segments": [{"label": k, "value": v} for k, v in entries]}
+    return (
+        "| Generation strategy | Hypotheses |\n|---|---|\n" + srows + "\n\n"
+        "```chart\n" + json.dumps(dspec) + "\n```"
     )
-    return "\n\n".join(parts)
+
+
+def _lineage_body(top: list[dict]) -> str | None:
+    # Only when the proposals carry parent ids (e.g. the seeded demo).
+    if not any(p.get("parent_ids") for p in top):
+        return None
+    ids_shown = {p.get("id") for p in top}
+    nodes = "\n".join(
+        f'  {_mm_id(p["id"])}["{p["title"].replace(chr(34), " ")[:30]}"]'
+        for p in top if p.get("id")
+    )
+    if not nodes:
+        return None
+    edges = "\n".join(
+        f'  {_mm_id(par)} --> {_mm_id(p["id"])}'
+        for p in top for par in (p.get("parent_ids") or []) if par in ids_shown
+    )
+    return "```mermaid\ngraph LR\n" + nodes + ("\n" + edges if edges else "") + "\n```"
+
+
+def _figure_set(goal: str, top: list[dict]) -> dict[str, str]:
+    """Numbered, captioned figure blocks keyed by placement. Empty string when a
+    figure has no data (splices in cleanly). Numbered in document order."""
+    n = 0
+
+    def cap(body: str | None, text: str) -> str:
+        nonlocal n
+        if not body:
+            return ""
+        n += 1
+        return f"{body}\n\n*Fig. {n} — {text}*"
+
+    return {
+        "donut": cap(_donut_body(top),
+                     "share of the finalist hypotheses by generation strategy."),
+        "scores": cap(_scorecard_body(goal, top),
+                      "reviewer scores across the four dimensions for each finalist."),
+        "lineage": cap(_lineage_body(top),
+                       "idea lineage — offspring bred from top parents by the Evolution agent."),
+    }
 
 
 def _overview_refs(top: list[dict]) -> tuple[list[dict], list[str]]:
@@ -285,9 +307,16 @@ def make_overview(goal: str, proposals: list[dict]) -> str:
     for i, p in enumerate(top):
         elo = round(p["elo"]) if p.get("elo") is not None else "—"
         mk = f" {markers[i]}" if markers[i] else ""
+        # A compact score radar for each of the top-3 proposals — a per-proposal
+        # illustration inside this upper section (self-labelled by its title).
+        radar = ""
+        if i < 3:
+            sc = make_review(goal, p["title"], "full")["scores"]
+            rspec = {"type": "radar", "title": f"Score profile — proposal {i+1}", "scores": sc}
+            radar = "\n\n```chart\n" + json.dumps(rspec) + "\n```"
         sections.append(f"""### Proposal {i+1}. {p['title']}
 
-**Tournament Elo:** {elo} · **Generation strategy:** `{p.get('strategy', 'literature')}`
+**Tournament Elo:** {elo} · **Generation strategy:** `{p.get('strategy', 'literature')}`{radar}
 
 **The hypothesis.** {p.get('summary', '').strip()}
 
@@ -307,6 +336,13 @@ concentration in the relevant compartment — worth a pilot exposure check first
 **What would falsify it.** No dose-dependent shift in the primary readout at a
 clinically achievable exposure, or rescue by the mechanism-dead control.""")
     body = "\n\n---\n\n".join(sections)
+
+    # Content figures woven into the relevant upper sections (empty strings when
+    # a figure has no data). A slim rating-model note trails under "## Analysis".
+    figs = _figure_set(goal, top)
+    donut = f"\n\n{figs['donut']}" if figs["donut"] else ""
+    scores = f"{figs['scores']}\n\n" if figs["scores"] else ""
+    lineage = f"\n\n{figs['lineage']}" if figs["lineage"] else ""
 
     return f"""# Research proposal
 
@@ -332,18 +368,18 @@ shorten the path from hypothesis to evidence.
 Independent generation strategies (literature-grounded, debate-driven,
 combination, and out-of-box) were each given room to explore, then forced to
 compete. Where several strategies nominated the same mechanism, that convergence
-is treated as a robustness signal rather than redundancy.
+is treated as a robustness signal rather than redundancy.{donut}
 
 ## Ranked proposals
 
-{body}
+{scores}{body}
 
 ## Comparative assessment
 
 The top proposals are not interchangeable: some converge on a shared pathway
 (mutually reinforcing evidence), while others are genuinely orthogonal bets worth
 running in parallel to hedge mechanism risk. Prefer starting with the highest-Elo
-idea that also has the cheapest decisive experiment.
+idea that also has the cheapest decisive experiment.{lineage}
 
 ## Recommended path and sequencing
 
@@ -358,7 +394,9 @@ is most likely to disagree — treat those proposals as exploratory. The tournam
 optimizes for debate-survivability, not ground truth, so a high Elo is a strong
 prior, not a proof.
 
-{_analysis_block(goal, top)}
+## Analysis
+
+{_RATING_MODEL_NOTE}
 
 ## References
 

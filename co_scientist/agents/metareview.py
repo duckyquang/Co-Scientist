@@ -135,83 +135,151 @@ def _cell(s: str) -> str:
     return s.replace("|", "\\|")
 
 
-def _analysis_block(top: list, reviews_by_hyp: dict) -> str:
-    """Deterministic figures section rendered by the frontend Markdown component:
-    a scorecard table + a ```chart scores block + a strategy-mix donut + a
-    ```mermaid lineage graph + a KaTeX rating-model formula. Mirrors the shared
-    subset of frontend/src/lib/sim/content.ts buildAnalysis; the in-browser demo
-    additionally shows an Elo-trajectory chart (it has full match history in
-    hand, which this path would need to fetch)."""
+# ---------------------------- figure helpers ------------------------------ #
+# Each returns a self-contained markdown figure body (table + ```chart, or a
+# ```mermaid graph) or None when there's no data. `_weave_figures` numbers them
+# in document order, adds captions, and splices each into its matching upper
+# section of the LLM prose. Rendered on-site as SVG/Mermaid/KaTeX; copies as
+# markdown (tables + fenced blocks) so a chart that fails to parse degrades to
+# the table above it. Mirrors the shared subset of sim/content.ts figures.
+
+
+def _fig_caption(n: int, text: str) -> str:
+    """One-line italic figure caption (GEML academic style)."""
+    return f"\n\n*Fig. {n} — {text}*"
+
+
+def _scorecard_body(scored: list) -> str | None:
+    if not scored:
+        return None
+    rows = "\n".join(
+        f"| {i + 1}. {_cell(h.title[:40])} | {sc.novelty:.2f} | {sc.correctness:.2f} "
+        f"| {sc.testability:.2f} | {sc.feasibility:.2f} |"
+        for i, (h, sc) in enumerate(scored)
+    )
+    spec = {
+        "type": "scores", "title": "Reviewer scores by proposal",
+        "proposals": [
+            {"label": f"{i + 1}. {h.title[:32]}", "scores": {
+                "novelty": sc.novelty, "correctness": sc.correctness,
+                "testability": sc.testability, "feasibility": sc.feasibility}}
+            for i, (h, sc) in enumerate(scored)
+        ],
+    }
+    return (
+        "| Proposal | Novelty | Correctness | Testability | Feasibility |\n"
+        "|---|---|---|---|---|\n" + rows + "\n\n"
+        "```chart\n" + json.dumps(spec) + "\n```"
+    )
+
+
+def _donut_body(top: list) -> str | None:
+    strat_counts: dict = {}
+    for h in top[:5]:
+        strat_counts[h.strategy] = strat_counts.get(h.strategy, 0) + 1
+    if not strat_counts:
+        return None
+    entries = sorted(strat_counts.items(), key=lambda kv: -kv[1])
+    srows = "\n".join(f"| {k} | {v} |" for k, v in entries)
+    dspec = {"type": "donut", "title": "Hypotheses by generation strategy",
+             "segments": [{"label": k, "value": v} for k, v in entries]}
+    return (
+        "| Generation strategy | Hypotheses |\n|---|---|\n" + srows + "\n\n"
+        "```chart\n" + json.dumps(dspec) + "\n```"
+    )
+
+
+def _elo_body(series: dict, labels: dict) -> str | None:
+    if not series:
+        return None
+    spec = {"type": "elo", "title": "Elo over tournament matches",
+            "series": series, "labels": labels}
+    return "```chart\n" + json.dumps(spec) + "\n```"
+
+
+def _lineage_body(top: list) -> str | None:
+    ids_shown = {h.id for h in top[:5]}
+    nodes = "\n".join(f'  {_mm_id(h.id)}["{_mm_label(h.title)}"]' for h in top[:5])
+    if not nodes:
+        return None
+    edges = "\n".join(
+        f"  {_mm_id(p)} --> {_mm_id(h.id)}"
+        for h in top[:5] for p in (h.parent_ids or []) if p in ids_shown
+    )
+    return "```mermaid\ngraph LR\n" + nodes + ("\n" + edges if edges else "") + "\n```"
+
+
+_RATING_MODEL_NOTE = (
+    "### Rating model\n\n"
+    "Each match updates a hypothesis's Elo rating $R$ by\n\n"
+    r"$$R'_a = R_a + K\,(S_a - E_a), \qquad "
+    r"E_a = \frac{1}{1 + 10^{(R_b - R_a)/400}}$$"
+    "\n\nwhere $S_a \\in \\{0, 1\\}$ is the match outcome for idea $a$ against "
+    "idea $b$, and $K$ is the update rate (larger for newer ideas)."
+)
+
+
+def _insert_after_heading(text: str, keyword: str, block: str) -> tuple[str, bool]:
+    """Splice `block` right after the first '## ' heading whose text contains
+    `keyword` (case-insensitive). Returns (text, inserted?)."""
+    kw = keyword.lower()
+    for m in re.finditer(r"(?mi)^##\s+(.+?)\s*$", text):
+        if kw in m.group(1).lower():
+            i = m.end()
+            return text[:i] + "\n\n" + block + text[i:], True
+    return text, False
+
+
+def _weave_figures(
+    top: list, reviews_by_hyp: dict, elo_series: dict, elo_labels: dict, text: str
+) -> str:
+    """Splice content figures into their matching upper sections of the LLM prose;
+    the rating-model note plus any figure whose section is absent land in a slim
+    trailing '## Analysis'. Deterministic (real data), so the figures are correct
+    regardless of the prose. Caller strips model References first; the
+    authoritative list is appended afterwards so it stays last."""
     scored = []
     for h in top[:5]:
         sc = next((r.scores for r in reviews_by_hyp.get(h.id, []) if r.scores), None)
         if sc is not None:
             scored.append((h, sc))
 
-    parts = ["## Analysis"]
+    # (heading keyword, [(body, caption), ...]) in document order.
+    sections = [
+        ("approach landscape", [
+            (_donut_body(top),
+             "share of the finalist hypotheses by generation strategy."),
+        ]),
+        ("ranked proposal", [
+            (_scorecard_body(scored),
+             "reviewer scores across the four dimensions for each finalist."),
+        ]),
+        ("comparative assessment", [
+            (_elo_body(elo_series, elo_labels),
+             "Elo trajectory of the finalists across tournament matches."),
+            (_lineage_body(top),
+             "idea lineage — offspring the Evolution agent bred from top parents."),
+        ]),
+    ]
 
-    if scored:
-        rows = "\n".join(
-            f"| {i + 1}. {_cell(h.title[:40])} | {sc.novelty:.2f} | {sc.correctness:.2f} "
-            f"| {sc.testability:.2f} | {sc.feasibility:.2f} |"
-            for i, (h, sc) in enumerate(scored)
-        )
-        spec = {
-            "type": "scores", "title": "Reviewer scores by proposal",
-            "proposals": [
-                {"label": f"{i + 1}. {h.title[:32]}", "scores": {
-                    "novelty": sc.novelty, "correctness": sc.correctness,
-                    "testability": sc.testability, "feasibility": sc.feasibility}}
-                for i, (h, sc) in enumerate(scored)
-            ],
-        }
-        parts.append(
-            "### Proposal scorecard\n\n"
-            "Reviewer scores for each finalist (0–1; higher is better).\n\n"
-            "| Proposal | Novelty | Correctness | Testability | Feasibility |\n"
-            "|---|---|---|---|---|\n" + rows + "\n\n"
-            "```chart\n" + json.dumps(spec) + "\n```"
-        )
+    n = 0
+    leftovers: list[str] = []
+    for keyword, items in sections:
+        blocks: list[str] = []
+        for body, caption in items:
+            if not body:
+                continue
+            n += 1
+            blocks.append(body + _fig_caption(n, caption))
+        if not blocks:
+            continue
+        combined = "\n\n".join(blocks)
+        text, ok = _insert_after_heading(text, keyword, combined)
+        if not ok:
+            leftovers.append(combined)
 
-    # Strategy mix across the top hypotheses → donut.
-    strat_counts: dict = {}
-    for h in top[:5]:
-        strat_counts[h.strategy] = strat_counts.get(h.strategy, 0) + 1
-    if strat_counts:
-        entries = sorted(strat_counts.items(), key=lambda kv: -kv[1])
-        srows = "\n".join(f"| {k} | {v} |" for k, v in entries)
-        dspec = {"type": "donut", "title": "Hypotheses by generation strategy",
-                 "segments": [{"label": k, "value": v} for k, v in entries]}
-        parts.append(
-            "### Where the ideas came from\n\n"
-            "| Generation strategy | Hypotheses |\n|---|---|\n" + srows + "\n\n"
-            "```chart\n" + json.dumps(dspec) + "\n```"
-        )
-
-    # Lineage over the top hypotheses (edges kept only within the shown set).
-    ids_shown = {h.id for h in top[:5]}
-    nodes = "\n".join(f'  {_mm_id(h.id)}["{_mm_label(h.title)}"]' for h in top[:5])
-    edges = "\n".join(
-        f"  {_mm_id(p)} --> {_mm_id(h.id)}"
-        for h in top[:5] for p in (h.parent_ids or []) if p in ids_shown
-    )
-    if nodes:
-        parts.append(
-            "### Idea lineage\n\n"
-            "Original hypotheses and the offspring the Evolution agent bred from "
-            "top parents.\n\n"
-            "```mermaid\ngraph LR\n" + nodes + ("\n" + edges if edges else "") + "\n```"
-        )
-
-    parts.append(
-        "### Rating model\n\n"
-        "Each match updates a hypothesis's Elo rating $R$ by\n\n"
-        r"$$R'_a = R_a + K\,(S_a - E_a), \qquad "
-        r"E_a = \frac{1}{1 + 10^{(R_b - R_a)/400}}$$"
-        "\n\nwhere $S_a \\in \\{0, 1\\}$ is the match outcome for idea $a$ against "
-        "idea $b$, and $K$ is the update rate (larger for newer ideas)."
-    )
-    return "\n\n".join(parts)
+    analysis = "\n\n".join(["## Analysis", *leftovers, _RATING_MODEL_NOTE])
+    return text.rstrip() + "\n\n" + analysis
 
 
 class MetaReviewAgent(BaseAgent):
@@ -373,12 +441,19 @@ class MetaReviewAgent(BaseAgent):
         if not text.strip():
             text = "# Research overview\n\n_(No content was generated; see transcripts.)_"
 
-        # Append a deterministic figures section (scorecard + chart + lineage +
-        # rating-model math) built from real data — always correct regardless of
-        # the LLM's prose. Rendered on-site as SVG/Mermaid/KaTeX; copies as
-        # markdown (table + fenced blocks). Strip any model-written References
+        # Splice deterministic figures (built from real data) into the LLM's
+        # upper sections — donut in the approach landscape, scorecard in ranked
+        # proposals, Elo race + lineage in the comparative assessment — with a
+        # slim rating-model note trailing. Strip any model-written References
         # first so the authoritative list stays last.
-        text = _strip_references(text).rstrip() + "\n\n" + _analysis_block(top, reviews_by_hyp)
+        elo_series = await tourney_repo.elo_series(
+            self.deps.db, session.id, [h.id for h in top[:5]]
+        )
+        elo_labels = {h.id: h.title[:24] for h in top[:5]}
+        text = _weave_figures(
+            top, reviews_by_hyp, elo_series, elo_labels,
+            _strip_references(text).rstrip(),
+        )
 
         # Guarantee a numbered References section built from real citation data,
         # flagging any source the citation verifier could not confirm. Skip the

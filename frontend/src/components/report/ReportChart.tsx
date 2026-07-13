@@ -1,14 +1,15 @@
-import { Donut, EloRace, ScoreBars } from "../charts";
+import { Donut, EloRace, ScoreBars, ScoreRadar } from "../charts";
 import type { Scores } from "../../types";
 
 /** A ```chart fenced block in a report: JSON spec → an existing SVG chart.
- *  Kept intentionally small — three shapes cover every figure the report emits.
+ *  Kept intentionally small — a few shapes cover every figure the report emits.
  *  Copied markdown always pairs the chart with a table, so a raw JSON block that
  *  fails to parse degrades to nothing critical (the table above it carries the data). */
 type Spec =
   | { type: "scores"; title?: string; proposals: { label: string; scores: Scores }[] }
   | { type: "donut"; title?: string; segments: { label: string; value: number; color?: string }[] }
-  | { type: "elo"; title?: string; series: Record<string, { i: number; elo: number }[]>; labels?: Record<string, string> };
+  | { type: "elo"; title?: string; series: Record<string, { i: number; elo: number }[]>; labels?: Record<string, string> }
+  | { type: "radar"; title?: string; scores: Scores };
 
 const DONUT_COLORS = [
   "var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)",
@@ -55,6 +56,11 @@ export function ReportChart({ raw }: { raw: string }) {
       )}
       {spec.type === "elo" && spec.series && typeof spec.series === "object" && (
         <EloRace series={spec.series} labels={spec.labels} height={200} />
+      )}
+      {spec.type === "radar" && spec.scores && typeof spec.scores === "object" && (
+        <div className="flex justify-center">
+          <ScoreRadar scores={spec.scores} />
+        </div>
       )}
     </figure>
   );
