@@ -56,6 +56,16 @@ class BaseAgent:
         return None
 
     @staticmethod
+    def _thinking_text(response) -> str:
+        """Join extended-thinking blocks from a response ('' when absent)."""
+        parts = [
+            getattr(block, "thinking", "")
+            for block in response.raw.content or []
+            if getattr(block, "type", None) == "thinking"
+        ]
+        return "\n\n".join(p for p in parts if p).strip()
+
+    @staticmethod
     def _final_text(response) -> str:
         parts = []
         for block in response.raw.content or []:

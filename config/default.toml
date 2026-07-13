@@ -9,6 +9,8 @@ max_matches_per_idea = 12
 wall_clock_seconds = 7200            # 2h default
 budget_tokens = 5_000_000
 budget_usd = 25.0
+critique_every_matches = 15          # self-critique cadence (matches); 0 disables
+evolution_min_mature = 4             # hypotheses with >=3 matches before evolving
 
 [storage]
 data_dir = "./data"
@@ -45,6 +47,8 @@ elo_stability_k = 5                  # top-K tracked
 elo_stability_n = 3                  # snapshots compared
 elo_stability_eps = 25.0
 match_snapshot_every = 10
+budget_floor_pct = 0.95              # keep working until >=95% of token budget spent
+stall_after_seconds = 600            # no token progress + idle queue -> IDLE
 
 [budget_shares]
 generation = 0.20
@@ -84,6 +88,7 @@ evolution_feasibility   = 0
 evolution_simplify      = 0
 metareview_feedback     = 8000
 metareview_final        = 16000
+metareview_critique     = 10000
 
 [tool_loop]
 generation_max_iters = 8

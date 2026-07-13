@@ -347,8 +347,9 @@ def create_react_router(base_cfg: Config, *, live_sessions: set[str]) -> APIRout
             cfg.llm.provider = body.provider
         cfg.run.budget_tokens = body.budget_tokens
         cfg.run.wall_clock_seconds = body.wall_clock_seconds
-        if body.budget_usd is not None:
-            cfg.run.budget_usd = body.budget_usd
+        # Web sessions are token-capped: without an explicit USD override the
+        # config default (25 USD) would stop Opus runs at ~1% of the token cap.
+        cfg.run.budget_usd = body.budget_usd if body.budget_usd is not None else 0.0
         sid = await _spawn_session(cfg, goal, n_initial=body.n_initial,
                                    wall_clock_seconds=body.wall_clock_seconds)
         return JSONResponse({"session_id": sid, "ok": True}, status_code=201)

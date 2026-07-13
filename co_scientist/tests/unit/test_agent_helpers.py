@@ -102,3 +102,36 @@ def test_review_md_renders_sections() -> None:
     assert "plausible" in md
     assert "https://e.example/p" in md
     assert "n" in md
+
+
+# ----------------------------- _thinking_text ----------------------------- #
+
+
+class _Block:
+    def __init__(self, type: str, **kw: str) -> None:
+        self.type = type
+        for k, v in kw.items():
+            setattr(self, k, v)
+
+
+class _Resp:
+    def __init__(self, blocks: list[_Block]) -> None:
+        self.raw = type("Raw", (), {"content": blocks})()
+
+
+def test_thinking_text_joins_thinking_blocks() -> None:
+    from co_scientist.agents.base import BaseAgent
+
+    resp = _Resp([
+        _Block("thinking", thinking="first thought"),
+        _Block("text", text="visible answer"),
+        _Block("thinking", thinking="second thought"),
+    ])
+    assert BaseAgent._thinking_text(resp) == "first thought\n\nsecond thought"
+
+
+def test_thinking_text_empty_when_absent() -> None:
+    from co_scientist.agents.base import BaseAgent
+
+    assert BaseAgent._thinking_text(_Resp([_Block("text", text="hi")])) == ""
+    assert BaseAgent._thinking_text(_Resp([])) == ""

@@ -104,6 +104,18 @@ def budget_exceeded(session: Session) -> bool:
     )
 
 
+def token_floor(cfg: Config, session: Session) -> int:
+    """Token count at which the session may stop (e.g. 95% of the cap)."""
+    return int(session.budget_tokens * cfg.termination.budget_floor_pct)
+
+
+def floor_reached(cfg: Config, session: Session) -> bool:
+    """True once used tokens reach the floor. Trivially met when uncapped."""
+    if session.budget_tokens <= 0:
+        return True
+    return session.budget_used_tokens >= token_floor(cfg, session)
+
+
 def wall_clock_exceeded(session: Session) -> bool:
     if session.wall_deadline is None:
         return False
@@ -119,14 +131,22 @@ def should_stop(
     session: Session,
     tracker: StabilityTracker,
     external_stop: bool = False,
+    stalled: bool = False,
 ) -> StopReason | None:
     if external_stop:
         return StopReason.EXTERNAL
-    if budget_exceeded(session):
+    # Stop at the budget floor (default 95%) rather than the hard cap; the
+    # remaining tail funds the final-overview call in `_finalize`.
+    if budget_exceeded(session) or (
+        session.budget_tokens > 0 and floor_reached(cfg, session)
+    ):
         return StopReason.BUDGET
     if wall_clock_exceeded(session):
         return StopReason.WALL_CLOCK
-    _ = cfg
-    if tracker.is_stable():
+    if stalled:
+        return StopReason.IDLE
+    # Elo stability alone no longer ends a token-capped session early — the
+    # floor must also be met (trivially true only when budget_tokens == 0).
+    if tracker.is_stable() and floor_reached(cfg, session):
         return StopReason.ELO_STABLE
     return None

@@ -8,7 +8,9 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 FeedbackSource = Literal["human", "meta_review"]
-FeedbackKind = Literal["directive", "preference", "rejection", "pin", "system_feedback"]
+FeedbackKind = Literal[
+    "directive", "preference", "rejection", "pin", "system_feedback", "self_critique"
+]
 
 
 class SystemFeedback(BaseModel):
