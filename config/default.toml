@@ -4,7 +4,7 @@
 
 [run]
 concurrency = 4
-max_ideas = 60
+max_ideas = 100                      # Deep preset: 50 initial + evolution offspring
 max_matches_per_idea = 12
 wall_clock_seconds = 7200            # 2h default
 budget_tokens = 5_000_000

@@ -229,7 +229,12 @@ export function makeHypothesis(goal: string, idx: number, strategy: string): Sim
   const pct = r.randint(15, 45);
 
   const scaffold = TITLE_SCAFFOLDS[idx % TITLE_SCAFFOLDS.length];
-  const title = clip(scaffold(topic, lever, lever2, dom.metric, method), 110);
+  // Deep mode asks for up to 50 hypotheses but there are only a handful of
+  // scaffolds/topics/levers — past the first rotation, tag a variant number so
+  // titles stay distinct instead of silently repeating.
+  const cycle = Math.floor(idx / TITLE_SCAFFOLDS.length);
+  const base = clip(scaffold(topic, lever, lever2, dom.metric, method), cycle > 0 ? 96 : 110);
+  const title = cycle > 0 ? `${base} — variant ${cycle + 1}` : base;
   const summary =
     `${cap(lever)} is a plausible lever to ${aim}. The effect should appear as a measurable change in ${dom.metric}, making it directly testable via ${method} against a pre-registered threshold.`;
   const full_text = `## Mechanism
