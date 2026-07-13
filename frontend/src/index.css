@@ -189,6 +189,26 @@ body {
 /* KaTeX display math shouldn't overflow narrow columns */
 .prose-sci .katex-display { @apply overflow-x-auto overflow-y-hidden py-1; }
 
+/* ── Proposal microsite (bold, vibrant "website" view) ──────── */
+.hero-band {
+  background: linear-gradient(115deg, #2563eb 0%, #10b981 55%, #f59e0b 118%);
+}
+/* Larger, punchier typography inside the microsite article. */
+.microsite .prose-sci h1 { @apply text-3xl font-black text-fg mt-2 mb-4; }
+.microsite .prose-sci h2 {
+  @apply relative text-[26px] font-extrabold leading-tight text-fg mt-14 mb-5 pl-4;
+  scroll-margin-top: 76px;
+}
+.microsite .prose-sci h2::before {
+  content: ""; position: absolute; left: 0; top: 0.18em; bottom: 0.18em; width: 5px;
+  border-radius: 9999px;
+  background: linear-gradient(180deg, rgb(var(--bloom-a)), #10b981);
+}
+.microsite .prose-sci h3 { @apply text-lg font-bold text-fg mt-8 mb-2; scroll-margin-top: 76px; }
+.microsite .prose-sci p  { @apply text-[16px] leading-8; }
+.microsite .prose-sci li { @apply text-[15.5px] leading-7; }
+.microsite .report-figure { @apply my-6; }
+
 /* ── Print / PDF ──────────────────────────────────────────────
    The report prints as a clean document: app chrome hidden, forced light
    theme, charts kept whole across page breaks, SVG charts stay vector-crisp. */
@@ -201,8 +221,10 @@ body {
   body { background: #fff !important; }
   /* Hide everything not marked printable, plus known chrome. */
   .no-print, aside, nav, .sidebar, footer, button { display: none !important; }
-  /* Let the report fill the page. */
-  .md\:pl-56 { padding-left: 0 !important; }
+  /* Let the report fill the page — and unclip the fixed-height app shell so a
+     multi-page report/microsite fragments across pages instead of page one only. */
+  html, body, #root { height: auto !important; overflow: visible !important; }
+  .md\:pl-56 { padding-left: 0 !important; height: auto !important; overflow: visible !important; }
   main { max-width: none !important; padding: 0 !important; }
   .card { box-shadow: none !important; border-color: #e4e4e7 !important; }
   .report-figure, .prose-sci table, .prose-sci h1, .prose-sci h2, .prose-sci h3 {
@@ -210,6 +232,13 @@ body {
   }
   .prose-sci h1, .prose-sci h2, .prose-sci h3 { break-after: avoid; }
   a { color: #1d4ed8 !important; text-decoration: underline; }
+  /* Microsite: the gradient hero won't print, so drop it to readable dark text. */
+  .microsite { position: static !important; overflow: visible !important; }
+  .hero-band { background: #fff !important; padding: 0 0 8px !important; }
+  .hero-band svg { display: none !important; }
+  .hero-band h1 { color: #111 !important; }
+  .hero-band p { color: #444 !important; }
+  .hero-band span { color: #444 !important; background: none !important; box-shadow: none !important; }
   @page { size: A4; margin: 16mm; }
 }
 

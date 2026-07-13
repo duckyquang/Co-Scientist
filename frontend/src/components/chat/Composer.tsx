@@ -44,7 +44,7 @@ export function Composer({
           onKeyDown={onKeyDown}
           rows={1}
           placeholder={placeholder}
-          className="max-h-[200px] flex-1 resize-none bg-transparent px-2.5 py-2 text-[15px] leading-relaxed text-fg placeholder:text-faint outline-none"
+          className="max-h-[200px] flex-1 resize-none bg-transparent px-2.5 py-2 text-[15px] leading-relaxed text-fg placeholder:text-faint outline-none focus:outline-none focus-visible:outline-none"
         />
         <button
           onClick={() => value.trim() && !sending && onSend()}

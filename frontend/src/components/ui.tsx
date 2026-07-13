@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { Children, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -66,6 +66,16 @@ export function Progress({ value, max, color = "#3b82f6" }: { value: number; max
   );
 }
 
+/** Flatten heading children to plain text, for anchor slugs. */
+function nodeText(children: ReactNode): string {
+  return Children.toArray(children)
+    .map((c: any) => (typeof c === "string" ? c : c?.props?.children ? nodeText(c.props.children) : ""))
+    .join("");
+}
+export function slugify(s: string): string {
+  return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
 export function Markdown({ md }: { md: string }) {
   return (
     <div className="prose-sci">
@@ -73,6 +83,10 @@ export function Markdown({ md }: { md: string }) {
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[rehypeKatex]}
         components={{
+          // Slugged ids on headings so a table of contents can anchor-scroll.
+          h1: ({ children }) => <h1 id={slugify(nodeText(children))}>{children}</h1>,
+          h2: ({ children }) => <h2 id={slugify(nodeText(children))}>{children}</h2>,
+          h3: ({ children }) => <h3 id={slugify(nodeText(children))}>{children}</h3>,
           // Unwrap ```mermaid / ```chart blocks so the chart isn't nested in <pre>.
           pre({ children }) {
             const child: any = Array.isArray(children) ? children[0] : children;

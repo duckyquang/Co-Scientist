@@ -1,4 +1,6 @@
-export type DeploymentMode = "local" | "cloud";
+// "default" = the free path (in-browser sim / server default, no key needed).
+// "byok"    = bring your own API key.
+export type DeploymentMode = "default" | "byok";
 
 export interface UserCredentials {
   provider: string;
@@ -9,9 +11,12 @@ const MODE_KEY = "co_scientist_mode";
 const CREDS_KEY = "co_scientist_credentials";
 const ONBOARDING_KEY = "co_scientist_onboarding_done";
 
-export function getDeploymentMode(): DeploymentMode | null {
+/** The stored deployment mode, defaulting to the free path. Migrates the legacy
+ *  values ("cloud" → "byok", "local" → "default"). */
+export function getDeploymentMode(): DeploymentMode {
   const v = localStorage.getItem(MODE_KEY);
-  return v === "local" || v === "cloud" ? v : null;
+  if (v === "byok" || v === "cloud") return "byok";
+  return "default"; // "local", unset, or anything else → free path
 }
 
 export function setDeploymentMode(mode: DeploymentMode) {
@@ -44,8 +49,7 @@ export function clearCredentials() {
 }
 
 export function authHeaders(): Record<string, string> {
-  const mode = getDeploymentMode();
-  if (mode !== "cloud") return {};
+  if (getDeploymentMode() !== "byok") return {};
   const creds = getCredentials();
   if (!creds) return {};
   return {
