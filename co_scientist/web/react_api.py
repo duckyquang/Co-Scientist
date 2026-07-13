@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import sqlite3
 import time
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
@@ -107,6 +108,19 @@ async def _insert_chat(conn, session_id: str, role: str, text: str, *,
          role, intent, text, new_session_id),
     )
     await conn.commit()
+
+
+async def _root_session_id(conn, session_id: str) -> str:
+    """Rerun-chain root for a session: its origin_session_id, else itself.
+    Defensive on DBs that predate migration 0007 (missing column → own root)."""
+    try:
+        async with conn.execute(
+            "SELECT origin_session_id FROM sessions WHERE id=?", (session_id,)
+        ) as cur:
+            row = await cur.fetchone()
+    except sqlite3.OperationalError:
+        return session_id
+    return (row["origin_session_id"] if row else None) or session_id
 
 
 async def _list_chat(conn, session_id: str) -> list[dict]:
@@ -298,8 +312,20 @@ def create_react_router(base_cfg: Config, *, live_sessions: set[str]) -> APIRout
 
         return EventSourceResponse(_gen())
 
+    def _stamp_origin(cfg: Config, sid: str, origin_session_id: str) -> None:
+        """Stamp the rerun-chain root onto a freshly spawned session row.
+        Uses the sync store connection, which guarantees the column exists."""
+        conn = _db_conn(cfg)
+        try:
+            conn.execute("UPDATE sessions SET origin_session_id=? WHERE id=?",
+                         (origin_session_id, sid))
+            conn.commit()
+        finally:
+            conn.close()
+
     async def _spawn_session(cfg: Config, goal: str, *, n_initial: int,
-                             wall_clock_seconds: int) -> str:
+                             wall_clock_seconds: int,
+                             origin_session_id: str | None = None) -> str:
         """Kick off a Supervisor run in the background and return the new
         session id once its row appears (polls list_sessions up to 45s)."""
         sup = Supervisor(cfg)
@@ -330,6 +356,8 @@ def create_react_router(base_cfg: Config, *, live_sessions: set[str]) -> APIRout
             for row in rows:
                 if row["research_goal"] == goal and row["status"] in ("running", "paused"):
                     live_sessions.add(row["id"])
+                    if origin_session_id:
+                        await _run_sync(_stamp_origin, cfg, row["id"], origin_session_id)
                     return row["id"]
             await asyncio.sleep(0.3)
 
@@ -451,7 +479,8 @@ def create_react_router(base_cfg: Config, *, live_sessions: set[str]) -> APIRout
                 new_goal = content.compose_rerun_goal(out["idea"], out["change_request"])
                 new_sid = await _spawn_session(
                     cfg, new_goal, n_initial=4,
-                    wall_clock_seconds=cfg.run.wall_clock_seconds)
+                    wall_clock_seconds=cfg.run.wall_clock_seconds,
+                    origin_session_id=await _root_session_id(conn, session_id))
                 reply = out["reply_markdown"] or "Started a new research run based on your change."
             else:
                 reply = out["reply_markdown"] or "_(no answer generated)_"

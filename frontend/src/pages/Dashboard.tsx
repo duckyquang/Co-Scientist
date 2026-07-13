@@ -15,14 +15,17 @@ const EXAMPLE_PROMPTS = [
   "Find testable strategies to extend the lifespan of human cardiac organoids",
 ];
 
-function SessionCard({ s }: { s: SessionRow }) {
+function SessionCard({ s, runs = 1 }: { s: SessionRow; runs?: number }) {
   const tokCap = s.budget_tokens || 0;
   const pct = tokCap > 0 ? (s.budget_used_tokens / tokCap) * 100 : 0;
   const ref = useReveal<HTMLAnchorElement>();
   return (
     <Link ref={ref} to={`/s/${s.id}`} className="card card-hover reveal block p-5">
       <div className="flex items-start justify-between gap-3">
-        <StatusBadge status={s.status} />
+        <div className="flex items-center gap-2">
+          <StatusBadge status={s.status} />
+          {runs > 1 && <span className="chip chip-mute num">{runs} runs</span>}
+        </div>
         <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-soft">{timeAgo(s.updated_at)}</span>
       </div>
       <h3 className="mt-3 line-clamp-2 font-serif text-[16px] font-semibold leading-snug text-ink">
@@ -101,6 +104,21 @@ export default function Dashboard() {
   const running = userSessions.filter((s) => s.status === "running");
   const trend = userSessions.map((s) => s.n_hyps).slice(0, 12).reverse();
 
+  // One card per rerun chain (chat "tweak" spawns share an origin root):
+  // show only the NEWEST run; older runs stay reachable via the parent
+  // thread's "Open the new run →" links.
+  const chains = new Map<string, { s: SessionRow; runs: number }>();
+  for (const s of userSessions) {
+    const root = s.origin_session_id ?? s.id;
+    const g = chains.get(root);
+    if (!g) chains.set(root, { s, runs: 1 });
+    else {
+      g.runs += 1;
+      if (+new Date(s.updated_at) > +new Date(g.s.updated_at)) g.s = s;
+    }
+  }
+  const chainCards = [...chains.values()];
+
   if (loading && !sessions) {
     return <Loader label="Loading dashboard" />;
   }
@@ -137,7 +155,7 @@ export default function Dashboard() {
           <EmptyState />
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {userSessions.map((s) => <SessionCard key={s.id} s={s} />)}
+            {chainCards.map(({ s, runs }) => <SessionCard key={s.id} s={s} runs={runs} />)}
           </div>
         )}
       </section>

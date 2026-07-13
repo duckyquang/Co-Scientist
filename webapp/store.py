@@ -39,6 +39,11 @@ def connect(db_path: Path | str = DEFAULT_DB) -> sqlite3.Connection:
         with _INIT_LOCK:
             if str(db_path) not in _INITED:
                 conn.executescript(SCHEMA_SQL.read_text())
+                # CREATE TABLE IF NOT EXISTS no-ops on pre-existing DBs, so
+                # columns added to schema.sql later need an ALTER guard here.
+                cols = {r[1] for r in conn.execute("PRAGMA table_info(sessions)")}
+                if "origin_session_id" not in cols:
+                    conn.execute("ALTER TABLE sessions ADD COLUMN origin_session_id TEXT")
                 conn.commit()
                 _INITED.add(str(db_path))
     return conn
@@ -76,7 +81,7 @@ def list_sessions(conn: sqlite3.Connection) -> list[dict]:
         """
         SELECT s.id, s.status, s.research_goal, s.created_at, s.updated_at,
                s.budget_usd, s.budget_used_usd, s.budget_tokens, s.budget_used_tokens,
-               s.final_overview,
+               s.final_overview, s.origin_session_id,
                (SELECT COUNT(*) FROM hypotheses h WHERE h.session_id = s.id) AS n_hyps,
                (SELECT COUNT(*) FROM hypotheses h WHERE h.session_id = s.id
                     AND h.state = 'in_tournament') AS n_tournament,
