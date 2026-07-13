@@ -11,15 +11,17 @@ Two actions:
 from __future__ import annotations
 
 import json
+import re
 from datetime import UTC, datetime
 
 from .. import ids
+from ..config import Config
 from ..llm.anthropic_client import AgentCallSpec, CachedBlock, CallContext
 from ..llm.prompts import render
 from ..llm.routing import route
 from ..logging import get_logger
 from ..models import SystemFeedback, Task, TaskResult
-from ..storage.artifacts import write_json, write_text
+from ..storage.artifacts import read_json, write_json, write_text
 from ..storage.repos import feedback as fb_repo
 from ..storage.repos import hypotheses as hyp_repo
 from ..storage.repos import reviews as rev_repo
@@ -29,6 +31,95 @@ from .base import BaseAgent
 from .schemas import RECORD_SYSTEM_FEEDBACK_TOOL
 
 log = get_logger("metareview")
+
+_REFERENCES_RE = re.compile(r"(?mi)^#{1,6}\s+references\b")
+
+
+# ---------------------------- citation helpers ---------------------------- #
+# The proposal must be backed by REAL citations only. These build a numbered
+# reference list from the CitedPaper records that actually live on the top
+# hypotheses' JSON artifacts (the hypotheses table drops citations).
+
+
+async def hydrate_citations(cfg: Config, hyps) -> list[dict]:
+    """Read CitedPaper records from each hypothesis artifact, dedupe, number.
+
+    Returns ordered citation dicts (real data only — nothing invented). Dedupe
+    is by URL, falling back to DOI. Order follows the hypotheses given, so the
+    highest-Elo hypotheses' sources come first.
+    """
+    seen: set[str] = set()
+    out: list[dict] = []
+    for h in hyps:
+        try:
+            payload = await read_json(cfg, h.artifact_path)
+        except Exception as e:  # missing/corrupt artifact — just skip it
+            log.warning("citation_hydrate_failed", hypothesis_id=h.id, err=str(e))
+            continue
+        record = (payload or {}).get("record") or {}
+        for c in record.get("citations", []):
+            if not isinstance(c, dict):
+                continue
+            url = (c.get("url") or "").strip()
+            doi = (c.get("doi") or "").strip()
+            key = url or doi
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            out.append({
+                "n": len(out) + 1,
+                "title": (c.get("title") or "Untitled").strip(),
+                "url": url or None,
+                "doi": doi or None,
+                "year": c.get("year"),
+                "excerpt": c.get("excerpt"),
+            })
+    return out
+
+
+def _ref_loc(c: dict) -> str:
+    if c.get("url"):
+        return c["url"]
+    if c.get("doi"):
+        return f"https://doi.org/{c['doi']}"
+    return ""
+
+
+def _ref_line(c: dict, unverified: frozenset[str] = frozenset()) -> str:
+    yr = c.get("year")
+    mark = " (unverified)" if (c.get("url") in unverified or c.get("doi") in unverified) else ""
+    return f"[{c['n']}] {c['title']} ({yr if yr else 'n.d.'}). {_ref_loc(c)}{mark}".rstrip()
+
+
+def citations_prompt_block(cites: list[dict]) -> str:
+    """The numbered list handed to the model — cite ONLY from these."""
+    if not cites:
+        return "(No citations were gathered for the top hypotheses. Do not invent any.)"
+    return "\n".join(_ref_line(c) for c in cites)
+
+
+def references_section(cites: list[dict], unverified: frozenset[str] = frozenset()) -> str:
+    if not cites:
+        return "## References\n\nNo verifiable citations were gathered."
+    return "\n".join(["## References", "", *[_ref_line(c, unverified) for c in cites]])
+
+
+def _strip_references(text: str) -> str:
+    """Drop any (possibly model-invented) References section from `text`."""
+    m = _REFERENCES_RE.search(text)
+    return (text[:m.start()] if m else text).rstrip()
+
+
+def ensure_references(
+    text: str, cites: list[dict], unverified: frozenset[str] = frozenset()
+) -> str:
+    """Guarantee an authoritative References section built from real data.
+
+    Belt-and-suspenders: whatever the model wrote for its own References section
+    is replaced (or, if absent, appended) with one generated from `cites`, so the
+    proposal can never carry an invented or incomplete reference list.
+    """
+    return f"{_strip_references(text)}\n\n{references_section(cites, unverified)}\n"
 
 
 def _mm_id(s: str) -> str:
@@ -246,12 +337,16 @@ class MetaReviewAgent(BaseAgent):
 
         latest_fb = await fb_repo.latest_system_feedback(self.deps.db, session.id)
 
+        # Real citations only — built from the top hypotheses' CitedPaper records.
+        cites = await hydrate_citations(self.deps.cfg, top)
+
         prompt = render(
             "metareview.final",
             goal=session.research_plan.objective,
             preferences="; ".join(session.research_plan.preferences),
             system_feedback=latest_fb.text if latest_fb else "",
             top_hypotheses_block=top_block,
+            citations_block=citations_prompt_block(cites),
         )
         r = route(self.deps.cfg, "metareview", "final")
         spec = AgentCallSpec(
@@ -281,8 +376,15 @@ class MetaReviewAgent(BaseAgent):
         # Append a deterministic figures section (scorecard + chart + lineage +
         # rating-model math) built from real data — always correct regardless of
         # the LLM's prose. Rendered on-site as SVG/Mermaid/KaTeX; copies as
-        # markdown (table + fenced blocks).
-        text = text.rstrip() + "\n\n" + _analysis_block(top, reviews_by_hyp)
+        # markdown (table + fenced blocks). Strip any model-written References
+        # first so the authoritative list stays last.
+        text = _strip_references(text).rstrip() + "\n\n" + _analysis_block(top, reviews_by_hyp)
+
+        # Guarantee a numbered References section built from real citation data,
+        # flagging any source the citation verifier could not confirm. Skip the
+        # (network) verifier pass entirely when there are no citations to mark.
+        unverified = await self._unverified_urls(session, top, reviews_by_hyp) if cites else frozenset()
+        text = text.rstrip() + "\n\n" + references_section(cites, unverified) + "\n"
 
         overview_path = await write_text(
             self.deps.cfg, session.id, "final", "overview", ".md", text
@@ -291,3 +393,30 @@ class MetaReviewAgent(BaseAgent):
             kind="final_overview_generated",
             extra={"overview_path": overview_path, "n_top": len(top)},
         )
+
+    async def _unverified_urls(self, session, top, reviews_by_hyp) -> frozenset[str]:
+        """URLs the citation verifier could not confirm (status != 'ok').
+
+        The verifier persists nothing, so there are no stored flags to read; we
+        recompute over the top hypotheses' reviews. Fetches are disk-cached (the
+        pages were already fetched during reflection), and the whole thing is
+        gated by `[safety] enable_citation_verifier` and best-effort — a verifier
+        failure never blocks the overview.
+        # ponytail: O(reviews×evidence) cached fetches on the final path; if this
+        # ever dominates latency, persist verifier output at reflection time.
+        """
+        if not self.deps.cfg.safety.enable_citation_verifier:
+            return frozenset()
+        from ..safety.citation_verifier import CitationVerifier
+
+        verifier = CitationVerifier(self.deps.cfg)
+        bad: set[str] = set()
+        for h in top:
+            for rv in reviews_by_hyp.get(h.id, []):
+                try:
+                    status = await verifier.verify_review(session.id, rv, self.deps.db)
+                except Exception as e:
+                    log.warning("citation_verify_failed", review_id=rv.id, err=str(e))
+                    continue
+                bad.update(url for url, info in status.items() if info.get("status") != "ok")
+        return frozenset(bad)

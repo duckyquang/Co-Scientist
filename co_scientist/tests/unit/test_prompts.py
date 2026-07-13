@@ -51,6 +51,27 @@ def test_render_ranking_pairwise() -> None:
     assert "H1 prose" in out
 
 
+def test_render_metareview_final_includes_citation_list() -> None:
+    from co_scientist.agents.metareview import citations_prompt_block
+
+    cites = [
+        {"n": 1, "title": "Paper One", "url": "https://a.example/1",
+         "doi": None, "year": 2021, "excerpt": None},
+        {"n": 2, "title": "Paper Two", "url": None,
+         "doi": "10.1000/xyz", "year": None, "excerpt": None},
+    ]
+    out = prompts.render(
+        "metareview.final",
+        goal="g", preferences="p", system_feedback="",
+        top_hypotheses_block="(hyps)",
+        citations_block=citations_prompt_block(cites),
+    )
+    # The numbered list the model must cite from is present in the prompt.
+    assert "[1] Paper One (2021). https://a.example/1" in out
+    assert "[2] Paper Two (n.d.). https://doi.org/10.1000/xyz" in out
+    assert "Cite ONLY from the numbered" in out
+
+
 def test_render_unknown_template_raises() -> None:
     with pytest.raises(KeyError):
         prompts.render("nonexistent.template")

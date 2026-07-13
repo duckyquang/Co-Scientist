@@ -566,6 +566,11 @@ class Supervisor:
                     )
             parts.append("")
         body = "\n".join(parts)
+        # Guarantee a References section from the hypotheses' real citations.
+        from .metareview import ensure_references, hydrate_citations
+
+        cites = await hydrate_citations(self.cfg, hyps)
+        body = ensure_references(body, cites)
         return await write_text(self.cfg, session.id, "final", "overview", ".md", body)
 
     # ----------------------------- helpers ----------------------------- #
