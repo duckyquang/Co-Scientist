@@ -288,7 +288,8 @@ class Handler(BaseHTTPRequestHandler):
             (int(time.time() * 1000), sid, "supervisor", "session_started",
              json.dumps({"goal": goal[:200], "n_initial": n_initial, "budget_tokens": budget_tokens})))
         conn.commit()
-        simulator.start(DB_PATH, sid, goal, budget, n_initial=n_initial, speed=speed)
+        simulator.start(DB_PATH, sid, goal, budget, n_initial=n_initial, speed=speed,
+                        budget_tokens=budget_tokens)
         return sid
 
     def _create_session(self, conn):

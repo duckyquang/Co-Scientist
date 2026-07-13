@@ -518,3 +518,79 @@ def make_chat_answer(goal: str, hyps: list[dict], overview: str = "") -> str:
         f"(`{leader.get('id', '?')}`, Elo {lead_elo}). {leader.get('summary', '')}".strip(),
     ]
     return "\n".join(parts)
+
+
+# --------------------------------------------------------------------------- #
+# Recurring self-critique rounds (shared contract with sim/content.ts)
+# --------------------------------------------------------------------------- #
+
+# Concrete angles a meta-review round attacks the current leaders from. Each
+# round rotates through these so the fabricated critique doesn't repeat.
+_CRITIQUE_ANGLES = [
+    ("citation integrity",
+     "at least one supporting citation looks like a plausibility match rather "
+     "than direct evidence — the cited result is adjacent, not confirmatory"),
+    ("mechanistic gap",
+     "the causal chain skips a step: the proposed lever and the measured "
+     "outcome are linked by an intermediate that was never actually established"),
+    ("confounding",
+     "the predicted effect could be produced by an uncontrolled confounder, so "
+     "a positive readout would not cleanly implicate the stated mechanism"),
+    ("tournament overfitting",
+     "this idea may be winning debates on rhetorical crispness rather than "
+     "truth — its Elo reflects how it argues, not whether it is right"),
+    ("external validity",
+     "the effect is asserted for the model system but the leap to the real "
+     "target population is doing a lot of unexamined work"),
+    ("measurement validity",
+     "the primary readout may be a proxy that moves for reasons unrelated to "
+     "the phenomenon we actually care about"),
+]
+
+
+def make_self_critique(goal: str, round_no: int, top: list[dict]) -> str:
+    """Fabricated meta-review self-critique for one recurring work round.
+
+    Shared contract with the browser runtime (frontend/src/lib/sim/content.ts
+    makeSelfCritique): returns markdown of the exact shape
+
+        ## Thinking\n\n<reasoning>\n\n## Self-critique\n\n<critique>
+
+    referencing the session's current top hypotheses. Deterministic (seeded by
+    goal + round) so re-reads are stable; varies per round and per top set.
+    """
+    r = _rng(f"{goal}|self_critique|{round_no}")
+    names = [(h.get("title") or "an untitled idea").strip() for h in top[:3]]
+    lead = names[0] if names else "the current leader"
+    runner = names[1] if len(names) > 1 else lead
+    angle_name, angle_body = _CRITIQUE_ANGLES[(round_no - 1) % len(_CRITIQUE_ANGLES)]
+    _alt_name, alt_body = r.choice(
+        [a for a in _CRITIQUE_ANGLES if a[0] != angle_name] or _CRITIQUE_ANGLES
+    )
+
+    thinking = (
+        f"Round {round_no}. I am re-reading the current leaderboard before trusting it.\n\n"
+        f"1. The top-ranked idea is **{lead}**. I re-derive its claim from first "
+        f"principles and ask whether the tournament rewarded it for being correct "
+        f"or merely for being well-argued.\n"
+        f"2. Its closest challenger is **{runner}**. I check whether the gap "
+        f"between them is real signal or just noise from a handful of matches.\n"
+        f"3. I walk each finalist's evidence back to its citations and ask, for "
+        f"every link in the chain, *would this survive a domain expert?*\n"
+        f"4. I list what a fresh round should probe that the last {round_no} "
+        f"round(s) did not."
+    )
+    critique = (
+        f"Are these actually the best hypotheses, or the best-defended? Looking "
+        f"hard at **{lead}**, I am not convinced. The flaw this round is "
+        f"**{angle_name}**: {angle_body}. That directly weakens the conclusion "
+        f"the ranking leans on.\n\n"
+        f"**{runner}** has a second problem — {alt_body}. If that holds, its "
+        f"stated result may be over-claimed, and a citation or two are being "
+        f"asked to carry more weight than they can bear.\n\n"
+        f"Next round I will stress-test these specific doubts: re-examine the "
+        f"weakest citation behind **{lead}**, probe the {angle_name} concern "
+        f"with a sharper falsification, and let a re-rank decide whether the "
+        f"current ordering actually holds up."
+    )
+    return f"## Thinking\n\n{thinking}\n\n## Self-critique\n\n{critique}"

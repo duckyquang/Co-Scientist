@@ -21,7 +21,7 @@ import type {
 } from "../../types";
 import type { LiveTick } from "../hooks";
 import { classifyIntent, composeRerunGoal, OUT_OF_SCOPE } from "./chatRouter";
-import { eloUpdate, figureSet, insertAfterHeading, makeHypothesis, makeOverview, makePlan, makeReview, referencesSection, SIM_MODEL, STRATEGIES } from "./content";
+import { eloUpdate, figureSet, insertAfterHeading, makeHypothesis, makeOverview, makePlan, makeReview, makeSelfCritique, referencesSection, SIM_MODEL, STRATEGIES } from "./content";
 import { generateSession, type GenHyp, type GeneratedContent } from "./generate";
 import { hasRealProvider } from "../llm";
 import { makeRng } from "./rng";
@@ -100,9 +100,19 @@ interface Plan {
   steps: Step[]; hyps: PlanHyp[]; matches: PlanMatch[]; events: PlanEvent[];
   tEnd: number; pinnedId: string | null; overview: string;
   metaFeedback: Feedback;
+  critiques: { t: number; fb: Feedback }[]; // recurring self-critique rounds, timed
   pending?: boolean; // groq generation still in flight (or failed)
   failed?: boolean;  // groq generation errored
 }
+
+/** Recurring self-critique loop keeps reasoning until simulated token spend
+ *  reaches HIT of the budget. Critique chunks are clamped so they never cross
+ *  HIT; only the tiny re-rank burst lands on top → ~95-97% band, never >100%. */
+const BUDGET_HIT = 0.95;
+/** Each round burns ~this fraction of the budget, so round count stays bounded
+ *  (~3-5) for any budget → wall time stays close to today's. */
+const CRITIQUE_ROUND_FRACTION = 0.22;
+const MAX_CRITIQUE_ROUNDS = 8;
 
 /** Assemble a markdown body from Groq's structured hypothesis fields. */
 function assembleFullText(g: GenHyp): string {
@@ -137,6 +147,7 @@ function buildPlan(rec: SimRecord): Plan {
     return {
       steps: [], hyps: [], matches: [], events, tEnd: Infinity, pinnedId: null, overview: "",
       metaFeedback: { id: `fb_${rec.id}_meta`, created_at: new Date(rec.created_ms).toISOString(), source: "meta_review", kind: "system_feedback", target_id: null, active: 1, text: "" },
+      critiques: [],
       pending: true,
     };
   }
@@ -149,6 +160,7 @@ function buildPlan(rec: SimRecord): Plan {
   const r = makeRng(simId);
   let t = 0;
   let matchCounter = 0;
+  let tokSum = 0; // running input+output tokens (drives the budget gauge)
   const steps: Step[] = [];
   const events: PlanEvent[] = [];
   const hyps: PlanHyp[] = [];
@@ -161,8 +173,21 @@ function buildPlan(rec: SimRecord): Plan {
     const cost = round4(r.uniform(lo, hi));
     const it = r.randint(1500, 9000);
     const ot = r.randint(400, 3500);
+    tokSum += it + ot;
     steps.push({
       t, agent, action, model: SIM_MODEL, cost,
+      input_tokens: it, output_tokens: ot,
+      cache_read: r.randint(0, it), cache_write: r.randint(0, 800),
+    });
+  };
+  // A step whose input+output tokens sum to exactly `tokens` — used by the
+  // self-critique rounds to spend a big, budget-scaled chunk in one call.
+  const critiqueStep = (agent: string, action: string, tokens: number) => {
+    const it = Math.round(tokens * 0.7);
+    const ot = Math.max(0, tokens - it);
+    tokSum += it + ot;
+    steps.push({
+      t, agent, action, model: SIM_MODEL, cost: round4(tokens / TOKENS_PER_USD),
       input_tokens: it, output_tokens: ot,
       cache_read: r.randint(0, it), cache_write: r.randint(0, 800),
     });
@@ -262,6 +287,53 @@ function buildPlan(rec: SimRecord): Plan {
   // ── Phase 4: ranking again (all hyps, 2 rounds) ──
   ranking(hyps, 2);
 
+  // ── Phase 4.5: recurring self-critique rounds ──
+  // Keep reasoning past the fixed phases: each round writes a meta-review
+  // self-critique (re-questioning the leaders) + a short low-K re-rank burst,
+  // looping until simulated token spend reaches BUDGET_HIT of the budget. The
+  // per-round chunk scales with the budget so the round COUNT stays bounded.
+  const budgetTok = rec.budget_tokens > 0 ? rec.budget_tokens : DEFAULT_BUDGET_TOKENS;
+  const targetTok = BUDGET_HIT * budgetTok;
+  const perRound = Math.max(1, Math.floor(CRITIQUE_ROUND_FRACTION * budgetTok));
+  const critiques: { t: number; fb: Feedback }[] = [];
+  let critRound = 0;
+  while (tokSum < targetTok && critRound < MAX_CRITIQUE_ROUNDS) {
+    critRound++;
+    t += 1.5;
+    const ordered = [...hyps].sort((x, y) => elo.get(y.id)! - elo.get(x.id)!);
+    const text = makeSelfCritique(goal, critRound,
+      ordered.map((h) => ({ title: h.title, elo: elo.get(h.id) ?? null, strategy: h.strategy })));
+    const addTok = Math.min(perRound, Math.max(0, Math.floor(targetTok - tokSum)));
+    critiqueStep("metareview", "metareview.self_critique", addTok);
+    emit("metareview", "task_completed", { agent: "metareview", kind: "self_critique", round: critRound, action: "SelfCritique" });
+    critiques.push({
+      t, fb: {
+        id: `fb_${simId}_sc${critRound}`, created_at: isoAt(rec, t),
+        source: "meta_review", kind: "self_critique", target_id: null, active: 1, text,
+      },
+    });
+    // Re-rank burst: 2 low-K matches → Elo wobbles but the wide gaps from the
+    // main tournament keep the ordering stable.
+    for (let bi = 0; bi < 2 && hyps.length >= 2; bi++) {
+      t += 0.8;
+      const [a, b] = r.sample(hyps, 2);
+      const mode = r.random() < 0.35 ? "debate" : "pairwise";
+      const winner: "a" | "b" = r.random() < 0.5 ? "a" : "b";
+      const ea = elo.get(a.id)!, eb = elo.get(b.id)!;
+      const [ra, rb] = eloUpdate(ea, eb, winner, 6);
+      const mid = `mat_${simId}_${matchCounter++}`;
+      matches.push({
+        id: mid, t, hyp_a: a.id, hyp_b: b.id, mode, winner,
+        elo_a_before: ea, elo_b_before: eb, elo_a_after: ra, elo_b_after: rb,
+        rationale: `Idea ${winner.toUpperCase()} held up under re-examination.`,
+        similarity: round2(r.uniform(0.05, 0.4)),
+      });
+      elo.set(a.id, ra); elo.set(b.id, rb);
+      transcript("ranking", `ranking.${mode}`, 0.01, 0.05);
+      emit("ranking", "match_complete", { match_id: mid, winner, mode });
+    }
+  }
+
   // ── Phase 5: finalize ──
   const tEnd = t;
   const finalRank = [...hyps].sort((x, y) => elo.get(y.id)! - elo.get(x.id)!);
@@ -314,14 +386,14 @@ function buildPlan(rec: SimRecord): Plan {
   } else {
     overview = makeOverview(goal, proposals, figures);
   }
-  emit("metareview", "session_done", { stop_reason: "ELO_STABLE" });
+  emit("metareview", "session_done", { stop_reason: "BUDGET" });
   const metaFeedback: Feedback = {
     id: `fb_${simId}_meta`, created_at: isoAt(rec, tEnd), source: "meta_review",
     kind: "system_feedback", target_id: null, active: 1,
     text: "Top candidates converge on a shared pathway — a robust signal. Consider one more out-of-box round to stress-test the consensus.",
   };
 
-  const plan: Plan = { steps, hyps, matches, events, tEnd, pinnedId, overview, metaFeedback, pending: false, failed: false };
+  const plan: Plan = { steps, hyps, matches, events, tEnd, pinnedId, overview, metaFeedback, critiques, pending: false, failed: false };
   _planCache.set(cacheKey, plan);
   return plan;
 }
@@ -460,7 +532,11 @@ function sessionRow(s: Snapshot): SessionRow {
     budget_usd: s.rec.budget_usd ?? round4(cost),
     budget_used_usd: cost,
     budget_tokens: s.rec.budget_tokens ?? DEFAULT_BUDGET_TOKENS,
-    budget_used_tokens: u.input_tokens + u.output_tokens || Math.round(cost * TOKENS_PER_USD),
+    // Cap the gauge at 99% so the finalize + re-rank-burst spend that lands on
+    // top of the 95% target can never read at/over 100%.
+    budget_used_tokens: Math.min(
+      u.input_tokens + u.output_tokens || Math.round(cost * TOKENS_PER_USD),
+      Math.floor((s.rec.budget_tokens ?? DEFAULT_BUDGET_TOKENS) * 0.99)),
     wall_clock_seconds: s.rec.wall_clock_seconds ?? DEFAULT_WALL_CLOCK_SECONDS,
     final_overview: s.status === "done" ? `artifacts/${s.rec.id}/final/overview.md` : null,
     n_hyps: vis.length,
@@ -683,6 +759,8 @@ export function simCost(id: string): { by_agent: CostByAgent[]; summary: any } {
 export function simFeedback(id: string): Feedback[] {
   const s = snapshot(mustRecord(id));
   const out = [...s.rec.feedback];
+  // Self-critique rounds surface progressively as the run reaches each one.
+  for (const c of s.plan.critiques) if (c.t <= s.el) out.push(c.fb);
   if (s.status === "done") out.push(s.plan.metaFeedback);
   return out.sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at));
 }
