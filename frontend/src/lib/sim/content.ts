@@ -559,4 +559,53 @@ export function eloUpdate(ra: number, rb: number, winner: "a" | "b", k = 32): [n
 function round1(n: number) { return Math.round(n * 10) / 10; }
 function round2(n: number) { return Math.round(n * 100) / 100; }
 
+/* ── Recurring self-critique rounds (shared contract with webapp/content.py) ── */
+
+/** Concrete angles a meta-review round attacks the current leaders from; each
+ *  round rotates through these so the fabricated critique doesn't repeat. */
+const CRITIQUE_ANGLES: [string, string][] = [
+  ["citation integrity",
+   "at least one supporting citation looks like a plausibility match rather than direct evidence — the cited result is adjacent, not confirmatory"],
+  ["mechanistic gap",
+   "the causal chain skips a step: the proposed lever and the measured outcome are linked by an intermediate that was never actually established"],
+  ["confounding",
+   "the predicted effect could be produced by an uncontrolled confounder, so a positive readout would not cleanly implicate the stated mechanism"],
+  ["tournament overfitting",
+   "this idea may be winning debates on rhetorical crispness rather than truth — its Elo reflects how it argues, not whether it is right"],
+  ["external validity",
+   "the effect is asserted for the model system but the leap to the real target population is doing a lot of unexamined work"],
+  ["measurement validity",
+   "the primary readout may be a proxy that moves for reasons unrelated to the phenomenon we actually care about"],
+];
+
+export interface CritiqueHyp { title: string; elo: number | null; strategy?: string }
+
+/** Fabricated meta-review self-critique for one recurring work round. Shared
+ *  contract with webapp/content.py `make_self_critique`: returns markdown of the
+ *  exact shape `## Thinking\n\n…\n\n## Self-critique\n\n…` referencing the
+ *  session's current top hypotheses. Deterministic (seeded by goal + round),
+ *  varies per round and per top set. */
+export function makeSelfCritique(goal: string, roundNo: number, top: CritiqueHyp[]): string {
+  const r = makeRng(`${goal}|self_critique|${roundNo}`);
+  const names = top.slice(0, 3).map((h) => (h.title || "an untitled idea").trim());
+  const lead = names[0] ?? "the current leader";
+  const runner = names[1] ?? lead;
+  const [angleName, angleBody] = CRITIQUE_ANGLES[(roundNo - 1) % CRITIQUE_ANGLES.length];
+  const others = CRITIQUE_ANGLES.filter(([n]) => n !== angleName);
+  const [, altBody] = others.length ? r.choice(others) : CRITIQUE_ANGLES[0];
+
+  const thinking =
+    `Round ${roundNo}. I am re-reading the current leaderboard before trusting it.\n\n` +
+    `1. The top-ranked idea is **${lead}**. I re-derive its claim from first principles and ask whether the tournament rewarded it for being correct or merely for being well-argued.\n` +
+    `2. Its closest challenger is **${runner}**. I check whether the gap between them is real signal or just noise from a handful of matches.\n` +
+    `3. I walk each finalist's evidence back to its citations and ask, for every link in the chain, *would this survive a domain expert?*\n` +
+    `4. I list what a fresh round should probe that the last ${roundNo} round(s) did not.`;
+  const critique =
+    `Are these actually the best hypotheses, or the best-defended? Looking hard at **${lead}**, I am not convinced. ` +
+    `The flaw this round is **${angleName}**: ${angleBody}. That directly weakens the conclusion the ranking leans on.\n\n` +
+    `**${runner}** has a second problem — ${altBody}. If that holds, its stated result may be over-claimed, and a citation or two are being asked to carry more weight than they can bear.\n\n` +
+    `Next round I will stress-test these specific doubts: re-examine the weakest citation behind **${lead}**, probe the ${angleName} concern with a sharper falsification, and let a re-rank decide whether the current ordering actually holds up.`;
+  return `## Thinking\n\n${thinking}\n\n## Self-critique\n\n${critique}`;
+}
+
 export type { Rng };
