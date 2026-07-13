@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import {
-  FlaskConical, LayoutGrid, Plus, Search, Settings, Menu, Sun, Moon,
+  LayoutGrid, Plus, Search, Settings, Menu, Sun, Moon,
 } from "lucide-react";
 import { CommandPalette } from "./components/CommandPalette";
 import { OnboardingModal } from "./components/OnboardingModal";
@@ -24,12 +24,12 @@ import type { SessionRow } from "./types";
 /* ── Mode badge ─────────────────────────────────────────── */
 function ModeBadge() {
   if (IS_LOCAL_HOST && !IS_STATIC_DEMO)
-    return <span className="badge-pill bg-blue-500/15 text-blue-400">Local</span>;
+    return <span className="chip chip-blue">Local</span>;
   if (canUseLiveApi())
-    return <span className="badge-pill bg-brand-500/15 text-brand-400">Cloud</span>;
+    return <span className="chip chip-blue">Cloud</span>;
   if (getDeploymentMode() === "byok" && getCredentials())
-    return <span className="badge-pill bg-brand-500/15 text-brand-400">Your key</span>;
-  return <span className="badge-pill bg-surface-2 text-faint">Free</span>;
+    return <span className="chip chip-blue">Your key</span>;
+  return <span className="chip chip-mute">Free</span>;
 }
 
 /* ── Sidebar nav link ───────────────────────────────────── */
@@ -61,24 +61,19 @@ function Sidebar({
   const recent = (sessions || []).filter((s) => !s.id.startsWith("demo::")).slice(0, 30);
 
   return (
-    <aside className="sidebar">
-      {/* Logo */}
-      <div className="flex h-[52px] shrink-0 items-center gap-2.5 px-4">
-        <Link to="/" className="flex items-center gap-2 min-w-0">
-          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-brand-600 shadow-glow">
-            <FlaskConical className="h-4 w-4 text-white" />
-          </span>
-          <span className="text-[14px] font-bold text-fg truncate">Co-Scientist</span>
+    <aside className="fixed inset-y-0 left-0 z-30 flex w-56 flex-col border-r border-rule bg-paper no-print">
+      {/* Masthead */}
+      <div className="flex h-[52px] shrink-0 items-center gap-2.5 border-b border-rule px-4">
+        <Link to="/" className="min-w-0 truncate font-mono text-[12px] font-semibold uppercase tracking-[0.18em] text-ink">
+          Co-Scientist
         </Link>
         <ModeBadge />
       </div>
 
       {/* Primary nav */}
-      <div className="px-3 pt-1 pb-2 space-y-0.5">
-        <Link to="/" className="nav-item group">
-          <span className="grid h-4 w-4 shrink-0 place-items-center rounded bg-brand-600/20 text-brand-500 group-hover:bg-brand-600/30">
-            <Plus className="h-3 w-3" strokeWidth={2.5} />
-          </span>
+      <div className="px-3 pt-3 pb-2 space-y-0.5">
+        <Link to="/" className="nav-item">
+          <Plus className="h-4 w-4 shrink-0" strokeWidth={2.5} />
           New session
         </Link>
         <SLink to="/sessions">
@@ -95,14 +90,14 @@ function Sidebar({
             {recent.map((s) => (
               <SLink key={s.id} to={`/s/${s.id}`}>
                 <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                  s.status === "running" ? "bg-blue-400 animate-pulseDot" :
-                  s.status === "paused"  ? "bg-zinc-400" :
-                  s.status === "done"    ? "bg-accent-400" : "bg-zinc-600"
+                  s.status === "running" ? "bg-blue animate-pulseDot" :
+                  s.status === "done"    ? "bg-green" :
+                  s.status === "paused"  ? "bg-ink-soft" : "bg-rule"
                 }`} />
                 <span className="min-w-0 flex-1 truncate text-[12.5px]">
                   {s.research_goal.length > 30 ? s.research_goal.slice(0, 30) + "…" : s.research_goal}
                 </span>
-                <span className="shrink-0 text-[10px] text-faint">{timeAgo(s.updated_at)}</span>
+                <span className="shrink-0 font-mono text-[10px] text-ink-soft">{timeAgo(s.updated_at)}</span>
               </SLink>
             ))}
           </div>
@@ -112,11 +107,11 @@ function Sidebar({
       {!recent.length && <div className="flex-1" />}
 
       {/* Bottom utilities */}
-      <div className="px-3 pb-4 pt-2 border-t border-line space-y-0.5 mt-2">
+      <div className="px-3 pb-4 pt-2 border-t border-rule space-y-0.5 mt-2">
         <button onClick={onPalette} className="nav-item w-full text-left">
           <Search className="h-4 w-4 shrink-0" />
           Search
-          <kbd className="ml-auto font-mono text-[10px] text-faint bg-surface-2 px-1.5 py-0.5 rounded">⌘K</kbd>
+          <kbd className="ml-auto border border-rule px-1.5 py-0.5 font-mono text-[10px] text-ink-soft">⌘K</kbd>
         </button>
         <button
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -141,18 +136,15 @@ function MobileBar({
   onMenu,
 }: { onMenu: () => void }) {
   return (
-    <div className="sticky top-0 z-40 flex h-12 items-center gap-3 border-b border-line bg-bg/80 px-4 backdrop-blur-xl md:hidden">
-      <button onClick={onMenu} className="p-1 text-muted hover:text-fg">
+    <div className="sticky top-0 z-40 flex h-12 items-center gap-3 border-b border-rule bg-paper px-4 md:hidden no-print">
+      <button onClick={onMenu} className="p-1 text-ink-soft hover:text-ink">
         <Menu className="h-5 w-5" />
       </button>
-      <Link to="/" className="flex items-center gap-2">
-        <span className="grid h-6 w-6 place-items-center rounded-lg bg-brand-600">
-          <FlaskConical className="h-3.5 w-3.5 text-white" />
-        </span>
-        <span className="text-sm font-bold text-fg">Co-Scientist</span>
+      <Link to="/" className="font-mono text-[12px] font-semibold uppercase tracking-[0.18em] text-ink">
+        Co-Scientist
       </Link>
       <div className="ml-auto">
-        <Link to="/" className="btn-primary h-8 text-xs px-3">+ New</Link>
+        <Link to="/" className="btn-primary h-8 px-3">+ New</Link>
       </div>
     </div>
   );
@@ -191,7 +183,7 @@ export default function App() {
       {/* Mobile sidebar drawer */}
       {mobileOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
-          <div className="absolute inset-0 bg-black/60" onClick={() => setMobileOpen(false)} />
+          <div className="absolute inset-0 bg-black/40" onClick={() => setMobileOpen(false)} />
           <div className="relative h-full w-56">
             <Sidebar
               onPalette={() => { setPalette(true); setMobileOpen(false); }}
@@ -202,7 +194,7 @@ export default function App() {
       )}
 
       {/* Main content — fixed viewport height so the chat composer can dock */}
-      <div className="flex h-dvh flex-col overflow-hidden md:pl-56">
+      <div className="flex h-dvh flex-col overflow-hidden md:pl-56 print:pl-0">
         <MobileBar onMenu={() => setMobileOpen(true)} />
         <main className="min-h-0 flex-1">
           <Routes>
@@ -225,4 +217,3 @@ export default function App() {
     </div>
   );
 }
-

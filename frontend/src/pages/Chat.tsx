@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams, Link } from "react-router-dom";
 import {
-  FlaskConical, Layers, Pause, Play, Square, Loader2, Sparkles,
+  Layers, Pause, Play, Square, Loader2, Sparkles,
 } from "lucide-react";
 import { api } from "../api";
 import { Composer } from "../components/chat/Composer";
@@ -66,12 +66,12 @@ function Landing() {
 
   const effort = (
     <div className="flex items-center gap-1">
-      <span className="mr-1 text-[11px] text-faint">Effort</span>
+      <span className="mr-1 font-mono text-[10.5px] uppercase tracking-[0.08em] text-ink-soft">Effort</span>
       {RUN_PRESETS.map((p) => (
         <button key={p.id} onClick={() => setPresetId(p.id)}
           title={`≤ ${fmtCompact(p.budget_tokens)} tokens · ≤ ${fmtDuration(p.wall_clock_seconds)}`}
-          className={`rounded-md px-2 py-0.5 text-[11px] font-medium transition ${
-            p.id === presetId ? "bg-brand-500/15 text-brand-600 dark:text-brand-300" : "text-faint hover:text-muted"
+          className={`border px-2 py-0.5 font-mono text-[10.5px] uppercase tracking-[0.08em] transition-colors ${
+            p.id === presetId ? "border-blue bg-blue-soft text-blue" : "border-transparent text-ink-soft hover:text-ink"
           }`}>
           {p.label}
         </button>
@@ -82,11 +82,13 @@ function Landing() {
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col justify-center py-10">
       <div className="mb-6 text-center">
-        <span className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-2xl bg-brand-600 shadow-glow">
-          <FlaskConical className="h-6 w-6 text-white" />
-        </span>
-        <h1 className="text-[26px] font-extrabold tracking-tight text-fg">What do you want to discover?</h1>
-        <p className="mt-1.5 text-sm text-muted">
+        <div className="mx-auto mb-4 w-fit border-b-2 border-accent pb-2 font-mono text-[11px] uppercase tracking-[0.18em] text-ink-soft">
+          Co-Scientist
+        </div>
+        <h1 className="font-serif font-semibold leading-[1.15] text-ink" style={{ fontSize: "clamp(1.5rem,3vw,2.1rem)" }}>
+          What do you want to <em className="italic text-accent">discover</em>?
+        </h1>
+        <p className="mt-1.5 text-sm text-ink-soft">
           Describe a scientific question. Six AI agents generate hypotheses and rank them through a live tournament.
         </p>
       </div>
@@ -100,16 +102,16 @@ function Landing() {
       <div className="mt-4 flex flex-wrap justify-center gap-2">
         {EXAMPLES.map((ex) => (
           <button key={ex} onClick={() => setGoal(ex)}
-            className="rounded-full border border-line bg-surface px-3 py-1.5 text-[12px] text-muted transition hover:border-brand-500/40 hover:text-fg">
+            className="border border-rule bg-card px-3 py-1.5 text-[12px] text-ink-soft transition-colors hover:border-blue hover:text-ink">
             {ex.length > 46 ? ex.slice(0, 46) + "…" : ex}
           </button>
         ))}
       </div>
 
-      <p className="mt-6 text-center text-[11px] text-faint">
+      <p className="mt-6 text-center font-mono text-[10.5px] uppercase tracking-[0.08em] text-ink-soft">
         {simulated ? "Free · runs in your browser · no key, no account" : "Free · no API key required"}
       </p>
-      {error && <p className="mt-3 text-center text-sm text-rose-500">{error}</p>}
+      {error && <p className="mt-3 text-center text-sm text-accent">{error}</p>}
     </div>
   );
 }
@@ -208,7 +210,7 @@ function Thread({ id }: { id: string }) {
   if ((error && !data) || !data || !session || !metrics) {
     return (
       <div className="mx-auto max-w-md flex-1 py-16 text-center">
-        <h2 className="text-lg font-bold text-fg">Session not found</h2>
+        <h2 className="font-serif text-lg font-semibold text-ink">Session not found</h2>
         <Link to="/" className="btn-ghost mt-5 inline-flex">← New session</Link>
       </div>
     );
@@ -222,25 +224,25 @@ function Thread({ id }: { id: string }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {/* Thread header — non-scrolling */}
-      <div className="flex items-center gap-3 border-b border-line pb-3 no-print">
+      <div className="flex items-center gap-3 border-b border-rule pb-3 no-print">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <StatusBadge status={session.status} />
-            <span className={`inline-flex items-center gap-1 text-[11px] ${connected ? "text-blue-500" : "text-faint"}`}>
-              {live && <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulseDot" />}
+            <span className={`inline-flex items-center gap-1 font-mono text-[10.5px] uppercase tracking-[0.08em] ${connected ? "text-blue" : "text-ink-soft"}`}>
+              {live && <span className="h-1.5 w-1.5 rounded-full bg-blue animate-pulseDot" />}
               {connected ? "live" : "idle"}
             </span>
-            <span className="hidden text-[11px] text-faint sm:inline">
+            <span className="num hidden text-[11px] text-ink-soft sm:inline">
               · {fmtCompact(tokenUsed)}/{fmtCompact(session.budget_tokens)} tokens · {fmtDuration(elapsed)}
             </span>
           </div>
-          <h1 className="mt-1 truncate text-[15px] font-bold text-fg">{session.research_goal}</h1>
+          <h1 className="mt-1 truncate font-serif text-[16px] font-semibold text-ink">{session.research_goal}</h1>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {live && <button disabled={busy} onClick={() => control("pause")} className="btn-ghost h-8 px-2.5 text-xs"><Pause className="h-3.5 w-3.5" /></button>}
-          {status === "paused" && <button disabled={busy} onClick={() => control("resume")} className="btn-primary h-8 px-2.5 text-xs"><Play className="h-3.5 w-3.5" /></button>}
-          {(live || status === "paused") && <button disabled={busy} onClick={() => control("abort")} className="btn-ghost h-8 px-2.5 text-xs text-muted"><Square className="h-3 w-3" /></button>}
-          <button onClick={() => setExplore(true)} className="btn-ghost h-8 text-xs">
+          {live && <button disabled={busy} onClick={() => control("pause")} className="btn-ghost h-8 px-2.5"><Pause className="h-3.5 w-3.5" /></button>}
+          {status === "paused" && <button disabled={busy} onClick={() => control("resume")} className="btn-primary h-8 px-2.5"><Play className="h-3.5 w-3.5" /></button>}
+          {(live || status === "paused") && <button disabled={busy} onClick={() => control("abort")} className="btn-danger h-8 px-2.5"><Square className="h-3 w-3" /></button>}
+          <button onClick={() => setExplore(true)} className="btn-ghost h-8">
             <Layers className="h-3.5 w-3.5" /> Explore
           </button>
         </div>
@@ -251,7 +253,7 @@ function Thread({ id }: { id: string }) {
         <div className="mx-auto flex max-w-3xl flex-col gap-6 px-1">
           {messages.map((m) => <ChatMessage key={m.id} msg={m} onSelect={onSelect} />)}
           {live && (
-            <div className="flex items-center gap-2 pl-10 text-[12.5px] text-faint">
+            <div className="flex items-center gap-2 pl-10 font-mono text-[11px] uppercase tracking-[0.08em] text-ink-soft">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
               <span className="inline-flex items-center gap-1"><Sparkles className="h-3 w-3" /> Co-Scientist is working…</span>
             </div>
@@ -260,7 +262,7 @@ function Thread({ id }: { id: string }) {
       </div>
 
       {/* Composer — docked */}
-      <div className="border-t border-line pt-3 no-print">
+      <div className="border-t border-rule pt-3 no-print">
         <div className="mx-auto max-w-3xl">
           <Composer
             value={steer} onChange={setSteer} onSend={sendSteer} sending={sending}

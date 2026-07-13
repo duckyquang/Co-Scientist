@@ -5,8 +5,8 @@ import { Empty, InfoNote } from "../ui";
 import type { ClusterPoint } from "../../types";
 
 const CLUSTER_COLORS = [
-  "#3b82f6", "#60a5fa", "#93c5fd", "#bfdbfe", "#2563eb",
-  "#1d4ed8", "#1e40af", "#eff6ff", "#dbeafe", "#1e3a8a",
+  "var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)",
+  "var(--chart-5)", "var(--chart-6)", "var(--chart-7)", "var(--chart-8)",
 ];
 
 /** Proximity map: 2D projection of hypotheses, grouped by dedup cluster.
@@ -40,14 +40,19 @@ export function ClusterMap({
     <div>
       <InfoNote title="What is this map?">
         Each dot is a hypothesis, placed so that ideas exploring the{" "}
-        <span className="text-fg">same underlying theme sit close together</span> (a
+        <span className="text-ink font-semibold">same underlying theme sit close together</span> (a
         "cluster"). Bigger dots have a higher Elo rating; a{" "}
-        <Pin className="inline h-3 w-3 -mt-0.5 text-brand-500" /> marks a pinned favorite.
+        <Pin className="inline h-3 w-3 -mt-0.5 text-blue" /> marks a pinned favorite.
         Use it to spot where the agents are converging — and which themes are still
         unexplored. Click any dot to read the full hypothesis.
       </InfoNote>
       <div className="relative">
-        <svg viewBox={`0 0 ${W} ${H}`} className="w-full rounded-xl border border-line grid-bg">
+        <svg viewBox={`0 0 ${W} ${H}`} className="w-full border border-rule"
+          style={{
+            backgroundImage:
+              "linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px)",
+            backgroundSize: "28px 28px",
+          }}>
           {/* cluster hulls (soft glow per cluster centroid) */}
           {clusterList.map(({ c, color }) => {
             const pts = mapped.filter((p) => p.cluster === c);
@@ -62,7 +67,7 @@ export function ClusterMap({
             const cy = pts.reduce((s, p) => s + p.sy, 0) / pts.length;
             return pts.map((p) => (
               <line key={p.id} x1={cx} y1={cy} x2={p.sx} y2={p.sy}
-                stroke="rgb(var(--fg) / 0.06)" strokeWidth="1" />
+                stroke="var(--grid)" strokeWidth="1" />
             ));
           })}
           {mapped.map((p) => (
@@ -75,33 +80,33 @@ export function ClusterMap({
                 strokeOpacity={0.9} />
               {p.state === "pinned" && (
                 <circle cx={p.sx} cy={p.sy} r={p.r + 3} fill="none"
-                  stroke="rgb(var(--fg))" strokeWidth="1.5" strokeDasharray="2 2" strokeOpacity={0.8} />
+                  stroke="var(--ink)" strokeWidth="1.5" strokeDasharray="2 2" strokeOpacity={0.8} />
               )}
             </g>
           ))}
         </svg>
         {hover && (
-          <div className="pointer-events-none absolute left-3 top-3 max-w-xs rounded-lg border border-line bg-surface/95 p-3 shadow-xl">
-            <div className="flex items-center gap-1 text-[11px] uppercase tracking-wide text-faint">
+          <div className="pointer-events-none absolute left-3 top-3 max-w-xs border border-rule bg-card p-3">
+            <div className="flex items-center gap-1 font-mono text-[10.5px] uppercase tracking-[0.08em] text-ink-soft">
               {(() => { const SIcon = strategyIcon(hover.strategy); return <SIcon className="h-3 w-3" />; })()}
               {hover.strategy} · {name(hover.cluster)}
             </div>
-            <div className="mt-1 text-sm font-semibold text-fg">{hover.title}</div>
-            <div className="mt-1 text-xs text-muted">
+            <div className="mt-1 font-serif text-sm font-semibold text-ink">{hover.title}</div>
+            <div className="num mt-1 text-xs text-ink-soft">
               Elo {hover.elo ? Math.round(hover.elo) : "—"} · {hover.matches_played} matches
             </div>
           </div>
         )}
       </div>
-      <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-muted">
-        <span className="text-faint">Themes:</span>
+      <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-ink-soft">
+        <span className="tag">Themes:</span>
         {clusterList.map(({ c, color, count }) => (
           <span key={c} className="inline-flex items-center gap-1.5">
             <span className="h-2.5 w-2.5 rounded-full" style={{ background: color }} />
-            {name(c)} <span className="text-faint">({count})</span>
+            {name(c)} <span className="num">({count})</span>
           </span>
         ))}
-        <span className="ml-auto text-faint">dot size ∝ Elo · click to inspect</span>
+        <span className="ml-auto">dot size ∝ Elo · click to inspect</span>
       </div>
     </div>
   );

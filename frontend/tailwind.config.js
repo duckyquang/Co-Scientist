@@ -1,97 +1,32 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
+  // The theme toggle pins light/dark by class; tokens live in index.css.
   darkMode: "class",
   theme: {
     extend: {
       fontFamily: {
-        sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
-        mono: ["'JetBrains Mono'", "ui-monospace", "SFMono-Regular", "monospace"],
+        serif: ['"Iowan Old Style"', '"Palatino Linotype"', "Palatino", "Georgia", "serif"],
+        mono: ["ui-monospace", '"SF Mono"', "Menlo", "Consolas", "monospace"],
       },
       colors: {
-        // Semantic tokens — driven by CSS vars in index.css, so every utility
-        // (bg-surface, text-fg, border-line…) adapts to light / dark automatically.
-        bg:          "rgb(var(--bg) / <alpha-value>)",
-        surface:     "rgb(var(--surface) / <alpha-value>)",
-        "surface-2": "rgb(var(--surface-2) / <alpha-value>)",
-        line:        "rgb(var(--border) / <alpha-value>)",
-        fg:          "rgb(var(--fg) / <alpha-value>)",
-        muted:       "rgb(var(--muted) / <alpha-value>)",
-        faint:       "rgb(var(--faint) / <alpha-value>)",
-        // Pure zinc-based dark surfaces (resend-style) — legacy, still referenced
-        ink: {
-          950: "#09090b",  // zinc-950
-          900: "#111115",
-          850: "#18181b",  // zinc-900
-          800: "#202024",
-          700: "#27272a",  // zinc-800
-          600: "#3f3f46",  // zinc-700
-          500: "#52525b",  // zinc-600
-        },
-        // Blue brand (replaces indigo)
-        brand: {
-          50:  "#eff6ff",  // blue-50
-          300: "#93c5fd",  // blue-300
-          400: "#60a5fa",  // blue-400
-          500: "#3b82f6",  // blue-500
-          600: "#2563eb",  // blue-600
-          700: "#1d4ed8",  // blue-700
-        },
-        // Green/teal accent — small "success / converged" pills
-        accent: {
-          50:  "#ecfdf5",  // emerald-50
-          300: "#6ee7b7",  // emerald-300
-          400: "#34d399",  // emerald-400
-          500: "#10b981",  // emerald-500
-          600: "#059669",  // emerald-600
-          700: "#047857",  // emerald-700
-        },
-        // Warm cream/amber — the single "highlight" accent (one hero card),
-        // inspired by the reference's butter-yellow file card.
-        warm: {
-          50:  "#fffbeb",  // amber-50
-          100: "#fef3c7",  // amber-100
-          300: "#fcd34d",  // amber-300
-          400: "#fbbf24",  // amber-400
-          500: "#f59e0b",  // amber-500
-          600: "#d97706",  // amber-600
-          700: "#b45309",  // amber-700
-        },
-      },
-      transitionTimingFunction: {
-        // Strong ease-out (easing.dev) — more punch than the built-in ease-out
-        "out-expo": "cubic-bezier(0.23, 1, 0.32, 1)",
-      },
-      boxShadow: {
-        // Blue glow
-        glow: "0 0 0 1px rgba(59,130,246,0.20), 0 8px 32px -8px rgba(59,130,246,0.40)",
-        // Green insight glow
-        glowAccent: "0 0 0 1px rgba(16,185,129,0.22), 0 8px 32px -8px rgba(16,185,129,0.40)",
-        // Soft, theme-aware card elevation (light: warm blue-gray; dark: deep)
-        card: "var(--shadow-card)",
-        cardHover: "var(--shadow-card-hover)",
-        // Sidebar right edge
-        sidebar: "1px 0 0 0 rgba(255,255,255,0.05)",
+        paper: "var(--paper)", card: "var(--card)", rule: "var(--rule)",
+        ink: { DEFAULT: "var(--ink)", soft: "var(--ink-soft)" },
+        accent: { DEFAULT: "var(--red)", soft: "var(--red-soft)" },
+        blue: { DEFAULT: "var(--blue)", soft: "var(--blue-soft)" },
+        green: { DEFAULT: "var(--green)", soft: "var(--green-soft)" },
       },
       keyframes: {
-        "fade-up": {
-          "0%":   { opacity: "0", transform: "translateY(8px)" },
-          "100%": { opacity: "1", transform: "translateY(0)" },
-        },
-        "fade-in": {
-          "0%":   { opacity: "0" },
-          "100%": { opacity: "1" },
-        },
-        pulseDot: {
-          "0%,100%": { opacity: "1",  transform: "scale(1)"   },
-          "50%":     { opacity: "0.4", transform: "scale(0.7)" },
-        },
-        shimmer: { "100%": { transform: "translateX(100%)" } },
+        "fade-up": { "0%": { opacity: "0", transform: "translateY(8px)" }, "100%": { opacity: "1", transform: "translateY(0)" } },
+        "fade-in": { "0%": { opacity: "0" }, "100%": { opacity: "1" } },
+        "slide-in-right": { "0%": { transform: "translateX(100%)" }, "100%": { transform: "translateX(0)" } },
+        pulseDot: { "0%,100%": { opacity: "1", transform: "scale(1)" }, "50%": { opacity: "0.4", transform: "scale(0.7)" } },
       },
       animation: {
-        "fade-up": "fade-up 0.32s cubic-bezier(0.23,1,0.32,1) backwards",
-        "fade-in": "fade-in 0.2s ease both",
-        pulseDot:  "pulseDot 1.4s ease-in-out infinite",
+        "fade-up": "fade-up 0.3s ease both",
+        "fade-in": "fade-in 320ms ease both",
+        "slide-in-right": "slide-in-right 480ms cubic-bezier(0.16,1,0.3,1) both",
+        pulseDot: "pulseDot 1.4s ease-in-out infinite",
       },
     },
   },

@@ -27,7 +27,7 @@ export function Mermaid({ chart }: { chart: string }) {
           startOnLoad: false,
           theme: dark ? "dark" : "neutral",
           securityLevel: "strict",
-          fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
+          fontFamily: '"Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif',
         });
         // Fresh render id each time (mermaid injects a temp node by id — reusing
         // one across theme re-renders can collide).
@@ -48,7 +48,7 @@ export function Mermaid({ chart }: { chart: string }) {
   return (
     <div
       ref={ref}
-      className="my-4 flex justify-center overflow-x-auto rounded-xl border border-line bg-surface-2/40 p-4 [&_svg]:max-w-full [&_svg]:h-auto"
+      className="my-4 flex justify-center overflow-x-auto border border-rule bg-card p-4 [&_svg]:max-w-full [&_svg]:h-auto"
       role="img"
       aria-label="diagram"
     />

@@ -58,11 +58,11 @@ export function SettingsModal({ open, onClose }: Props) {
   ];
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4 animate-fade-in">
       <div className="card max-w-lg w-full p-6 animate-fade-up">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-fg">Settings</h2>
-          <button onClick={onClose} className="text-faint hover:text-fg"><X className="h-5 w-5" /></button>
+          <h2 className="font-serif text-lg font-semibold text-ink">Settings</h2>
+          <button onClick={onClose} className="text-ink-soft hover:text-ink"><X className="h-5 w-5" /></button>
         </div>
 
         <div className="mt-5 space-y-4">
@@ -73,10 +73,10 @@ export function SettingsModal({ open, onClose }: Props) {
                 <button
                   key={id}
                   onClick={() => setMode(id)}
-                  className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition ${
+                  className={`flex items-center justify-center gap-2 border px-3 py-2.5 text-sm transition-colors ${
                     mode === id
-                      ? "border-brand-400/50 bg-brand-500/15 text-fg"
-                      : "border-line text-muted hover:text-fg"
+                      ? "border-blue bg-blue-soft text-ink"
+                      : "border-rule text-ink-soft hover:text-ink"
                   }`}
                 >
                   <Icon className="h-4 w-4" /> {label}
@@ -86,16 +86,16 @@ export function SettingsModal({ open, onClose }: Props) {
           </div>
 
           {mode === "default" ? (
-            <div className="rounded-xl border border-line bg-surface-2 p-4 text-sm text-muted">
+            <div className="border border-rule bg-card p-4 text-sm text-ink-soft">
               Runs free — in your browser (or on our server) with no key and no
               account needed.
               <a
                 href={README_LOCAL_URL}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="mt-3 block text-xs font-medium text-brand-500 hover:text-brand-400"
+                className="mt-3 block text-xs font-medium text-blue underline underline-offset-2 hover:text-accent"
               >
-                Self-hosting? Run <code className="text-brand-500">co-scientist serve</code> with your .env keys →
+                Self-hosting? Run <code className="font-mono text-blue">co-scientist serve</code> with your .env keys →
               </a>
             </div>
           ) : (
@@ -118,14 +118,11 @@ export function SettingsModal({ open, onClose }: Props) {
                   type="password"
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
-                  placeholder={provider === "groq" ? "gsk_…" : "sk-…"}
+                  placeholder="sk-…"
                   className="input mt-1.5 w-full font-mono text-sm"
                 />
-                <p className="mt-2 text-xs text-faint">
-                  Stored in your browser only.{" "}
-                  {provider === "groq"
-                    ? "Your Groq key runs sessions directly in your browser."
-                    : "Non-Groq keys only work when a hosted backend is configured — browsers can't call this provider directly."}
+                <p className="mt-2 text-xs text-ink-soft">
+                  Stored in your browser only. Sent with each request to run sessions with your account.
                 </p>
               </div>
             </>

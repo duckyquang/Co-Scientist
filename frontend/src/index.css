@@ -2,262 +2,323 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── Theme tokens ─────────────────────────────────────────────
-   Light is the default (:root); .dark overrides. All semantic
-   colors are RGB triplets so Tailwind's `<alpha-value>` works
-   (e.g. bg-surface/60, border-line, text-muted). */
+/* ── GEML graph-paper tokens ─────────────────────────────────
+   Light (:root) is the default look; `.dark` overrides. The class is applied
+   by initTheme()/useTheme(), which follow the OS unless the user pins a choice
+   (Mermaid also watches the class to re-theme diagrams).
+   Tailwind opacity modifiers don't work with var() colors — use the -soft
+   tokens or color-mix() for alphas. */
 :root {
-  --bg: 250 250 251;        /* app background      */
-  --surface: 255 255 255;   /* cards / panels      */
-  --surface-2: 244 244 245; /* elevated / hover    */
-  --border: 228 228 231;    /* hairlines (zinc-200)*/
-  --fg: 24 24 27;           /* primary text        */
-  --muted: 82 82 91;        /* secondary text      */
-  --faint: 113 113 122;     /* tertiary / labels   */
-  --bloom-a: 59 130 246;    /* accent bloom (cool) */
-  --bloom-b: 245 158 11;    /* warm bloom (amber)  */
-  --bloom-strength: 0.06;
-  --bloom-warm: 0.04;
-  /* Soft, light-tuned elevation — floats on a warm blue-gray shadow */
-  --shadow-card: 0 1px 2px rgb(16 24 40 / 0.04), 0 12px 28px -14px rgb(16 24 40 / 0.14);
-  --shadow-card-hover: 0 2px 6px rgb(16 24 40 / 0.06), 0 20px 44px -16px rgb(16 24 40 / 0.20);
   color-scheme: light;
+  --paper:#f7f9f8;  --grid:rgba(27,36,55,.055);
+  --ink:#1b2437;    --ink-soft:#4a5468;
+  --rule:#c9cfd9;   --card:#ffffff;
+  --red:#c03b2d;    --red-soft:rgba(192,59,45,.08);
+  --blue:#2b5bb8;   --blue-soft:rgba(43,91,184,.10);
+  --green:#2f7d4f;  --green-soft:rgba(47,125,79,.10);
+  --chart-1:#2b5bb8; --chart-2:#4a76c9; --chart-3:#6f93d6; --chart-4:#94b0e2;
+  --chart-5:#1d4083; --chart-6:#c03b2d; --chart-7:#2f7d4f; --chart-8:#8a6d1f;
 }
 .dark {
-  --bg: 9 9 11;
-  --surface: 20 20 23;
-  --surface-2: 30 30 34;
-  --border: 42 42 48;
-  --fg: 244 244 245;
-  --muted: 161 161 170;
-  --faint: 113 113 122;
-  --bloom-strength: 0.08;
-  --bloom-warm: 0.05;
-  /* Dark elevation: subtle inset highlight + deep drop */
-  --shadow-card: 0 1px 0 0 rgb(255 255 255 / 0.03) inset, 0 4px 24px -8px rgb(0 0 0 / 0.6);
-  --shadow-card-hover: 0 1px 0 0 rgb(255 255 255 / 0.05) inset, 0 12px 32px -10px rgb(0 0 0 / 0.7);
   color-scheme: dark;
-}
-
-/* Strong ease-out for card lift / entrances (Emil / easing.dev) */
-:root { --ease-out: cubic-bezier(0.23, 1, 0.32, 1); }
-
-/* Respect reduced-motion: keep fades, drop movement */
-@media (prefers-reduced-motion: reduce) {
-  .animate-fade-up { animation: fade-in 0.2s ease both; }
-  .card-hover { transition: box-shadow 200ms ease; }
-  .card-hover:hover { transform: none; }
+  --paper:#101520;  --grid:rgba(232,236,242,.045);
+  --ink:#e8ecf2;    --ink-soft:#a3adc2;
+  --rule:#323c50;   --card:#161d2c;
+  --red:#e06055;    --red-soft:rgba(224,96,85,.12);
+  --blue:#7ba3e8;   --blue-soft:rgba(123,163,232,.14);
+  --green:#5faf7f;  --green-soft:rgba(95,175,127,.14);
+  --chart-1:#7ba3e8; --chart-2:#5d84cf; --chart-3:#9dbbef; --chart-4:#bed3f6;
+  --chart-5:#41639f; --chart-6:#e06055; --chart-7:#5faf7f; --chart-8:#cbb35e;
 }
 
 html, body, #root { height: 100%; }
 
 body {
-  @apply bg-bg text-muted font-sans antialiased;
-  /* Diffused canvas — a cool bloom top-right, a faint warm bloom bottom-left */
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  font-size: 1.0625rem;
+  line-height: 1.65;
+  color: var(--ink);
+  background-color: var(--paper);
   background-image:
-    radial-gradient(900px 600px at 78% -18%, rgb(var(--bloom-a) / var(--bloom-strength)), transparent 60%),
-    radial-gradient(760px 520px at -12% 88%, rgb(var(--bloom-b) / var(--bloom-warm)), transparent 58%);
-  background-attachment: fixed;
-  transition: background-color 0.2s ease, color 0.2s ease;
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 28px 28px;
+  -webkit-font-smoothing: antialiased;
 }
 
 /* ── Components ───────────────────────────────────────────── */
 @layer components {
 
   .card {
-    @apply rounded-2xl border border-line bg-surface shadow-card;
+    background: var(--card);
+    border: 1px solid var(--rule);
   }
-  /* Gentle lift on hover — no glow ring; soft shadow does the work (Emil) */
   .card-hover {
-    transition: transform 200ms var(--ease-out), box-shadow 200ms var(--ease-out);
+    transition: border-color 0.15s ease;
   }
-  .card-hover:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-card-hover);
-  }
+  .card-hover:hover { border-color: var(--ink-soft); }
 
-  /* Highlight swatch behind key words in a heading (reference's "Welcome, Sam!") */
-  .hl {
-    @apply rounded-md px-1.5 text-fg;
-    box-decoration-break: clone;
-    -webkit-box-decoration-break: clone;
-    background: rgb(var(--bloom-a) / 0.16);
-  }
-
-  /* Buttons */
+  /* Buttons — mono instrument text, sharp corners */
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm
-           font-medium transition-all duration-150
-           active:scale-[0.97] disabled:opacity-40 disabled:pointer-events-none;
+    @apply inline-flex items-center justify-center gap-2 px-3.5 py-2
+           font-mono text-[12px] uppercase tracking-[0.08em] transition-colors
+           disabled:opacity-40 disabled:pointer-events-none;
   }
   .btn-primary {
-    @apply btn bg-brand-600 text-white hover:bg-brand-500
-           shadow-[0_1px_0_0_rgba(255,255,255,0.08)_inset,0_4px_16px_-4px_rgba(37,99,235,0.45)]
-           hover:shadow-[0_1px_0_0_rgba(255,255,255,0.10)_inset,0_6px_20px_-4px_rgba(59,130,246,0.5)];
+    @apply btn;
+    background: var(--blue);
+    color: var(--paper);
   }
+  .btn-primary:hover { filter: brightness(0.92); }
   .btn-ghost {
-    @apply btn border border-line bg-surface-2 text-muted
-           hover:bg-surface-2 hover:text-fg hover:border-line;
+    @apply btn;
+    border: 1px solid var(--rule);
+    color: var(--ink);
+    background: transparent;
   }
+  .btn-ghost:hover { border-color: var(--ink-soft); background: var(--card); }
   .btn-danger {
-    @apply btn border border-line bg-surface-2 text-faint
-           hover:text-rose-500 hover:border-rose-500/40;
+    @apply btn;
+    border: 1px solid var(--rule);
+    color: var(--red);
+    background: transparent;
   }
+  .btn-danger:hover { border-color: var(--red); background: var(--red-soft); }
 
-  /* Chip / pill badge */
+  /* Chips — blue=running/active, green=done/win/pinned,
+     red=failed/rejected, mute=paused/draft/retired */
   .chip {
-    @apply inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px]
-           font-medium tracking-wide;
+    @apply inline-flex items-center gap-1 px-2 py-0.5
+           font-mono text-[10.5px] uppercase tracking-[0.08em];
+    border: 1px solid var(--rule);
   }
-  .badge-pill {
-    @apply rounded-md px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-widest;
-  }
+  .chip-blue  { border-color: var(--blue);  color: var(--blue);  background: var(--blue-soft); }
+  .chip-green { border-color: var(--green); color: var(--green); background: var(--green-soft); }
+  .chip-red   { border-color: var(--red);   color: var(--red);   background: var(--red-soft); }
+  .chip-mute  { border-color: var(--rule);  color: var(--ink-soft); background: transparent; }
+
+  /* Typography helpers */
+  .tag   { @apply font-mono text-[10px] uppercase tracking-[0.14em]; color: var(--blue); }
+  .label { @apply font-mono text-[10.5px] uppercase tracking-[0.14em]; color: var(--blue); }
+  .sec-no { @apply font-mono text-[0.75em]; color: var(--red); margin-right: 0.6em; }
+  .num   { @apply font-mono tabular-nums; }
+  .win   { color: var(--green); }
+  .null  { color: var(--red); }
+  .stat-num { @apply font-mono text-3xl font-bold tabular-nums; color: var(--ink); }
 
   /* Input */
   .input {
-    @apply w-full rounded-lg border border-line bg-surface px-3.5 py-2.5
-           text-sm text-fg placeholder:text-faint outline-none transition-all
-           focus:border-brand-500/50 focus:ring-2 focus:ring-brand-500/15;
+    @apply w-full px-3.5 py-2.5 text-sm outline-none;
+    background: var(--card);
+    border: 1px solid var(--rule);
+    color: var(--ink);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
   }
+  .input::placeholder { color: var(--ink-soft); }
+  .input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-soft); }
 
-  /* Sidebar nav item */
+  /* Nav item — red left rule marks active, no pill backgrounds */
   .nav-item {
-    @apply flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm font-medium
-           text-muted transition-colors duration-150
-           hover:bg-surface-2 hover:text-fg;
+    @apply flex items-center gap-2.5 px-2.5 py-1.5 text-sm;
+    border-left: 2px solid transparent;
+    color: var(--ink-soft);
+    transition: color 0.15s ease;
   }
-  .nav-item-active {
-    @apply bg-surface-2 text-fg;
-  }
+  .nav-item:hover { color: var(--ink); }
+  .nav-item-active { border-left-color: var(--red); color: var(--ink); }
 
-  /* Typography helpers */
-  .label {
-    @apply text-[10.5px] font-semibold uppercase tracking-widest text-faint;
+  /* Tables */
+  .tblwrap { @apply overflow-x-auto; border: 1px solid var(--rule); background: var(--card); }
+  .tbl th {
+    @apply px-3 py-2 text-left font-mono text-[10.5px] uppercase tracking-[0.12em];
+    color: var(--ink-soft);
+    border-bottom: 1px solid var(--rule);
   }
-  .stat-num {
-    @apply text-3xl font-bold tracking-tight text-fg tabular-nums;
+  .tbl td { @apply px-3 py-2; border-bottom: 1px solid var(--rule); }
+  .tbl tr:last-child td { border-bottom: none; }
+
+  /* Timeline dots */
+  .tl-dot {
+    @apply inline-block h-[11px] w-[11px] shrink-0 rounded-full;
+    background: var(--card);
+    border: 2px solid var(--ink-soft);
   }
+  .tl-dot-done { border-color: var(--green); background: var(--green); }
 }
 
 /* ── Scrollbar ────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { @apply bg-transparent; }
-::-webkit-scrollbar-thumb {
-  background-color: rgb(var(--fg) / 0.15);
-  border-radius: 9999px;
-  border: 2px solid transparent;
-  background-clip: padding-box;
-}
-::-webkit-scrollbar-thumb:hover { background-color: rgb(var(--fg) / 0.25); }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background-color: var(--rule); }
+::-webkit-scrollbar-thumb:hover { background-color: var(--ink-soft); }
 
-/* ── Markdown / prose ─────────────────────────────────────── */
-.prose-sci h1    { @apply text-2xl font-bold text-fg mt-2 mb-3; }
-.prose-sci h2    { @apply text-base font-semibold text-brand-500 mt-6 mb-2; }
-.prose-sci h3    { @apply text-sm font-semibold text-fg mt-4 mb-1.5; }
-.prose-sci p     { @apply text-[14.5px] leading-7 text-muted my-2.5; }
-.prose-sci ul    { @apply list-disc pl-5 my-2 space-y-1 text-muted; }
-.prose-sci ol    { @apply list-decimal pl-5 my-2 space-y-1 text-muted; }
-.prose-sci strong { @apply text-fg font-semibold; }
-.prose-sci code  {
-  @apply rounded-md bg-surface-2 px-1.5 py-0.5 text-[12.5px]
-         font-mono text-brand-500 border border-line;
+/* ── Academic report prose ────────────────────────────────── */
+.prose-sci {
+  counter-reset: sec;
+  max-width: 72ch;
 }
-.prose-sci a     { @apply text-brand-500 underline decoration-brand-500/30 underline-offset-2 hover:text-brand-400; }
-.prose-sci em    { @apply text-faint; }
-.prose-sci blockquote {
-  @apply border-l-2 border-brand-500/40 pl-4 my-3 italic text-faint;
+.prose-sci h1 {
+  font-size: 1.75rem;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0.5rem 0 1rem;
 }
-.prose-sci hr { @apply my-6 border-line; }
-/* GFM tables */
-.prose-sci table {
-  @apply my-4 w-full border-collapse overflow-hidden rounded-lg text-[13px];
-}
-.prose-sci thead { @apply bg-surface-2; }
-.prose-sci th {
-  @apply border border-line px-3 py-2 text-left font-semibold text-fg;
-}
-.prose-sci td {
-  @apply border border-line px-3 py-2 text-muted;
-}
-.prose-sci tbody tr:nth-child(even) { background: rgb(var(--fg) / 0.02); }
-/* fenced code blocks (non-chart) */
-.report-pre {
-  @apply my-3 rounded-lg border border-line bg-surface-2 p-3 text-[12.5px]
-         font-mono leading-relaxed text-muted;
-}
-.report-figure, .prose-sci table { break-inside: avoid; page-break-inside: avoid; }
-/* KaTeX display math shouldn't overflow narrow columns */
-.prose-sci .katex-display { @apply overflow-x-auto overflow-y-hidden py-1; }
-
-/* ── Proposal microsite (bold, vibrant "website" view) ──────── */
-.hero-band {
-  background: linear-gradient(115deg, #2563eb 0%, #10b981 55%, #f59e0b 118%);
-}
-/* Larger, punchier typography inside the microsite article. */
-.microsite .prose-sci h1 { @apply text-3xl font-black text-fg mt-2 mb-4; }
-.microsite .prose-sci h2 {
-  @apply relative text-[26px] font-extrabold leading-tight text-fg mt-14 mb-5 pl-4;
+.prose-sci h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 2rem 0 0.75rem;
   scroll-margin-top: 76px;
 }
-.microsite .prose-sci h2::before {
-  content: ""; position: absolute; left: 0; top: 0.18em; bottom: 0.18em; width: 5px;
-  border-radius: 9999px;
-  background: linear-gradient(180deg, rgb(var(--bloom-a)), #10b981);
+.prose-sci h2::before {
+  counter-increment: sec;
+  content: "§" counter(sec);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.72em;
+  color: var(--red);
+  margin-right: 0.6em;
 }
-.microsite .prose-sci h3 { @apply text-lg font-bold text-fg mt-8 mb-2; scroll-margin-top: 76px; }
-.microsite .prose-sci p  { @apply text-[16px] leading-8; }
-.microsite .prose-sci li { @apply text-[15.5px] leading-7; }
-.microsite .report-figure { @apply my-6; }
+.prose-sci h1 em, .prose-sci h2 em { font-style: italic; color: var(--red); }
+.prose-sci h3 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 1.25rem 0 0.4rem;
+  scroll-margin-top: 76px;
+}
+.prose-sci p  { margin: 0.65rem 0; color: var(--ink); }
+.prose-sci ul { list-style: disc; padding-left: 1.25rem; margin: 0.5rem 0; }
+.prose-sci ol { list-style: decimal; padding-left: 1.25rem; margin: 0.5rem 0; }
+.prose-sci li { margin: 0.25rem 0; }
+.prose-sci strong { font-weight: 600; color: var(--ink); }
+.prose-sci code {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.82em;
+  padding: 0.1em 0.35em;
+  border: 1px solid var(--rule);
+  background: var(--card);
+}
+.prose-sci a { color: var(--blue); text-decoration: underline; text-underline-offset: 2px; }
+.prose-sci a:hover { color: var(--red); }
+.prose-sci blockquote {
+  border-left: 2px solid var(--red);
+  padding-left: 1rem;
+  margin: 0.75rem 0;
+  font-style: italic;
+  color: var(--ink-soft);
+}
+.prose-sci table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid var(--rule);
+  background: var(--card);
+  margin: 1rem 0;
+  font-size: 0.85em;
+}
+.prose-sci th {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--ink-soft);
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--rule);
+}
+.prose-sci td { padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--rule); }
+.prose-sci tr:last-child td { border-bottom: none; }
+.prose-sci hr { border: none; border-top: 1px solid var(--rule); margin: 1.5rem 0; }
+/* KaTeX display math shouldn't overflow narrow columns */
+.prose-sci .katex-display { overflow-x: auto; overflow-y: hidden; padding: 0.25rem 0; }
 
-/* ── Print / PDF ──────────────────────────────────────────────
-   The report prints as a clean document: app chrome hidden, forced light
-   theme, charts kept whole across page breaks, SVG charts stay vector-crisp. */
-@media print {
-  :root, .dark {
-    --bg: 255 255 255; --surface: 255 255 255; --surface-2: 245 245 247;
-    --border: 220 220 224; --fg: 17 17 20; --muted: 60 60 66; --faint: 100 100 108;
-    color-scheme: light;
-  }
-  body { background: #fff !important; }
-  /* Hide everything not marked printable, plus known chrome. */
-  .no-print, aside, nav, .sidebar, footer, button { display: none !important; }
-  /* Let the report fill the page — and unclip the fixed-height app shell so a
-     multi-page report/microsite fragments across pages instead of page one only. */
-  html, body, #root { height: auto !important; overflow: visible !important; }
-  .md\:pl-56 { padding-left: 0 !important; height: auto !important; overflow: visible !important; }
-  main { max-width: none !important; padding: 0 !important; }
-  .card { box-shadow: none !important; border-color: #e4e4e7 !important; }
-  .report-figure, .prose-sci table, .prose-sci h1, .prose-sci h2, .prose-sci h3 {
-    break-inside: avoid; page-break-inside: avoid;
-  }
-  .prose-sci h1, .prose-sci h2, .prose-sci h3 { break-after: avoid; }
-  a { color: #1d4ed8 !important; text-decoration: underline; }
-  /* Microsite: the gradient hero won't print, so drop it to readable dark text. */
-  .microsite { position: static !important; overflow: visible !important; }
-  .hero-band { background: #fff !important; padding: 0 0 8px !important; }
-  .hero-band svg { display: none !important; }
-  .hero-band h1 { color: #111 !important; }
-  .hero-band p { color: #444 !important; }
-  .hero-band span { color: #444 !important; background: none !important; box-shadow: none !important; }
-  @page { size: A4; margin: 16mm; }
+/* Fenced code blocks (non-chart) in reports */
+.report-pre {
+  margin: 0.75rem 0;
+  border: 1px solid var(--rule);
+  background: var(--card);
+  padding: 0.75rem;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-soft);
 }
+.report-figure, .prose-sci table { break-inside: avoid; page-break-inside: avoid; }
 
-/* ── Grid background ──────────────────────────────────────── */
-.grid-bg {
-  background-image:
-    linear-gradient(rgb(var(--fg) / 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(var(--fg) / 0.03) 1px, transparent 1px);
-  background-size: 28px 28px;
+/* ── Proposal microsite — an academic title page, not a gradient hero ── */
+.hero-band {
+  background: var(--ink);
+  border-bottom: 2px solid var(--red);
 }
+.dark .hero-band { background: var(--card); }
+/* Badge on the always-dark hero band — fixed light chrome in both themes. */
+.hero-badge { color: #f2f5fa; border-color: rgba(242, 245, 250, 0.35); }
+/* Larger serif typography inside the microsite article. */
+.microsite .prose-sci { max-width: none; }
+.microsite .prose-sci h1 { font-size: 2rem; margin: 0.5rem 0 1.25rem; }
+.microsite .prose-sci h2 { font-size: 1.5rem; margin-top: 3rem; }
+.microsite .prose-sci h3 { font-size: 1.15rem; margin-top: 1.75rem; }
+.microsite .prose-sci p  { font-size: 1.0625rem; line-height: 1.75; }
+.microsite .report-figure { margin: 1.5rem 0; }
 
-/* ── Sidebar ──────────────────────────────────────────────── */
-.sidebar {
-  @apply fixed inset-y-0 left-0 z-30 flex w-56 flex-col border-r border-line;
-  background-color: rgb(var(--surface));
+/* ── Scroll reveal ────────────────────────────────────────── */
+.reveal {
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
 }
+.reveal.is-in { opacity: 1; transform: none; }
 
 /* ── Focus ring ───────────────────────────────────────────── */
 :focus-visible {
-  outline: 2px solid rgb(var(--bloom-a) / 0.6);
+  outline: 2px solid var(--blue);
   outline-offset: 2px;
+}
+
+/* ── Reduced motion ───────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .reveal { opacity: 1; transform: none; }
+}
+
+/* ── Print / PDF ──────────────────────────────────────────────
+   The report prints as a clean document: app chrome hidden, forced light
+   tokens, no grid, figures kept whole across page breaks. */
+@media print {
+  :root, .dark {
+    color-scheme: light;
+    --paper:#ffffff;  --grid:transparent;
+    --ink:#1b2437;    --ink-soft:#4a5468;
+    --rule:#c9cfd9;   --card:#ffffff;
+    --red:#c03b2d;    --red-soft:rgba(192,59,45,.08);
+    --blue:#2b5bb8;   --blue-soft:rgba(43,91,184,.10);
+    --green:#2f7d4f;  --green-soft:rgba(47,125,79,.10);
+  }
+  body { background-image: none; font-size: 11pt; }
+  /* Hide everything not marked printable, plus known chrome. */
+  .no-print, aside, nav, footer, button { display: none !important; }
+  /* Unclip the fixed-height app shell so a multi-page report/microsite
+     fragments across pages instead of page one only. */
+  html, body, #root { height: auto !important; overflow: visible !important; }
+  .md\:pl-56 { padding-left: 0 !important; height: auto !important; overflow: visible !important; }
+  main { max-width: none !important; padding: 0 !important; }
+  .card { border: none; }
+  .prose-sci { max-width: none; }
+  .report-figure, .prose-sci table, .prose-sci blockquote { break-inside: avoid; page-break-inside: avoid; }
+  .prose-sci h1, .prose-sci h2, .prose-sci h3 { break-after: avoid; }
+  a { color: #2b5bb8 !important; text-decoration: underline; }
+  /* Microsite: the ink title band prints as plain text on white. */
+  .microsite { position: static !important; overflow: visible !important; }
+  .hero-band { background: #fff !important; border-bottom: 2px solid var(--red); padding: 0 0 8px !important; }
+  .hero-band svg { display: none !important; }
+  .hero-band h1, .hero-band p, .hero-band span {
+    color: var(--ink) !important;
+    border-color: var(--rule) !important;
+  }
+  @page { size: A4; margin: 16mm; }
 }
