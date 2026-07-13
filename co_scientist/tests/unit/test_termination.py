@@ -11,6 +11,7 @@ from co_scientist.orchestrator.termination import (
     StabilityTracker,
     StopReason,
     budget_exceeded,
+    floor_reached,
     should_stop,
     wall_clock_exceeded,
 )
@@ -121,3 +122,55 @@ def test_should_stop_none_when_running() -> None:
     tr = StabilityTracker(k=3, n=3, eps=25)
     s = _session(used_usd=1, budget_usd=10, deadline_in_s=60)
     assert should_stop(cfg, s, tr) is None
+
+
+# ----------------------------- budget floor ----------------------------- #
+
+def _stable_tracker() -> StabilityTracker:
+    tr = StabilityTracker(k=3, n=3, eps=25)
+    for mc in (10, 20, 30):
+        tr.push(_snap(mc, ["a", "b", "c"], [1500, 1400, 1300]))
+    assert tr.is_stable()
+    return tr
+
+
+def test_floor_stops_at_95_pct() -> None:
+    cfg = Config()
+    tr = StabilityTracker(k=3, n=3, eps=25)
+    s = _session(used_tokens=950_000, budget_tokens=1_000_000)
+    assert floor_reached(cfg, s)
+    assert should_stop(cfg, s, tr) is StopReason.BUDGET
+
+
+def test_below_floor_keeps_running() -> None:
+    cfg = Config()
+    tr = StabilityTracker(k=3, n=3, eps=25)
+    s = _session(used_tokens=949_999, budget_tokens=1_000_000)
+    assert not floor_reached(cfg, s)
+    assert should_stop(cfg, s, tr) is None
+
+
+def test_elo_stable_gated_below_floor() -> None:
+    cfg = Config()
+    s = _session(used_tokens=500_000, budget_tokens=1_000_000)
+    assert should_stop(cfg, s, _stable_tracker()) is None
+
+
+def test_elo_stable_fires_when_uncapped() -> None:
+    cfg = Config()
+    s = _session(budget_tokens=0)   # tokens uncapped → floor trivially met
+    assert should_stop(cfg, s, _stable_tracker()) is StopReason.ELO_STABLE
+
+
+def test_stalled_returns_idle_under_floor() -> None:
+    cfg = Config()
+    tr = StabilityTracker(k=3, n=3, eps=25)
+    s = _session(used_tokens=100_000, budget_tokens=1_000_000)
+    assert should_stop(cfg, s, tr, stalled=True) is StopReason.IDLE
+
+
+def test_budget_beats_stalled() -> None:
+    cfg = Config()
+    tr = StabilityTracker(k=3, n=3, eps=25)
+    s = _session(used_tokens=960_000, budget_tokens=1_000_000)
+    assert should_stop(cfg, s, tr, stalled=True) is StopReason.BUDGET

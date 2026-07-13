@@ -24,6 +24,7 @@ TaskAction = Literal[
     "UpdateProximityGraph",
     # Meta-review
     "GenerateSystemFeedback",
+    "GenerateSelfCritique",
     "GenerateFinalResearchOverview",
 ]
 TaskStatus = Literal["pending", "leased", "in_progress", "done", "failed", "dead", "cancelled"]
@@ -60,6 +61,7 @@ TaskResultKind = Literal[
     "proximity_updated",
     "evolution_completed",
     "system_feedback_generated",
+    "self_critique_generated",
     "final_overview_generated",
     "noop",
 ]

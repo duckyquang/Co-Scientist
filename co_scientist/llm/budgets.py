@@ -64,6 +64,9 @@ class TokenBudget:
         self, agent: str, *, est_tokens: int, est_usd: float
     ) -> None:
         """Block-style admission: raise BudgetExceeded if we can't afford this call."""
+        # budget_usd <= 0 means "token-capped only": USD cap and per-agent USD
+        # shares are skipped; the token cap is always enforced.
+        usd_capped = self.budget_usd > 0
         async with self._lock:
             ctr = self._per_agent.setdefault(agent, _Counter())
             # Session-wide cap first (includes reserve)
@@ -71,7 +74,8 @@ class TokenBudget:
                 self._global.used_tokens + self._global.reserved_tokens + est_tokens
                 > self.budget_tokens
             ) or (
-                self._global.used_usd + self._global.reserved_usd + est_usd
+                usd_capped
+                and self._global.used_usd + self._global.reserved_usd + est_usd
                 > self.budget_usd
             ):
                 raise BudgetExceeded(
@@ -80,12 +84,16 @@ class TokenBudget:
                 )
             # Per-agent share (skip for never-degrade agents — caller passes 'metareview_final'
             # via the same agent='metareview' key, but the reserve covers it).
-            cap_usd = self.share_usd(agent) + self.cfg.budget_shares.reserve * self.budget_usd / 2
-            if ctr.used_usd + ctr.reserved_usd + est_usd > cap_usd:
-                raise BudgetExceeded(
-                    f"agent {agent!r} share exhausted (used={ctr.used_usd:.2f},"
-                    f" reserved={ctr.reserved_usd:.2f}, share={cap_usd:.2f})"
+            if usd_capped:
+                cap_usd = (
+                    self.share_usd(agent)
+                    + self.cfg.budget_shares.reserve * self.budget_usd / 2
                 )
+                if ctr.used_usd + ctr.reserved_usd + est_usd > cap_usd:
+                    raise BudgetExceeded(
+                        f"agent {agent!r} share exhausted (used={ctr.used_usd:.2f},"
+                        f" reserved={ctr.reserved_usd:.2f}, share={cap_usd:.2f})"
+                    )
             ctr.reserved_tokens += est_tokens
             ctr.reserved_usd += est_usd
             self._global.reserved_tokens += est_tokens

@@ -248,6 +248,8 @@ class Supervisor:
         worker_seq = 0
         last_decide_at = 0.0
         last_snapshot_match_count = -1
+        last_tokens = -1
+        last_progress_at = time.monotonic()
 
         async def _run_task(t: Task) -> None:
             bind(session_id=session.id, task_id=t.id, agent=t.agent)
@@ -283,13 +285,27 @@ class Supervisor:
                 refreshed = await sess_repo.fetch(conn, session.id)
                 external_stop = refreshed is not None and refreshed.status in ("aborted",)
                 if refreshed is not None and refreshed.status == "paused":
-                    # Wait until unpaused (or aborted).
+                    # Wait until unpaused (or aborted). Paused time is not a stall.
+                    last_progress_at = time.monotonic()
                     await asyncio.sleep(1.0)
                     continue
 
                 # Termination check (refreshes budget_used_* from the row)
                 if refreshed is not None:
-                    stop = should_stop(self.cfg, refreshed, tracker, external_stop=external_stop)
+                    if refreshed.budget_used_tokens != last_tokens:
+                        last_tokens = refreshed.budget_used_tokens
+                        last_progress_at = time.monotonic()
+                    # `not inflight` keeps one live long-thinking call from
+                    # tripping the stall detector.
+                    stalled = (
+                        not inflight
+                        and time.monotonic() - last_progress_at
+                        >= self.cfg.termination.stall_after_seconds
+                    )
+                    stop = should_stop(
+                        self.cfg, refreshed, tracker,
+                        external_stop=external_stop, stalled=stalled,
+                    )
                     if stop is not None:
                         # Wait for inflight to drain before returning.
                         if inflight:
@@ -393,6 +409,18 @@ class Supervisor:
                     payload={"focus": hid}, priority=120, status="pending",
                     idempotency_key=f"{hid}::ranking::focus_batch",
                 ))
+        elif result.kind == "self_critique_generated":
+            # Re-scrutinize the current leaders with fresh full reviews.
+            rnd = result.extra.get("round", 0)
+            for h in await hyp_repo.top_by_elo(conn, session.id, k=3):
+                await task_repo.enqueue(conn, Task(
+                    id=ids.task_id(), session_id=session.id,
+                    created_at=datetime.now(UTC),
+                    agent="reflection", action="ReviewHypothesis",
+                    target_id=h.id, payload={"kind": "full"},
+                    priority=125, status="pending",
+                    idempotency_key=f"{h.id}::review::full::critique{rnd}",
+                ))
         elif result.kind == "tournament_match_complete":
             n_matches = result.extra.get("total_matches_after")
             _ = n_matches
@@ -434,29 +462,44 @@ class Supervisor:
         in_tournament = await hyp_repo.list_for_session(
             conn, session.id, state="in_tournament"
         )
-        if len(in_tournament) >= 2:
-            await task_repo.enqueue(conn, Task(
-                id=ids.task_id(), session_id=session.id,
-                created_at=datetime.now(UTC),
-                agent="ranking", action="RunTournamentBatch",
-                target_id=None, payload={},
-                priority=150, status="pending",
-                idempotency_key=f"{session.id}::ranking::idle::{anchor_mc}",
-            ))
+        # Idempotency-key collisions mean the work is already queued — they must
+        # NOT count as newly scheduled, or an idle loop never reaches IDLE.
+        if len(in_tournament) >= 2 and await task_repo.enqueue(conn, Task(
+            id=ids.task_id(), session_id=session.id,
+            created_at=datetime.now(UTC),
+            agent="ranking", action="RunTournamentBatch",
+            target_id=None, payload={},
+            priority=150, status="pending",
+            idempotency_key=f"{session.id}::ranking::idle::{anchor_mc}",
+        )):
             enqueued += 1
 
-        # If the leaderboard has matured (>= 20 hypotheses with ≥ 3 matches), evolve.
+        # If the leaderboard has matured, evolve.
         mature = sum(1 for h in in_tournament if h.matches_played >= 3)
-        if mature >= 20:
-            await task_repo.enqueue(conn, Task(
-                id=ids.task_id(), session_id=session.id,
-                created_at=datetime.now(UTC),
-                agent="evolution", action="EvolveTopHypotheses",
-                target_id=None,
-                payload={"top_k": 5, "strategies": ["combine", "simplify", "out_of_box"]},
-                priority=140, status="pending",
-                idempotency_key=f"{session.id}::evolution::idle::{anchor_mc}",
-            ))
+        if mature >= self.cfg.run.evolution_min_mature and await task_repo.enqueue(conn, Task(
+            id=ids.task_id(), session_id=session.id,
+            created_at=datetime.now(UTC),
+            agent="evolution", action="EvolveTopHypotheses",
+            target_id=None,
+            payload={"top_k": 5, "strategies": ["combine", "simplify", "out_of_box"]},
+            priority=140, status="pending",
+            idempotency_key=f"{session.id}::evolution::idle::{anchor_mc}",
+        )):
+            enqueued += 1
+
+        # Recurring self-critique: once per `critique_every_matches` bucket the
+        # meta-review agent re-questions the leaderboard (flaws, wrong
+        # conclusions, suspect citations) and shows its thinking in the feed.
+        crit_every = self.cfg.run.critique_every_matches
+        bucket = anchor_mc // crit_every if crit_every > 0 else 0
+        if bucket >= 1 and await task_repo.enqueue(conn, Task(
+            id=ids.task_id(), session_id=session.id,
+            created_at=datetime.now(UTC),
+            agent="metareview", action="GenerateSelfCritique",
+            target_id=None, payload={"round": bucket},
+            priority=130, status="pending",
+            idempotency_key=f"{session.id}::metareview::critique::{bucket}",
+        )):
             enqueued += 1
 
         # Periodic meta-review (every ~5 minutes wall, approximated by match count).
@@ -468,15 +511,14 @@ class Supervisor:
         ) as cur:
             row = await cur.fetchone()
         feedback_count = row["n"] if row else 0
-        if mc >= (feedback_count + 1) * 50:
-            await task_repo.enqueue(conn, Task(
-                id=ids.task_id(), session_id=session.id,
-                created_at=datetime.now(UTC),
-                agent="metareview", action="GenerateSystemFeedback",
-                target_id=None, payload={},
-                priority=180, status="pending",
-                idempotency_key=f"{session.id}::metareview::feedback::{feedback_count + 1}",
-            ))
+        if mc >= (feedback_count + 1) * 50 and await task_repo.enqueue(conn, Task(
+            id=ids.task_id(), session_id=session.id,
+            created_at=datetime.now(UTC),
+            agent="metareview", action="GenerateSystemFeedback",
+            target_id=None, payload={},
+            priority=180, status="pending",
+            idempotency_key=f"{session.id}::metareview::feedback::{feedback_count + 1}",
+        )):
             enqueued += 1
 
         return enqueued

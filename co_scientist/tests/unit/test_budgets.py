@@ -78,6 +78,22 @@ async def test_share_percent_for_unknown_agent_is_zero() -> None:
 
 
 @pytest.mark.asyncio
+async def test_budget_usd_zero_means_token_capped_only() -> None:
+    """budget_usd <= 0 disables the USD cap AND per-agent USD shares; the
+    token cap must still be enforced."""
+    cfg = Config()
+    b = TokenBudget(cfg=cfg, budget_tokens=10_000, budget_usd=0.0)
+
+    # Huge est_usd admits fine (would blow both global cap and generation share)
+    await b.admit("generation", est_tokens=1_000, est_usd=999.0)
+    await b.admit("generation", est_tokens=1_000, est_usd=999.0)
+
+    # Token cap still raises
+    with pytest.raises(BudgetExceeded):
+        await b.admit("generation", est_tokens=10_000, est_usd=0.0)
+
+
+@pytest.mark.asyncio
 async def test_settle_with_zero_actual_releases_reservation() -> None:
     """If a call fails after admission (e.g. retry exhaustion), the caller must
     be able to release the reservation with actual=0 so the reserve doesn't leak."""

@@ -220,6 +220,8 @@ class MetaReviewAgent(BaseAgent):
     async def execute(self, task: Task) -> TaskResult:
         if task.action == "GenerateSystemFeedback":
             return await self._system_feedback(task)
+        if task.action == "GenerateSelfCritique":
+            return await self._self_critique(task)
         if task.action == "GenerateFinalResearchOverview":
             return await self._final_overview(task)
         raise ValueError(f"MetaReviewAgent does not handle action {task.action!r}")
@@ -295,6 +297,118 @@ class MetaReviewAgent(BaseAgent):
         return TaskResult(
             kind="system_feedback_generated",
             extra={"feedback_id": fb_id, "n_reviews": len(reviews)},
+        )
+
+    # ----------------------------- self-critique ----------------------------- #
+
+    async def _self_critique(self, task: Task) -> TaskResult:
+        """Recurring adversarial self-questioning of the current leaderboard.
+
+        Routes to Opus with extended thinking (tool_choice=auto keeps thinking
+        enabled) and posts a `self_critique` SystemFeedback row whose text
+        includes the visible thinking process for the chat feed.
+        """
+        session = await sess_repo.fetch(self.deps.db, task.session_id)
+        if session is None:
+            raise RuntimeError(f"session {task.session_id} missing")
+
+        reviews = await rev_repo.list_for_session(self.deps.db, session.id)
+        if not reviews:
+            return TaskResult(kind="noop", extra={"reason": "no reviews yet"})
+        top = await hyp_repo.top_by_elo(self.deps.db, session.id, k=5)
+        if not top:
+            return TaskResult(kind="noop", extra={"reason": "no ranked hypotheses yet"})
+
+        reviews_by_hyp: dict[str, list] = {}
+        for rv in reviews:
+            reviews_by_hyp.setdefault(rv.hypothesis_id, []).append(rv)
+
+        chunks: list[str] = []
+        for h in top:
+            review_lines = [
+                f"  - {r.kind}: verdict={r.verdict or '?'} "
+                f"(n={r.scores.novelty}, c={r.scores.correctness}, t={r.scores.testability})"
+                for r in reviews_by_hyp.get(h.id, [])
+            ]
+            elo_s = f"{h.elo:.0f}" if h.elo is not None else "—"
+            chunks.append(
+                f"### `{h.id}` (Elo {elo_s}, strategy `{h.strategy}`)\n"
+                f"**Title.** {h.title}\n\n"
+                f"{h.summary}\n\n"
+                f"**Reviews:**\n" + ("\n".join(review_lines) or "  (none)")
+            )
+        top_block = "\n\n---\n\n".join(chunks)
+
+        reviews_block = "\n\n---\n\n".join(
+            f"### Review of `{r.hypothesis_id}` (kind={r.kind}, verdict={r.verdict or '?'})\n{r.body[:3000]}"
+            for r in reviews[:30]
+        )
+        rationales = await tourney_repo.recent_rationales(self.deps.db, session.id, limit=30)
+        debate_block = "\n\n---\n\n".join(rat[:1500] for rat in rationales if rat)
+        previous = await fb_repo.latest_system_feedback(
+            self.deps.db, session.id, kind="self_critique"
+        )
+        round_n = task.payload.get("round", 0)
+
+        prompt = render(
+            "metareview.critique",
+            round=round_n,
+            goal=session.research_plan.objective,
+            preferences="; ".join(session.research_plan.preferences),
+            top_hypotheses_block=top_block,
+            reviews=reviews_block,
+            debate_rationales=debate_block,
+            previous_critique=(previous.text[:4000] if previous else ""),
+        )
+        r = route(self.deps.cfg, "metareview", "critique")
+        spec = AgentCallSpec(
+            route=r,
+            system_blocks=[
+                CachedBlock(self._system_prompt_header(), cache=True),
+                CachedBlock(
+                    f"# Research goal\n{session.research_goal}\n\n"
+                    f"# Preferences\n{'; '.join(session.research_plan.preferences)}",
+                    cache=True,
+                ),
+            ],
+            user_blocks=[CachedBlock(prompt, cache=False)],
+            tools=[RECORD_SYSTEM_FEEDBACK_TOOL],
+            # "auto" (not a forced tool) so extended thinking stays enabled.
+            tool_choice={"type": "auto"},
+            max_output_tokens=16384,   # must exceed the thinking budget
+        )
+        ctx = CallContext(
+            session_id=session.id, task_id=task.id,
+            agent="metareview", action="GenerateSelfCritique", mode="critique",
+        )
+        resp = await self.deps.llm.call(spec, ctx)
+
+        thinking = self._thinking_text(resp)
+        record = self._final_tool_use(resp, "record_system_feedback")
+        narrative = ((record or {}).get("narrative") or "").strip() or self._final_text(resp)
+        if not narrative.strip():
+            return TaskResult(kind="noop", extra={"reason": "empty critique"})
+
+        text = ""
+        if thinking:
+            text += f"## Thinking\n\n{thinking[:4000]}\n\n"
+        text += f"## Self-critique\n\n{narrative}"
+
+        fb_id = ids.feedback_id()
+        artifact_path = await write_json(
+            self.deps.cfg, session.id, "self_critique", fb_id,
+            {"round": round_n, "thinking": thinking, "narrative": narrative,
+             "record": record},
+        )
+        await fb_repo.insert(self.deps.db, SystemFeedback(
+            id=fb_id, session_id=session.id, created_at=datetime.now(UTC),
+            source="meta_review", kind="self_critique",
+            target_id=None, text=text[:8000],
+            artifact_path=artifact_path, active=True,
+        ))
+        return TaskResult(
+            kind="self_critique_generated",
+            extra={"feedback_id": fb_id, "round": round_n},
         )
 
     # ----------------------------- final overview ----------------------------- #

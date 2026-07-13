@@ -49,13 +49,13 @@ async def active_for_session(
 
 
 async def latest_system_feedback(
-    conn: aiosqlite.Connection, session_id: str
+    conn: aiosqlite.Connection, session_id: str, kind: str = "system_feedback"
 ) -> SystemFeedback | None:
     async with conn.execute(
         """SELECT * FROM system_feedback
-              WHERE session_id=? AND kind='system_feedback' AND source='meta_review'
+              WHERE session_id=? AND kind=? AND source='meta_review'
               ORDER BY created_at DESC LIMIT 1""",
-        (session_id,),
+        (session_id, kind),
     ) as cur:
         row = await cur.fetchone()
     return _row_to_fb(row) if row else None

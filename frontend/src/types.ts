@@ -196,22 +196,21 @@ export interface RunPreset {
   n_initial: number;
 }
 
-// Budgets scale with the old per-hypothesis cost each preset implied
-// (Quick ~333k tok + 300 s/hyp, Standard ~1.25M + 450 s, Deep ~3.33M + 600 s),
-// rounded to sane caps — Deep is trimmed below pure proportionality because
-// max_matches_per_idea caps per-idea cost growth at the top end.
+// budget_tokens is the hard cap AND the target: the engine keeps refining
+// (tournaments, evolution, recurring self-critique) until >=95% of it is
+// consumed, so a preset's budget is roughly what a run will actually spend.
 export const RUN_PRESETS: RunPreset[] = [
   {
     id: "quick", label: "Quick", blurb: "A fast first pass — 5 hypotheses, a short tournament.",
-    budget_tokens: 2_000_000, wall_clock_seconds: 1500, n_initial: 5,
+    budget_tokens: 1_000_000, wall_clock_seconds: 3600, n_initial: 5,
   },
   {
     id: "standard", label: "Standard", blurb: "A balanced run — 15 hypotheses, deeper ranking.",
-    budget_tokens: 20_000_000, wall_clock_seconds: 7200, n_initial: 15,
+    budget_tokens: 2_000_000, wall_clock_seconds: 10800, n_initial: 15,
   },
   {
     id: "deep", label: "Deep", blurb: "An exhaustive search — 50 hypotheses and evolution rounds.",
-    budget_tokens: 150_000_000, wall_clock_seconds: 14400, n_initial: 50,
+    budget_tokens: 5_000_000, wall_clock_seconds: 21600, n_initial: 50,
   },
 ];
 

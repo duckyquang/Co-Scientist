@@ -25,6 +25,8 @@ class RunCfg(BaseModel):
     wall_clock_seconds: int = 7200
     budget_tokens: int = 5_000_000
     budget_usd: float = 25.0
+    critique_every_matches: int = 15   # self-critique cadence; 0 disables
+    evolution_min_mature: int = 4      # hypotheses with ≥3 matches before evolving
 
 
 class StorageCfg(BaseModel):
@@ -67,6 +69,8 @@ class TerminationCfg(BaseModel):
     elo_stability_n: int = 3
     elo_stability_eps: float = 25.0
     match_snapshot_every: int = 10
+    budget_floor_pct: float = 0.95     # keep working until ≥95% of token budget spent
+    stall_after_seconds: int = 600     # no token progress + idle queue → IDLE
 
 
 class BudgetSharesCfg(BaseModel):
@@ -108,6 +112,7 @@ class ThinkingCfg(BaseModel):
     evolution_simplify: int = 0
     metareview_feedback: int = 8000
     metareview_final: int = 16000
+    metareview_critique: int = 10_000
 
 
 class ToolLoopCfg(BaseModel):
