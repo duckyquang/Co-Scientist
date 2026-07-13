@@ -23,6 +23,17 @@ from .store import REPO_ROOT, connect
 _RUNNING: dict[str, "Sim"] = {}
 _LOCK = threading.Lock()
 
+TOKENS_PER_USD = 220_000
+# Recurring self-critique loop keeps reasoning until the simulated token spend
+# reaches HIT of the budget. Each critique chunk is clamped so it never pushes
+# past HIT; only the tiny re-rank burst lands on top, so the total settles in a
+# ~95-97% band — never over 100%.
+BUDGET_HIT = 0.95
+# Each critique round burns ~this fraction of the budget, so the number of
+# rounds stays bounded (~3-5) regardless of budget size → wall time stays sane.
+CRITIQUE_ROUND_FRACTION = 0.22
+MAX_CRITIQUE_ROUNDS = 8
+
 
 def _now() -> datetime:
     return datetime.now(UTC)
@@ -33,15 +44,18 @@ def _ts(dt: datetime) -> str:
 
 
 class Sim:
-    def __init__(self, db, sid: str, goal: str, budget: float, n_initial: int, speed: float):
+    def __init__(self, db, sid: str, goal: str, budget: float, n_initial: int,
+                 speed: float, budget_tokens: int = 5_000_000):
         self.db = db
         self.sid = sid
         self.goal = goal
         self.budget = budget
+        self.budget_tokens = max(1, int(budget_tokens))
         self.n_initial = n_initial
         self.speed = speed  # seconds multiplier (lower = faster)
         self.r = random.Random(sid)
         self.cost = 0.0
+        self.tokens = 0.0  # simulated cumulative tokens (drives the budget gauge)
         self.hyps: list[dict] = []
 
     # control --------------------------------------------------------------
@@ -61,11 +75,15 @@ class Sim:
             time.sleep(0.2)
         return self._status(conn) not in ("aborted", "failed")
 
-    def _bump(self, conn, add_cost: float):
+    def _bump(self, conn, add_cost: float, add_tokens: int | None = None):
         self.cost += add_cost
+        self.tokens += add_tokens if add_tokens is not None else add_cost * TOKENS_PER_USD
         conn.execute(
             "UPDATE sessions SET budget_used_usd=?, budget_used_tokens=?, updated_at=? WHERE id=?",
-            (round(self.cost, 4), int(self.cost * 220_000), _ts(_now()), self.sid),
+            # Cap the gauge at 99% so the finalize + re-rank-burst spend that
+            # lands on top of the 95% target can never read at/over 100%.
+            (round(self.cost, 4), min(int(self.tokens), int(self.budget_tokens * 0.99)),
+             _ts(_now()), self.sid),
         )
         conn.commit()
 
@@ -80,6 +98,7 @@ class Sim:
             self._ranking(conn, rounds=2)
             self._evolution(conn)
             self._ranking(conn, rounds=2)
+            self._self_critique_rounds(conn)
             self._finalize(conn)
         except Exception as e:  # keep the thread from dying silently
             _emit(conn, self.sid, "supervisor", "task_failed",
@@ -155,6 +174,44 @@ class Sim:
                          (h["id"],))
             conn.commit()
 
+    def _apply_match(self, conn, a, b, mode: str, winner: str, k: int = 32):
+        """Record one tournament match: Elo update, match + journal rows,
+        transcript, event and a small cost bump. Shared by the main ranking
+        phase and the self-critique re-rank bursts."""
+        ra, rb = _elo_update(a["elo"], b["elo"], winner, k=k)
+        mid = "mat_" + hashlib.sha256(
+            f"{self.sid}{a['id']}{b['id']}{time.time()}".encode()).hexdigest()[:16]
+        now = _now()
+        conn.execute(
+            """INSERT INTO tournament_matches
+               (id, session_id, created_at, hyp_a, hyp_b, mode, winner,
+                elo_a_before, elo_b_before, elo_a_after, elo_b_after,
+                rationale, transcript_id, similarity)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (mid, self.sid, _ts(now), a["id"], b["id"], mode, winner,
+             a["elo"], b["elo"], ra, rb,
+             f"Idea {winner.upper()} gave a sharper falsification criterion.",
+             None, round(self.r.uniform(0.05, 0.4), 2)))
+        conn.execute(
+            """INSERT OR IGNORE INTO elo_journal
+               (update_id, match_id, hyp_a, hyp_b, winner, elo_a_before,
+                elo_b_before, elo_a_after, elo_b_after, applied_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+            (mid, mid, a["id"], b["id"], winner, a["elo"], b["elo"], ra, rb,
+             int(now.timestamp() * 1000)))
+        a["elo"], b["elo"] = ra, rb
+        a["matches"] += 1
+        b["matches"] += 1
+        for hh in (a, b):
+            conn.execute("UPDATE hypotheses SET elo=?, matches_played=? WHERE id=?",
+                         (hh["elo"], hh["matches"], hh["id"]))
+        cost = round(self.r.uniform(0.01, 0.05), 4)
+        _transcript(conn, self.sid, "ranking", f"ranking.{mode}",
+                    content.MODELS["ranking"], now, cost)
+        _emit(conn, self.sid, "ranking", "match_complete",
+              {"match_id": mid, "winner": winner, "mode": mode}, now)
+        self._bump(conn, cost)
+
     def _ranking(self, conn, rounds: int):
         for _r in range(rounds):
             pool = list(self.hyps)
@@ -164,39 +221,7 @@ class Sim:
                     return
                 mode = "debate" if self.r.random() < 0.35 else "pairwise"
                 winner = "a" if self.r.random() < 0.5 else "b"
-                ra, rb = _elo_update(a["elo"], b["elo"], winner)
-                mid = "mat_" + hashlib.sha256(
-                    f"{self.sid}{a['id']}{b['id']}{time.time()}".encode()).hexdigest()[:16]
-                now = _now()
-                conn.execute(
-                    """INSERT INTO tournament_matches
-                       (id, session_id, created_at, hyp_a, hyp_b, mode, winner,
-                        elo_a_before, elo_b_before, elo_a_after, elo_b_after,
-                        rationale, transcript_id, similarity)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                    (mid, self.sid, _ts(now), a["id"], b["id"], mode, winner,
-                     a["elo"], b["elo"], ra, rb,
-                     f"Idea {winner.upper()} gave a sharper falsification criterion.",
-                     None, round(self.r.uniform(0.05, 0.4), 2)))
-                conn.execute(
-                    """INSERT OR IGNORE INTO elo_journal
-                       (update_id, match_id, hyp_a, hyp_b, winner, elo_a_before,
-                        elo_b_before, elo_a_after, elo_b_after, applied_at)
-                       VALUES (?,?,?,?,?,?,?,?,?,?)""",
-                    (mid, mid, a["id"], b["id"], winner, a["elo"], b["elo"], ra, rb,
-                     int(now.timestamp() * 1000)))
-                a["elo"], b["elo"] = ra, rb
-                a["matches"] += 1
-                b["matches"] += 1
-                for hh in (a, b):
-                    conn.execute("UPDATE hypotheses SET elo=?, matches_played=? WHERE id=?",
-                                 (hh["elo"], hh["matches"], hh["id"]))
-                cost = round(self.r.uniform(0.01, 0.05), 4)
-                _transcript(conn, self.sid, "ranking", f"ranking.{mode}",
-                            content.MODELS["ranking"], now, cost)
-                _emit(conn, self.sid, "ranking", "match_complete",
-                      {"match_id": mid, "winner": winner, "mode": mode}, now)
-                self._bump(conn, cost)
+                self._apply_match(conn, a, b, mode, winner)
 
     def _evolution(self, conn):
         if not self.hyps or not self._wait(conn, 1.0):
@@ -213,6 +238,45 @@ class Sim:
             conn.execute("UPDATE hypotheses SET state='in_tournament', elo=1200 WHERE id=?",
                          (h["id"],))
             conn.commit()
+
+    def _self_critique_rounds(self, conn):
+        """Keep reasoning past the standard phases: each round writes a
+        meta-review self-critique (re-questioning the leaders), then runs a short
+        low-K re-rank burst that wobbles Elo without churning the order — looping
+        until the simulated token spend reaches BUDGET_HIT of the budget."""
+        target = int(BUDGET_HIT * self.budget_tokens)
+        per_round = max(1, int(CRITIQUE_ROUND_FRACTION * self.budget_tokens))
+        round_no = 0
+        while self.tokens < target and round_no < MAX_CRITIQUE_ROUNDS:
+            if self._status(conn) in ("aborted", "failed") or not self._wait(conn, 1.5):
+                return
+            round_no += 1
+            top = sorted(self.hyps, key=lambda h: -h["elo"])
+            now = _now()
+            text = content.make_self_critique(self.goal, round_no, top)
+            fid = "fb_" + hashlib.sha256(f"{self.sid}sc{round_no}".encode()).hexdigest()[:12]
+            conn.execute(
+                "INSERT INTO system_feedback (id, session_id, created_at, source,"
+                " kind, target_id, text, active) VALUES (?,?,?,?,?,?,?,1)",
+                (fid, self.sid, _ts(now), "meta_review", "self_critique", None, text))
+            # Big, budget-scaled token chunk (clamped so critique never crosses
+            # the target), priced at the standard token/USD rate for consistency.
+            add_tokens = min(per_round, max(0, target - int(self.tokens)))
+            cost = round(add_tokens / TOKENS_PER_USD, 4)
+            _transcript(conn, self.sid, "metareview", "metareview.self_critique",
+                        content.MODELS["metareview"], now, cost)
+            _emit(conn, self.sid, "metareview", "task_completed",
+                  {"agent": "metareview", "kind": "self_critique",
+                   "round": round_no, "action": "SelfCritique"}, now)
+            self._bump(conn, cost, add_tokens)
+            # Short re-rank burst: 2 low-K matches so Elo jiggles but the wide
+            # gaps from the main tournament keep the ordering stable.
+            for _ in range(2):
+                if len(self.hyps) < 2 or not self._wait(conn, 0.8):
+                    break
+                a, b = self.r.sample(self.hyps, 2)
+                winner = "a" if self.r.random() < 0.5 else "b"
+                self._apply_match(conn, a, b, "pairwise", winner, k=6)
 
     def _finalize(self, conn):
         if self._status(conn) in ("aborted", "failed"):
@@ -239,13 +303,13 @@ class Sim:
         conn.execute(
             "UPDATE sessions SET status='done', final_overview=?, updated_at=? WHERE id=?",
             (f"artifacts/{self.sid}/final/overview.md", _ts(_now()), self.sid))
-        _emit(conn, self.sid, "metareview", "session_done", {"stop_reason": "ELO_STABLE"}, _now())
+        _emit(conn, self.sid, "metareview", "session_done", {"stop_reason": "BUDGET"}, _now())
         conn.commit()
 
 
 def start(db, sid: str, goal: str, budget: float, n_initial: int = 4,
-          speed: float = 1.0) -> None:
-    sim = Sim(db, sid, goal, budget, n_initial, speed)
+          speed: float = 1.0, budget_tokens: int = 5_000_000) -> None:
+    sim = Sim(db, sid, goal, budget, n_initial, speed, budget_tokens=budget_tokens)
     with _LOCK:
         _RUNNING[sid] = sim
     threading.Thread(target=sim.run, name=f"sim-{sid[:8]}", daemon=True).start()
