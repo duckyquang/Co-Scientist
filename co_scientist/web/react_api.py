@@ -63,7 +63,7 @@ class CreateSessionBody(BaseModel):
     budget_tokens: int = Field(default=5_000_000, ge=100_000)
     wall_clock_seconds: int = Field(default=1800, ge=60)
     budget_usd: float | None = None  # optional legacy cap; None → keep config default
-    n_initial: int = Field(default=4, ge=2, le=8)
+    n_initial: int = Field(default=4, ge=2, le=50)
     provider: str | None = None
     speed: float = 1.0  # accepted for API compat; real engine ignores demo pace
 

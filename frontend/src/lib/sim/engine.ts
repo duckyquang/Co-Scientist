@@ -496,7 +496,7 @@ export function createSimSession(input: {
 }): string {
   const rand = Math.floor(Math.random() * 1e9).toString(36);
   const id = `sim_${Date.now().toString(36)}${rand}`;
-  const n_initial = Math.max(2, Math.min(input.n_initial, 8));
+  const n_initial = Math.max(2, Math.min(input.n_initial, 50));
   // A real LLM provider is available only when a credential is baked in (Groq
   // key or Pollinations token) — browsers can't call these anonymously. Without
   // one, we go straight to the prompt-aware template (which still reflects the
@@ -528,7 +528,11 @@ export function createSimSession(input: {
     _inFlight.add(id);
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), GEN_TIMEOUT_MS);
-    generateSession(input.goal, n_initial + 2, ctrl.signal)
+    // ponytail: cap the live request at 20 — a single 6k-token completion
+    // (groq.ts max_tokens) can't hold ~50 hypotheses of JSON; indices beyond
+    // the live content fall back per-index to the prompt-aware template.
+    // Chunked multi-call generation if fully-live Deep runs ever matter.
+    generateSession(input.goal, Math.min(n_initial + 2, 20), ctrl.signal)
       .then((content) => finishGenerating(id, content))
       .catch(() => finishGenerating(id, undefined))
       .finally(() => { clearTimeout(timer); _inFlight.delete(id); });

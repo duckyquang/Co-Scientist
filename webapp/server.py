@@ -267,7 +267,7 @@ class Handler(BaseHTTPRequestHandler):
         # Legacy dollar cap is optional; the simulator uses it only for its
         # invented per-call cost accounting (displayed as an estimate, not a limit).
         budget = float(b.get("budget_usd", budget_tokens / 220_000))
-        n_initial = max(2, min(int(b.get("n_initial", 4)), 8))
+        n_initial = max(2, min(int(b.get("n_initial", 4)), 50))
         speed = float(b.get("speed", 1.0))
         sid = "sess_" + hashlib.sha256(f"{goal}{time.time()}".encode()).hexdigest()[:16]
         now_dt = datetime.now(UTC)
