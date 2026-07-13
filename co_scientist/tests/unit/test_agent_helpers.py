@@ -3,7 +3,49 @@
 from __future__ import annotations
 
 from co_scientist.agents.generation import _filter_to_seen_urls, _render_hypothesis_md
+from co_scientist.agents.metareview import ensure_references, references_section
 from co_scientist.agents.reflection import _render_review_md
+
+_CITES = [
+    {"n": 1, "title": "Paper One", "url": "https://a.example/1",
+     "doi": None, "year": 2021, "excerpt": None},
+    {"n": 2, "title": "Paper Two", "url": None,
+     "doi": "10.1000/xyz", "year": None, "excerpt": None},
+]
+
+
+def test_ensure_references_appends_when_missing() -> None:
+    body = "# Research overview\n\nSome directions with an inline marker [1].\n"
+    out = ensure_references(body, _CITES)
+    assert "## References" in out
+    assert "[1] Paper One (2021). https://a.example/1" in out
+    assert "[2] Paper Two (n.d.). https://doi.org/10.1000/xyz" in out
+    # original body is preserved
+    assert "inline marker [1]" in out
+
+
+def test_ensure_references_replaces_model_section() -> None:
+    # A model-written (possibly invented) References block is replaced by the
+    # authoritative one built from real data.
+    body = "# Overview\n\nbody\n\n## References\n\n[1] Invented, never fetched (1999).\n"
+    out = ensure_references(body, _CITES)
+    assert "Invented, never fetched" not in out
+    assert out.count("## References") == 1
+    assert "[1] Paper One (2021)." in out
+
+
+def test_ensure_references_honest_when_no_citations() -> None:
+    body = "# Overview\n\nbody\n"
+    out = ensure_references(body, [])
+    assert "## References" in out
+    assert "No verifiable citations were gathered." in out
+
+
+def test_references_section_marks_unverified() -> None:
+    out = references_section(_CITES, frozenset({"https://a.example/1"}))
+    assert "[1] Paper One (2021). https://a.example/1 (unverified)" in out
+    # the confirmed source is NOT marked
+    assert "(unverified)" not in out.split("[2]")[1]
 
 
 def test_citation_url_filter_keeps_only_seen() -> None:

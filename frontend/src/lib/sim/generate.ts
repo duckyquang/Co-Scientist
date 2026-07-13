@@ -55,6 +55,8 @@ export async function generateSession(
     "Given a research goal in ANY field, you generate distinct, specific, testable hypotheses " +
     "grounded in the real subject matter of that goal — correct field, real mechanisms, real entities, " +
     "real methods — and a critical review of each. You never return generic filler unrelated to the goal. " +
+    "You have NO literature-retrieval access here: never fabricate citations, papers, authors, DOIs, or URLs. " +
+    "State claims as reasoning and mark uncertain ones as speculative rather than dressing them up as cited fact. " +
     "Respond with ONLY a single valid JSON object, no prose, no code fences.";
 
   const user =
@@ -76,7 +78,7 @@ export async function generateSession(
     `      "critique": "2-3 sentence critical review naming the key risk or assumption"\n` +
     `    }\n` +
     `  ],\n` +
-    `  "overview": "150-250 word markdown overview: an executive summary, the cross-cutting themes ACROSS these specific hypotheses, and recommended next experiments. Reference the actual hypotheses."\n` +
+    `  "overview": "150-250 word markdown overview: an executive summary, the cross-cutting themes ACROSS these specific hypotheses, and recommended next experiments. Reference the actual hypotheses. Do NOT invent citations, papers, DOIs, or URLs — a References note is appended automatically stating that no sources were retrieved in this mode."\n` +
     `}`;
 
   try {

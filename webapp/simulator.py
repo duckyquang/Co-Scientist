@@ -116,7 +116,7 @@ class Sim:
               {"hypothesis_id": hid, "title": c["title"][:80], "strategy": strat}, now)
         self._bump(conn, cost)
         h = {"id": hid, "title": c["title"], "summary": c["summary"], "elo": 1200.0,
-             "matches": 0, "strategy": strat}
+             "matches": 0, "strategy": strat, "citations": c["citations"]}
         self.hyps.append(h)
         return h
 

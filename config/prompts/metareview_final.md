@@ -11,6 +11,9 @@ Latest system feedback:
 Top-ranked hypotheses (ordered by tournament Elo, with their reviews and winning debate rationales):
 {{ top_hypotheses_block }}
 
+Available references (the ONLY sources you may cite — each is a real paper gathered from the top hypotheses):
+{{ citations_block | default('(none)') }}
+
 Write a complete research-proposal document in markdown with the following structure. Be substantive in every section — this should read like a proposal a lab could fund, not an abstract.
 
 # Research proposal
@@ -30,7 +33,7 @@ Briefly characterize the space the agents explored and which generation strategi
 For each top proposal (use the tournament order; cover the top 3-5), write a subsection `### Proposal N. <short title>` containing:
 - **Tournament Elo and strategy.** The Elo and the generation strategy, and the hypothesis ID as `[H-...]`.
 - **The hypothesis.** One tight paragraph stating the claim and its mechanism.
-- **Why it's promising.** Reference 1-3 supporting hypotheses/reviews by ID and the strongest evidence each carries. Cite literature URLs when they appear in the supporting reviews. Do not invent citations.
+- **Why it's promising.** Reference 1-3 supporting hypotheses/reviews by ID and the strongest evidence each carries. Where a claim leans on a source, add its inline marker `[n]` (matching the numbered "Available references" list). Do not invent citations.
 - **Proposed experiment(s).** A concrete, near-term experiment the scientist could run within a quarter: model system, intervention, primary readout, controls, and a quantitative success threshold.
 - **Feasibility and risks.** Cost/effort scale and the single most likely failure mode.
 - **What would falsify it.** The observation that would kill the hypothesis.
@@ -45,6 +48,12 @@ A short ordered plan: which experiment to run first, what result gates the next 
 What the system did not explore, where the literature was thin, and where a domain expert would most likely disagree with the tournament's verdict. Be candid that a high Elo is a strong prior, not proof.
 
 ## References
-List the literature URLs actually cited above, deduplicated. Do not invent references.
+Reproduce the numbered "Available references" list above verbatim, one `[n]` entry per line. An authoritative References section is also appended programmatically, so never invent, renumber, or add references beyond that list.
 
-Use markdown formatting. GitHub-flavored tables and inline/display math (`$...$`, `$$...$$`, rendered with KaTeX) are supported — use a compact comparison table or an equation where it genuinely clarifies, not as decoration. A figures section with scorecard, lineage diagram, and the rating model is appended automatically after your text, so do not fabricate charts or numeric data yourself. Cite hypothesis IDs as `[H-...]` inline. Do not invent citations or data.
+## Citation rules (strict)
+- Cite ONLY from the numbered "Available references" list above. Never invent a reference, URL, DOI, author, or year.
+- Use each source's `[n]` marker inline, right after the claim it supports, matching its number in the list.
+- Hypothesis IDs `[H-...]` are separate from the numbered literature markers — keep using them too.
+- If the "Available references" list is empty, omit inline `[n]` markers and do not fabricate any.
+
+Use markdown formatting. GitHub-flavored tables and inline/display math (`$...$`, `$$...$$`, rendered with KaTeX) are supported — use a compact comparison table or an equation where it genuinely clarifies, not as decoration. A figures section with scorecard, lineage diagram, and the rating model is appended automatically after your text, so do not fabricate charts or numeric data yourself. Do not invent citations or data.

@@ -20,7 +20,7 @@ import type {
   Metrics, SessionDetail, SessionRow, SSEvent,
 } from "../../types";
 import type { LiveTick } from "../hooks";
-import { buildAnalysis, eloUpdate, makeHypothesis, makeOverview, makePlan, makeReview, SIM_MODEL, STRATEGIES } from "./content";
+import { buildAnalysis, eloUpdate, makeHypothesis, makeOverview, makePlan, makeReview, referencesSection, SIM_MODEL, STRATEGIES } from "./content";
 import { generateSession, type GenHyp, type GeneratedContent } from "./generate";
 import { hasRealProvider } from "../llm";
 import { makeRng } from "./rng";
@@ -281,9 +281,12 @@ function buildPlan(rec: SimRecord): Plan {
   // shape the template uses (# title + **Research goal.** + ## sections) so every
   // consumer — the report panel AND the microsite hero/TOC/body — treats both
   // paths identically; then append the deterministic data analysis.
+  // The browser LLM writes prose but retrieves no literature, so its proposal
+  // gets an honest "no verifiable sources" References section rather than
+  // fabricated citations. The template path (makeOverview) builds its own.
   const groqProse = rec.content?.overview?.trim();
   const overview = groqProse
-    ? `# Research proposal\n\n**Research goal.** ${goal}\n\n## Overview\n\n${groqProse}\n\n${buildAnalysis(proposals, figures)}`
+    ? `# Research proposal\n\n**Research goal.** ${goal}\n\n## Overview\n\n${groqProse}\n\n${buildAnalysis(proposals, figures)}\n\n${referencesSection(null)}`
     : makeOverview(goal, proposals, figures);
   emit("metareview", "session_done", { stop_reason: "ELO_STABLE" });
   const metaFeedback: Feedback = {
