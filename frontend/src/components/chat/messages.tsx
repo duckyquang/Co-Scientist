@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Telescope, Sparkles, Swords, GitBranch, FileText, User, MessageSquare,
-  Loader2, Check, ChevronDown, ArrowRight,
+  Loader2, Check, ChevronDown, ArrowRight, RefreshCw,
 } from "lucide-react";
 import { EloRace } from "../charts";
 import { OverviewPanel } from "../session/panels";
@@ -21,6 +21,8 @@ export type ChatMsg =
   | { id: string; role: "assistant"; kind: "ranking"; top: Hypothesis[]; series: Record<string, { i: number; elo: number }[]>; matches: number; active: boolean }
   | { id: string; role: "assistant"; kind: "evolving"; offspring: Hypothesis[] }
   | { id: string; role: "assistant"; kind: "feedback"; text: string }
+  // Self-critique ("requestioning") round — optional Thinking section + narrative.
+  | { id: string; role: "assistant"; kind: "critique"; round: number; thinking: string | null; body: string }
   | { id: string; role: "assistant"; kind: "proposal"; md: string }
   // Follow-up chat turns (routed: question answer / tweak-rerun / out-of-scope).
   | { id: string; role: "user"; kind: "chat"; text: string }
@@ -68,7 +70,16 @@ export function deriveMessages(input: {
   // Feedback endpoints return newest-first (correct for the Explore feed), but a
   // top-to-bottom chat thread must read oldest-first like the rest of the thread.
   const fbAsc = [...feedback].sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at));
+  let critiqueRound = 0;
   for (const f of fbAsc) {
+    if (f.kind === "self_critique") {
+      const { thinking, body } = parseCritique(f.text);
+      msgs.push({
+        id: `fb-${f.id}`, role: "assistant", kind: "critique",
+        round: ++critiqueRound, thinking, body,
+      });
+      continue;
+    }
     msgs.push({
       id: `fb-${f.id}`,
       role: f.source === "human" ? "user" : "assistant",
@@ -95,6 +106,16 @@ export function deriveMessages(input: {
   });
 
   return msgs;
+}
+
+/** Split a self-critique feedback text into its `## Thinking` (optional) and
+ *  `## Self-critique` sections. Unparseable text → whole thing as the body. */
+function parseCritique(text: string): { thinking: string | null; body: string } {
+  const both = text.match(/^##\s*Thinking\s*\n+([\s\S]*?)\n+##\s*Self-critique\s*\n+([\s\S]*)$/i);
+  if (both) return { thinking: both[1].trim(), body: both[2].trim() };
+  const solo = text.match(/^##\s*Self-critique\s*\n+([\s\S]*)$/i);
+  if (solo) return { thinking: null, body: solo[1].trim() };
+  return { thinking: null, body: text };
 }
 
 /* ── Renderers ─────────────────────────────────────────────── */
@@ -232,6 +253,35 @@ export function ChatMessage({ msg, onSelect }: { msg: ChatMsg; onSelect: (id: st
         </p>
         <div className="space-y-1.5">
           {msg.offspring.map((h) => <HypRow key={h.id} h={h} onSelect={onSelect} />)}
+        </div>
+      </Assistant>
+    );
+  }
+
+  // Self-critique round — the agent requestioning its own output.
+  if (msg.kind === "critique") {
+    return (
+      <Assistant>
+        <div className="mb-2.5 flex items-center gap-2">
+          <span className="grid h-6 w-6 place-items-center border border-rule bg-blue-soft text-blue">
+            <RefreshCw className="h-3.5 w-3.5" />
+          </span>
+          <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-ink">
+            Self-critique · Round {msg.round}
+          </span>
+        </div>
+        <div className="border border-rule bg-card p-4 text-[13px]">
+          {msg.thinking && (
+            <details className="mb-3">
+              <summary className="cursor-pointer select-none font-mono text-[10.5px] uppercase tracking-[0.08em] text-ink-soft transition-colors hover:text-ink">
+                Thinking process
+              </summary>
+              <div className="mt-2 whitespace-pre-wrap border-l-2 border-rule pl-3 font-mono text-[12px] leading-relaxed text-ink-soft">
+                {msg.thinking}
+              </div>
+            </details>
+          )}
+          <Markdown md={msg.body} />
         </div>
       </Assistant>
     );

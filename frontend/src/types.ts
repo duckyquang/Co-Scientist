@@ -16,6 +16,8 @@ export interface SessionRow {
   n_tournament: number;
   top_elo: number | null;
   n_matches: number;
+  /** Root of this session's rerun chain (chat "tweak" spawns); null/absent = own root. */
+  origin_session_id?: string | null;
 }
 
 export interface ResearchPlan {

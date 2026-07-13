@@ -17,7 +17,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     budget_used_tokens  INTEGER NOT NULL DEFAULT 0,
     budget_used_usd     REAL NOT NULL DEFAULT 0,
     wall_deadline       TEXT,
-    final_overview      TEXT
+    final_overview      TEXT,
+    origin_session_id   TEXT                           -- rerun-chain ROOT (null = own root)
 );
 CREATE INDEX IF NOT EXISTS sessions_status ON sessions(status, updated_at DESC);
 

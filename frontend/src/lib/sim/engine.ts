@@ -61,6 +61,7 @@ export interface SimRecord {
   pauseStartedMs: number | null;
   status: "running" | "paused" | "done" | "aborted";
   frozenSimSec: number | null; // set on abort
+  origin_session_id?: string | null; // rerun-chain ROOT (tweak spawns); null = own root
   feedback: Feedback[];
   chat?: ChatMsg[];            // follow-up conversation (persisted in localStorage)
   stateOverrides: Record<string, Hypothesis["state"]>;
@@ -529,6 +530,7 @@ function sessionRow(s: Snapshot): SessionRow {
     n_tournament: vis.filter((h) => hypState(s, h) === "in_tournament").length,
     top_elo: elos.length ? Math.max(...elos) : null,
     n_matches: s.plan.matches.filter((m) => m.t <= s.el).length,
+    origin_session_id: s.rec.origin_session_id ?? null,
   };
 }
 
@@ -584,6 +586,7 @@ export function isSimSession(id: string | undefined): boolean {
 
 export function createSimSession(input: {
   goal: string; budget_tokens: number; wall_clock_seconds: number; n_initial: number; speed?: number;
+  origin_session_id?: string | null;
 }): string {
   const rand = Math.floor(Math.random() * 1e9).toString(36);
   const id = `sim_${Date.now().toString(36)}${rand}`;
@@ -605,6 +608,7 @@ export function createSimSession(input: {
     pauseStartedMs: null,
     status: "running",
     frozenSimSec: null,
+    origin_session_id: input.origin_session_id ?? null,
     feedback: [],
     stateOverrides: {},
     mode: live ? "groq" : "sim",
@@ -910,6 +914,8 @@ export function simChat(id: string, message: string): {
       goal, budget_tokens: rec.budget_tokens ?? DEFAULT_BUDGET_TOKENS,
       wall_clock_seconds: rec.wall_clock_seconds ?? DEFAULT_WALL_CLOCK_SECONDS,
       n_initial: rec.n_initial, speed: rec.speed,
+      // Chains collapse to one root: child.origin = parent.origin ?? parent.id.
+      origin_session_id: rec.origin_session_id ?? id,
     });
     reply = "Started a new research run based on your change.";
   } else {

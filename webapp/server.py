@@ -263,7 +263,8 @@ class Handler(BaseHTTPRequestHandler):
             conn.close()
 
     def _start_session(self, conn, goal, *, budget_tokens=5_000_000, budget=None,
-                       wall_seconds=1800, n_initial=4, speed=1.0, provider="groq"):
+                       wall_seconds=1800, n_initial=4, speed=1.0, provider="groq",
+                       origin_session_id=None):
         """Insert a session row + start the simulator. Returns the new session id."""
         from . import content
         if budget is None:
@@ -277,12 +278,12 @@ class Handler(BaseHTTPRequestHandler):
             """INSERT INTO sessions
                (id, created_at, updated_at, status, research_goal, research_plan,
                 config_snapshot, budget_tokens, budget_usd, budget_used_tokens,
-                budget_used_usd, wall_deadline, final_overview)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                budget_used_usd, wall_deadline, final_overview, origin_session_id)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (sid, now, now, "running", goal, json.dumps(plan),
              json.dumps({"llm": {"provider": provider},
                          "models": content.MODELS}),
-             budget_tokens, budget, 0, 0.0, wall_deadline, None))
+             budget_tokens, budget, 0, 0.0, wall_deadline, None, origin_session_id))
         conn.execute(
             "INSERT INTO events (ts, session_id, agent, event, payload) VALUES (?,?,?,?,?)",
             (int(time.time() * 1000), sid, "supervisor", "session_started",
@@ -334,7 +335,9 @@ class Handler(BaseHTTPRequestHandler):
                 conn, new_goal,
                 budget_tokens=int(session.get("budget_tokens") or 5_000_000),
                 budget=float(session.get("budget_usd") or 0) or None,
-                n_initial=4, speed=1.0)
+                n_initial=4, speed=1.0,
+                # Chains collapse to one root: child.origin = parent.origin ?? parent.id.
+                origin_session_id=session.get("origin_session_id") or sid)
             reply = "Started a new research run based on your change."
         else:  # question
             hyps = store.list_hypotheses(conn, sid)
