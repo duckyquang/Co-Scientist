@@ -44,7 +44,8 @@ export function SettingsModal({ open, onClose }: Props) {
     setDeploymentMode(mode);
     if (mode === "byok" && apiKey.trim()) {
       setCredentials({ provider, apiKey: apiKey.trim() });
-    } else if (mode === "default") {
+    } else {
+      // Free mode, or BYOK with the key blanked → actually remove the stored key.
       clearCredentials();
     }
     setSaved(true);

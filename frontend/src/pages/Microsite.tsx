@@ -11,7 +11,9 @@ function parseReport(md: string) {
   const title = md.match(/^#\s+(.+)$/m)?.[1]?.trim() || "Research proposal";
   const goal = md.match(/\*\*Research goal\.\*\*\s*(.+)/)?.[1]?.trim() || "";
   const sections = [...md.matchAll(/^##\s+(.+)$/gm)].map((m) => {
-    const t = m[1].trim();
+    // Strip inline markdown (links) so the display + slug match the rendered
+    // heading's text/id (react-markdown ids come from the visible text).
+    const t = m[1].trim().replace(/\[([^\]]+)\]\([^)]*\)/g, "$1");
     return { title: t, slug: slugify(t) };
   });
   // Body starts at the first "## " so the hero owns the title + goal.
@@ -108,8 +110,8 @@ export default function Microsite() {
           <nav className="no-print mb-8 lg:sticky lg:top-20 lg:mb-0 lg:self-start">
             <div className="label mb-2">Contents</div>
             <ul className="space-y-1">
-              {parsed.sections.map((s) => (
-                <li key={s.slug}>
+              {parsed.sections.map((s, i) => (
+                <li key={`${s.slug}-${i}`}>
                   <a href={`#${s.slug}`}
                     className="block rounded-md px-2 py-1 text-[12.5px] text-muted transition hover:bg-surface-2 hover:text-fg">
                     {s.title}

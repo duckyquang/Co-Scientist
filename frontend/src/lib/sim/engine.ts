@@ -277,10 +277,13 @@ function buildPlan(rec: SimRecord): Plan {
   for (const h of finalRank.slice(0, 5)) eloLabels[h.id] = h.title.slice(0, 24);
   const figures = { strategyCounts, lineage, eloSeries, eloLabels };
 
-  // Groq gives a prompt-specific prose overview; still append the data analysis.
+  // Groq gives a prompt-specific prose overview. Wrap it in the same header
+  // shape the template uses (# title + **Research goal.** + ## sections) so every
+  // consumer — the report panel AND the microsite hero/TOC/body — treats both
+  // paths identically; then append the deterministic data analysis.
   const groqProse = rec.content?.overview?.trim();
   const overview = groqProse
-    ? `${groqProse}\n\n${buildAnalysis(proposals, figures)}`
+    ? `# Research proposal\n\n**Research goal.** ${goal}\n\n## Overview\n\n${groqProse}\n\n${buildAnalysis(proposals, figures)}`
     : makeOverview(goal, proposals, figures);
   emit("metareview", "session_done", { stop_reason: "ELO_STABLE" });
   const metaFeedback: Feedback = {

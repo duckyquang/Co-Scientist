@@ -221,8 +221,10 @@ body {
   body { background: #fff !important; }
   /* Hide everything not marked printable, plus known chrome. */
   .no-print, aside, nav, .sidebar, footer, button { display: none !important; }
-  /* Let the report fill the page. */
-  .md\:pl-56 { padding-left: 0 !important; }
+  /* Let the report fill the page — and unclip the fixed-height app shell so a
+     multi-page report/microsite fragments across pages instead of page one only. */
+  html, body, #root { height: auto !important; overflow: visible !important; }
+  .md\:pl-56 { padding-left: 0 !important; height: auto !important; overflow: visible !important; }
   main { max-width: none !important; padding: 0 !important; }
   .card { box-shadow: none !important; border-color: #e4e4e7 !important; }
   .report-figure, .prose-sci table, .prose-sci h1, .prose-sci h2, .prose-sci h3 {
