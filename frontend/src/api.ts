@@ -7,6 +7,21 @@ import type {
   Match, Meta, SessionDetail, SessionRow,
 } from "./types";
 
+/** One chat turn (user or assistant). Shape shared by sim/live/history. */
+export interface ChatTurn {
+  role: "user" | "assistant";
+  text: string;
+  intent?: string | null;
+  new_session_id?: string | null;
+  created_at?: string;
+}
+
+export interface ChatReply {
+  reply_markdown: string;
+  intent: string;
+  new_session_id?: string | null;
+}
+
 async function j<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(apiUrl(path), {
     ...init,
@@ -157,6 +172,18 @@ export const api = {
     return j<{ ok: boolean }>(`/api/sessions/${id}/feedback`, {
       method: "POST", body: JSON.stringify(body),
     });
+  },
+
+  chat: (id: string, message: string) => {
+    if (sim.isSimSession(id)) return Promise.resolve(sim.simChat(id, message));
+    return j<ChatReply>(`/api/sessions/${id}/chat`, {
+      method: "POST", body: JSON.stringify({ message }),
+    });
+  },
+
+  chatHistory: (id: string): Promise<ChatTurn[]> => {
+    if (sim.isSimSession(id)) return Promise.resolve(sim.simChatHistory(id));
+    return j<{ messages: ChatTurn[] }>(`/api/sessions/${id}/chat`).then((d) => d.messages);
   },
 
   setHypState: (id: string, hid: string, state: string) => {

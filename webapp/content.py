@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import random
+import re
 
 STRATEGIES = [
     "literature", "debate", "combine", "simplify",
@@ -382,3 +383,100 @@ def make_plan(goal: str) -> dict:
         "domain_hint": "biomedicine",
         "notes": "Auto-parsed research plan.",
     }
+
+
+# --------------------------------------------------------------------------- #
+# Chat follow-up: intent routing + answers (canonical, shared by runtimes B & C)
+# --------------------------------------------------------------------------- #
+
+# Byte-exact reply for the out-of-scope intent. The server MUST emit this
+# verbatim so the model can never paraphrase it.
+OUT_OF_SCOPE = "Currently, Co-Scientist is unable to do this."
+
+# External-action verbs Co-Scientist can't perform → out_of_scope. Kept
+# deliberately specific so genuine questions ("summarize the findings", "in
+# order to test this…") aren't mis-routed.
+# ponytail: keyword heuristic, not intent classification — runtime C uses the LLM.
+_EXTERNAL_RE = re.compile(
+    r"\b(book|flight|hotel|email|e-mail|buy|purchase|checkout|pay|invest|patent|"
+    r"deploy|hire|manufacture|order\s+(?:me|it|a|the)|call\s+(?:me|them|him|her))\b"
+    r"|run the (?:wet-?lab|experiment)|send (?:an? )?(?:email|message|text)"
+    r"|schedule (?:an? )?(?:meeting|call|appointment)",
+    re.I,
+)
+
+# Tweak/update/fix verbs → tweak (spawn a new run).
+_TWEAK_RE = re.compile(
+    r"\b(change|update|tweak|fix|add|remove|modify|replace|improve|revise|refine|"
+    r"instead|rather|swap|drop|extend|different|adjust|rework|rewrite|redo|"
+    r"broaden|narrow|expand)\b",
+    re.I,
+)
+
+
+def classify_intent(message: str) -> str:
+    """Heuristic router: 'question' | 'tweak' | 'out_of_scope'.
+
+    Defaults to 'question' (answer from data) rather than stonewalling — only
+    explicit external-action words force out_of_scope.
+    """
+    m = message or ""
+    if _EXTERNAL_RE.search(m):
+        return "out_of_scope"
+    if _TWEAK_RE.search(m):
+        return "tweak"
+    return "question"
+
+
+def compose_rerun_goal(idea: str, change_request: str) -> str:
+    """The verbatim rerun-goal template (identical across all runtimes)."""
+    return (
+        f"ORIGINAL IDEA: {idea}\n\n"
+        f"FEEDBACK / CHANGE WANTED: {change_request}\n\n"
+        "Suggest a new method based on the original idea and the feedback / change wanted."
+    )
+
+
+def top_idea(hyps: list[dict], goal: str) -> str:
+    """`{title} — {summary}` of the top hypothesis, else the research goal."""
+    if hyps:
+        h = hyps[0]
+        title = (h.get("title") or "").strip()
+        summary = (h.get("summary") or "").strip()
+        if title:
+            return f"{title} — {summary}" if summary else title
+    return goal
+
+
+def make_chat_answer(goal: str, hyps: list[dict], overview: str = "") -> str:
+    """Ground a 'question' answer in the session's leaderboard (top-5 table)."""
+    if not hyps:
+        return (
+            "The run just started, so there are no hypotheses to discuss yet. "
+            "Once the tournament produces a few ranked ideas, ask again and I'll "
+            "walk you through the leaders."
+        )
+    top = hyps[:5]
+    rows = "\n".join(
+        "| `{id}` | {elo} | {state} | {title} |".format(
+            id=h.get("id", "?"),
+            elo=round(h["elo"]) if h.get("elo") is not None else "—",
+            state=h.get("state", "—"),
+            title=(h.get("title") or "").replace("|", "\\|"),
+        )
+        for h in top
+    )
+    leader = top[0]
+    lead_elo = round(leader["elo"]) if leader.get("elo") is not None else "—"
+    parts = [
+        f"Here are the current top {len(top)} hypotheses for this session, "
+        "ranked by tournament Elo:",
+        "",
+        "| id | Elo | state | title |",
+        "|----|-----|-------|-------|",
+        rows,
+        "",
+        f"The current leader is **{leader.get('title', '(untitled)')}** "
+        f"(`{leader.get('id', '?')}`, Elo {lead_elo}). {leader.get('summary', '')}".strip(),
+    ]
+    return "\n".join(parts)

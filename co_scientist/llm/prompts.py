@@ -34,6 +34,7 @@ TEMPLATES = {
     "evolution.out_of_box": "evolution_out_of_box.md",
     "metareview.system": "metareview_system.md",
     "metareview.final": "metareview_final.md",
+    "chat_router": "chat_router.md",
 }
 
 

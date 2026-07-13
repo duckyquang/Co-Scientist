@@ -20,10 +20,21 @@ import type {
   Metrics, SessionDetail, SessionRow, SSEvent,
 } from "../../types";
 import type { LiveTick } from "../hooks";
+import { classifyIntent, composeRerunGoal, OUT_OF_SCOPE } from "./chatRouter";
 import { buildAnalysis, eloUpdate, makeHypothesis, makeOverview, makePlan, makeReview, referencesSection, SIM_MODEL, STRATEGIES } from "./content";
 import { generateSession, type GenHyp, type GeneratedContent } from "./generate";
 import { hasRealProvider } from "../llm";
 import { makeRng } from "./rng";
+
+/** One chat turn — structurally matches api.ts ChatTurn (kept local to avoid a
+ *  circular import between api.ts and this module). */
+interface ChatMsg {
+  role: "user" | "assistant";
+  text: string;
+  intent?: string | null;
+  new_session_id?: string | null;
+  created_at: string;
+}
 
 const STORAGE_KEY = "cosci_sim_sessions_v1";
 const DEFAULT_BUDGET_TOKENS = 5_000_000;
@@ -51,6 +62,7 @@ export interface SimRecord {
   status: "running" | "paused" | "done" | "aborted";
   frozenSimSec: number | null; // set on abort
   feedback: Feedback[];
+  chat?: ChatMsg[];            // follow-up conversation (persisted in localStorage)
   stateOverrides: Record<string, Hypothesis["state"]>;
   // Real-content (Groq) fields:
   mode?: "groq" | "sim";       // groq = real LLM read the prompt; sim = templates
@@ -773,6 +785,70 @@ export function simSetHypState(id: string, hid: string, state: string): { ok: bo
   const rec = mustRecord(id);
   patchRecord(id, { stateOverrides: { ...rec.stateOverrides, [hid]: state as Hypothesis["state"] } });
   return { ok: true };
+}
+
+/** Build a top-5 leaderboard markdown answer grounded in current sim state. */
+function answerFromData(id: string): string {
+  const hyps = simHypotheses(id).filter((h) => h.elo != null);
+  if (hyps.length === 0) {
+    return (
+      "The run just started, so there are no ranked hypotheses to discuss yet. " +
+      "Give the tournament a few seconds and ask again."
+    );
+  }
+  const top = hyps.slice(0, 5);
+  const rows = top
+    .map((h) => `| \`${h.id}\` | ${h.elo != null ? Math.round(h.elo) : "—"} | ${h.state} | ${(h.title || "").replace(/\|/g, "\\|")} |`)
+    .join("\n");
+  const lead = top[0];
+  return [
+    `Here are the current top ${top.length} hypotheses for this session, ranked by tournament Elo:`,
+    "",
+    "| id | Elo | state | title |",
+    "|----|-----|-------|-------|",
+    rows,
+    "",
+    `The current leader is **${lead.title}** (\`${lead.id}\`, Elo ${lead.elo != null ? Math.round(lead.elo) : "—"}). ${lead.summary || ""}`.trim(),
+  ].join("\n");
+}
+
+export function simChat(id: string, message: string): {
+  reply_markdown: string; intent: string; new_session_id: string | null;
+} {
+  const rec = mustRecord(id);
+  const msg = message.trim();
+  const intent = classifyIntent(msg);
+  let reply: string;
+  let newSid: string | null = null;
+
+  if (intent === "out_of_scope") {
+    reply = OUT_OF_SCOPE;
+  } else if (intent === "tweak") {
+    const hyps = simHypotheses(id);
+    const top = hyps[0];
+    const idea = top ? `${top.title}${top.summary ? ` — ${top.summary}` : ""}` : rec.goal;
+    const goal = composeRerunGoal(idea, msg);
+    newSid = createSimSession({
+      goal, budget_tokens: rec.budget_tokens ?? DEFAULT_BUDGET_TOKENS,
+      wall_clock_seconds: rec.wall_clock_seconds ?? DEFAULT_WALL_CLOCK_SECONDS,
+      n_initial: rec.n_initial, speed: rec.speed,
+    });
+    reply = "Started a new research run based on your change.";
+  } else {
+    reply = answerFromData(id);
+  }
+
+  const now = new Date().toISOString();
+  const chat = [...(rec.chat ?? []),
+    { role: "user" as const, text: msg, created_at: now },
+    { role: "assistant" as const, text: reply, intent, new_session_id: newSid, created_at: now },
+  ];
+  patchRecord(id, { chat });
+  return { reply_markdown: reply, intent, new_session_id: newSid };
+}
+
+export function simChatHistory(id: string): ChatMsg[] {
+  return mustRecord(id).chat ?? [];
 }
 
 function mustRecord(id: string): SimRecord {

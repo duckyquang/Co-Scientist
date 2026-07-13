@@ -1,12 +1,14 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import {
   Telescope, Sparkles, Swords, GitBranch, FileText, User, MessageSquare,
-  Loader2, Check, ChevronDown,
+  Loader2, Check, ChevronDown, ArrowRight,
 } from "lucide-react";
 import { EloRace } from "../charts";
 import { OverviewPanel } from "../session/panels";
-import { StrategyTag } from "../ui";
+import { Markdown, StrategyTag } from "../ui";
 import { eloColor } from "../../lib/format";
+import type { ChatTurn } from "../../api";
 import type { Feedback, Hypothesis, Match, ResearchPlan } from "../../types";
 
 /* ── Message model — derived from the session snapshot ─────────
@@ -19,7 +21,10 @@ export type ChatMsg =
   | { id: string; role: "assistant"; kind: "ranking"; top: Hypothesis[]; series: Record<string, { i: number; elo: number }[]>; matches: number; active: boolean }
   | { id: string; role: "assistant"; kind: "evolving"; offspring: Hypothesis[] }
   | { id: string; role: "assistant"; kind: "feedback"; text: string }
-  | { id: string; role: "assistant"; kind: "proposal"; md: string };
+  | { id: string; role: "assistant"; kind: "proposal"; md: string }
+  // Follow-up chat turns (routed: question answer / tweak-rerun / out-of-scope).
+  | { id: string; role: "user"; kind: "chat"; text: string }
+  | { id: string; role: "assistant"; kind: "answer"; md: string; newSessionId?: string | null; refs: Hypothesis[] };
 
 export function deriveMessages(input: {
   goal: string;
@@ -32,8 +37,9 @@ export function deriveMessages(input: {
   overview: string | null;
   live: boolean;
   done: boolean;
+  chat?: ChatTurn[];
 }): ChatMsg[] {
-  const { goal, plan, hyps, matches, eloHistory, feedback, reviewed, overview, live, done } = input;
+  const { goal, plan, hyps, matches, eloHistory, feedback, reviewed, overview, live, done, chat } = input;
   const msgs: ChatMsg[] = [];
 
   msgs.push({ id: "goal", role: "user", kind: "goal", text: goal });
@@ -71,6 +77,22 @@ export function deriveMessages(input: {
   }
 
   if (done && overview) msgs.push({ id: "proposal", role: "assistant", kind: "proposal", md: overview });
+
+  // Follow-up chat turns sit at the end of the thread, oldest-first. Stable ids
+  // (index-based over a stable-ordered history) keep them fixed across re-derivation.
+  const byId = new Map(hyps.map((h) => [h.id, h]));
+  (chat ?? []).forEach((t, i) => {
+    if (t.role === "user") {
+      msgs.push({ id: `chat-${i}`, role: "user", kind: "chat", text: t.text });
+    } else {
+      const refs = Array.from(new Set(t.text.match(/hyp_[a-z0-9_]+/gi) || []))
+        .map((id) => byId.get(id)).filter((h): h is Hypothesis => !!h);
+      msgs.push({
+        id: `chat-${i}`, role: "assistant", kind: "answer",
+        md: t.text, newSessionId: t.new_session_id, refs,
+      });
+    }
+  });
 
   return msgs;
 }
@@ -221,6 +243,28 @@ export function ChatMessage({ msg, onSelect }: { msg: ChatMsg; onSelect: (id: st
         <div className="flex items-start gap-2 rounded-xl border border-line bg-surface-2/40 p-3 text-[13px] text-muted">
           <MessageSquare className="mt-0.5 h-3.5 w-3.5 shrink-0 text-faint" />
           <span>{msg.text}</span>
+        </div>
+      </Assistant>
+    );
+  }
+
+  // Follow-up chat answer (question / tweak / out-of-scope).
+  if (msg.kind === "answer") {
+    return (
+      <Assistant>
+        <div className="rounded-xl border border-line bg-surface p-4 text-[13px]">
+          <Markdown md={msg.md} />
+          {msg.refs.length > 0 && (
+            <div className="mt-3 space-y-1.5">
+              {msg.refs.map((h) => <HypRow key={h.id} h={h} onSelect={onSelect} />)}
+            </div>
+          )}
+          {msg.newSessionId && (
+            <Link to={`/s/${msg.newSessionId}`}
+              className="mt-3 inline-flex items-center gap-1.5 text-[13px] font-semibold text-brand-600 hover:underline dark:text-brand-400">
+              Open the new run <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          )}
         </div>
       </Assistant>
     );

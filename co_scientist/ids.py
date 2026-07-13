@@ -38,6 +38,10 @@ def feedback_id() -> str:
     return f"fb_{_ulid()}"
 
 
+def chat_id() -> str:
+    return f"chat_{_ulid()}"
+
+
 def span_id() -> str:
     return f"spn_{_ulid()}"
 
