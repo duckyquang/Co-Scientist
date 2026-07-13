@@ -70,6 +70,10 @@ def test_render_metareview_final_includes_citation_list() -> None:
     assert "[1] Paper One (2021). https://a.example/1" in out
     assert "[2] Paper Two (n.d.). https://doi.org/10.1000/xyz" in out
     assert "Cite ONLY from the numbered" in out
+    # Figures are described as auto-inserted into sections (not one trailing dump),
+    # and the model is told not to fabricate charts.
+    assert "inserted automatically into the relevant sections" in out
+    assert "do not fabricate charts" in out
 
 
 def test_render_unknown_template_raises() -> None:

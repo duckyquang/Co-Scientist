@@ -78,7 +78,7 @@ export async function generateSession(
     `      "critique": "2-3 sentence critical review naming the key risk or assumption"\n` +
     `    }\n` +
     `  ],\n` +
-    `  "overview": "150-250 word markdown overview: an executive summary, the cross-cutting themes ACROSS these specific hypotheses, and recommended next experiments. Reference the actual hypotheses. Do NOT invent citations, papers, DOIs, or URLs — a References note is appended automatically stating that no sources were retrieved in this mode."\n` +
+    `  "overview": "200-320 word markdown overview organized as these three '## ' sections, in order and with these exact headings: '## Executive summary' (what the hypotheses converge on and the leading direction), '## Proposed directions' (the cross-cutting themes ACROSS these specific hypotheses and the recommended next experiments, referencing the actual hypotheses), and '## Limitations' (the key risks or assumptions). Do NOT invent citations, papers, DOIs, or URLs — a References note is appended automatically stating that no sources were retrieved in this mode."\n` +
     `}`;
 
   try {

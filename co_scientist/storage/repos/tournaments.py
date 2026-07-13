@@ -112,6 +112,37 @@ async def recent_rationales(
     return [r["rationale"] for r in rows]
 
 
+async def elo_series(
+    conn: aiosqlite.Connection,
+    session_id: str,
+    hyp_ids: list[str],
+    limit: int = 400,
+) -> dict[str, list[dict]]:
+    """Per-hypothesis Elo trajectory over the session's matches, for the elo-race
+    chart. Returns ``{hyp_id: [{"i": match_index, "elo": elo_after}, ...]}`` for
+    ids in `hyp_ids` that actually played. Skips matches whose after-Elo wasn't
+    recorded, and returns ``{}`` when there's no usable history — the figure is
+    then simply omitted upstream.
+    """
+    wanted = set(hyp_ids)
+    if not wanted:
+        return {}
+    series: dict[str, list[dict]] = {}
+    async with conn.execute(
+        """SELECT hyp_a, hyp_b, elo_a_after, elo_b_after FROM tournament_matches
+              WHERE session_id=? AND mode != 'invalid'
+              ORDER BY created_at ASC LIMIT ?""",
+        (session_id, limit),
+    ) as cur:
+        rows = await cur.fetchall()
+    for i, row in enumerate(rows):
+        if row["hyp_a"] in wanted and row["elo_a_after"] is not None:
+            series.setdefault(row["hyp_a"], []).append({"i": i, "elo": row["elo_a_after"]})
+        if row["hyp_b"] in wanted and row["elo_b_after"] is not None:
+            series.setdefault(row["hyp_b"], []).append({"i": i, "elo": row["elo_b_after"]})
+    return series
+
+
 def _row_to_match(row: aiosqlite.Row) -> TournamentMatch:
     return TournamentMatch(
         id=row["id"],

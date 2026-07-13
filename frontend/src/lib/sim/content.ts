@@ -309,87 +309,108 @@ const mmLabel = (s: string) => s.replace(/["\n]/g, " ").slice(0, 30);
 // Escape GFM table-cell delimiters so a title containing '|' can't shift columns.
 const cell = (s: string) => s.replace(/\|/g, "\\|");
 
-/** The deterministic "Analysis" section: tables + chart/mermaid blocks + KaTeX,
- *  assembled from real session data so the figures are always correct regardless
- *  of any LLM prose. Copies as markdown (tables + fenced blocks) and renders on
- *  screen as SVG charts / a Mermaid diagram / KaTeX math. */
-export function buildAnalysis(proposals: OverviewProposal[], figures?: OverviewFigures): string {
-  const scored = proposals.filter((p) => p.scores);
-  const parts: string[] = ["## Analysis"];
+/* ── Figure helpers ─────────────────────────────────────────────
+ * Each returns a self-contained markdown figure body (table + ```chart, or a
+ * ```mermaid graph) or null. `figureSet` numbers them in document order and
+ * adds captions; makeOverview / the engine wrapper splice each into a section.
+ * Assembled from real session data so the figures are always correct regardless
+ * of any LLM prose; render on screen as SVG / Mermaid / KaTeX. */
 
-  if (scored.length) {
-    const rows = scored.map((p, i) => {
-      const s = p.scores!;
-      return `| ${i + 1}. ${cell(p.title.slice(0, 40))} | ${s.novelty.toFixed(2)} | ${s.correctness.toFixed(2)} | ${s.testability.toFixed(2)} | ${s.feasibility.toFixed(2)} |`;
-    }).join("\n");
-    const spec = {
-      type: "scores", title: "Reviewer scores by proposal",
-      proposals: scored.map((p, i) => ({ label: `${i + 1}. ${p.title.slice(0, 32)}`, scores: p.scores })),
-    };
-    parts.push(`### Proposal scorecard
-
-Reviewer scores for each finalist (0–1; higher is better).
-
-| Proposal | Novelty | Correctness | Testability | Feasibility |
-|---|---|---|---|---|
-${rows}
-
-\`\`\`chart
-${JSON.stringify(spec)}
-\`\`\``);
-  }
-
-  if (figures?.eloSeries && Object.keys(figures.eloSeries).length) {
-    parts.push(`### How the ratings evolved
-
-Each finalist's Elo rating over the tournament's head-to-head matches.
-
-\`\`\`chart
-${JSON.stringify({ type: "elo", title: "Elo over tournament matches", series: figures.eloSeries, labels: figures.eloLabels })}
-\`\`\``);
-  }
-
-  if (figures?.strategyCounts && Object.keys(figures.strategyCounts).length) {
-    const entries = Object.entries(figures.strategyCounts).sort((a, b) => b[1] - a[1]);
-    const rows = entries.map(([k, v]) => `| ${k} | ${v} |`).join("\n");
-    const spec = { type: "donut", title: "Hypotheses by generation strategy", segments: entries.map(([label, value]) => ({ label, value })) };
-    parts.push(`### Where the ideas came from
-
-| Generation strategy | Hypotheses |
-|---|---|
-${rows}
-
-\`\`\`chart
-${JSON.stringify(spec)}
-\`\`\``);
-  }
-
-  if (figures?.lineage && figures.lineage.length) {
-    const edges = figures.lineage
-      .filter((n) => n.parent)
-      .map((n) => `  ${mmId(n.parent!)} --> ${mmId(n.id)}`);
-    const nodes = figures.lineage.map((n) =>
-      `  ${mmId(n.id)}["${mmLabel(n.label)}"]`);
-    parts.push(`### Idea lineage
-
-Original hypotheses (left) and the offspring the Evolution agent bred from top parents (right).
-
-\`\`\`mermaid
-graph LR
-${nodes.join("\n")}
-${edges.join("\n")}
-\`\`\``);
-  }
-
-  parts.push(`### Rating model
+const RATING_MODEL_NOTE = `### Rating model
 
 Each match updates a hypothesis's Elo rating $R$ by
 
 $$R'_a = R_a + K\\,(S_a - E_a), \\qquad E_a = \\frac{1}{1 + 10^{(R_b - R_a)/400}}$$
 
-where $S_a \\in \\{0, 1\\}$ is the match outcome for idea $a$ against idea $b$, and $K$ is the update rate (larger for newer ideas).`);
+where $S_a \\in \\{0, 1\\}$ is the match outcome for idea $a$ against idea $b$, and $K$ is the update rate (larger for newer ideas).`;
 
-  return parts.join("\n\n");
+function scoresBody(proposals: OverviewProposal[]): string | null {
+  const scored = proposals.filter((p) => p.scores);
+  if (!scored.length) return null;
+  const rows = scored.map((p, i) => {
+    const s = p.scores!;
+    return `| ${i + 1}. ${cell(p.title.slice(0, 40))} | ${s.novelty.toFixed(2)} | ${s.correctness.toFixed(2)} | ${s.testability.toFixed(2)} | ${s.feasibility.toFixed(2)} |`;
+  }).join("\n");
+  const spec = {
+    type: "scores", title: "Reviewer scores by proposal",
+    proposals: scored.map((p, i) => ({ label: `${i + 1}. ${p.title.slice(0, 32)}`, scores: p.scores })),
+  };
+  return `| Proposal | Novelty | Correctness | Testability | Feasibility |
+|---|---|---|---|---|
+${rows}
+
+\`\`\`chart
+${JSON.stringify(spec)}
+\`\`\``;
+}
+
+function eloBody(figures?: OverviewFigures): string | null {
+  if (!figures?.eloSeries || !Object.keys(figures.eloSeries).length) return null;
+  return `\`\`\`chart
+${JSON.stringify({ type: "elo", title: "Elo over tournament matches", series: figures.eloSeries, labels: figures.eloLabels })}
+\`\`\``;
+}
+
+function donutBody(figures?: OverviewFigures): string | null {
+  if (!figures?.strategyCounts || !Object.keys(figures.strategyCounts).length) return null;
+  const entries = Object.entries(figures.strategyCounts).sort((a, b) => b[1] - a[1]);
+  const rows = entries.map(([k, v]) => `| ${k} | ${v} |`).join("\n");
+  const spec = { type: "donut", title: "Hypotheses by generation strategy", segments: entries.map(([label, value]) => ({ label, value })) };
+  return `| Generation strategy | Hypotheses |
+|---|---|
+${rows}
+
+\`\`\`chart
+${JSON.stringify(spec)}
+\`\`\``;
+}
+
+function lineageBody(figures?: OverviewFigures): string | null {
+  if (!figures?.lineage || !figures.lineage.length) return null;
+  const edges = figures.lineage
+    .filter((n) => n.parent)
+    .map((n) => `  ${mmId(n.parent!)} --> ${mmId(n.id)}`);
+  const nodes = figures.lineage.map((n) => `  ${mmId(n.id)}["${mmLabel(n.label)}"]`);
+  return `\`\`\`mermaid
+graph LR
+${nodes.join("\n")}
+${edges.join("\n")}
+\`\`\``;
+}
+
+export interface FigureSet {
+  donut: string; scores: string; elo: string; lineage: string; ratingModel: string;
+}
+
+/** Numbered, captioned figure blocks for weaving into a proposal's sections.
+ *  Empty string when a figure has no data. Numbered in document order. */
+export function figureSet(proposals: OverviewProposal[], figures?: OverviewFigures): FigureSet {
+  let n = 0;
+  const cap = (body: string | null, text: string) =>
+    body ? `${body}\n\n*Fig. ${++n} — ${text}*` : "";
+  return {
+    donut: cap(donutBody(figures), "share of the finalist hypotheses by generation strategy."),
+    scores: cap(scoresBody(proposals), "reviewer scores across the four dimensions for each finalist."),
+    elo: cap(eloBody(figures), "Elo trajectory of the finalists across tournament matches."),
+    lineage: cap(lineageBody(figures), "idea lineage — offspring the Evolution agent bred from top parents."),
+    ratingModel: RATING_MODEL_NOTE,
+  };
+}
+
+/** Insert `block` right after the Nth (1-based) `## ` heading line in `md`.
+ *  Unchanged if `block` is empty or fewer than N such headings exist. */
+export function insertAfterHeading(md: string, n: number, block: string): string {
+  if (!block) return md;
+  const re = /^##\s+.+$/gm;
+  let m: RegExpExecArray | null;
+  let count = 0;
+  while ((m = re.exec(md)) !== null) {
+    if (++count === n) {
+      const i = m.index + m[0].length;
+      return `${md.slice(0, i)}\n\n${block}${md.slice(i)}`;
+    }
+  }
+  return md;
 }
 
 interface OverviewRef { n: number; title: string; year: number; url: string }
@@ -439,9 +460,14 @@ export function makeOverview(goal: string, proposals: OverviewProposal[], figure
 
   const sections = top.map((p, i) => {
     const elo = p.elo != null ? Math.round(p.elo) : "—";
+    // A compact score radar for each of the top-3 proposals — a per-proposal
+    // illustration inside this upper section (self-labelled by its chart title).
+    const radar = i < 3 && p.scores
+      ? `\n\n\`\`\`chart\n${JSON.stringify({ type: "radar", title: `Score profile — proposal ${i + 1}`, scores: p.scores })}\n\`\`\``
+      : "";
     return `### Proposal ${i + 1}. ${p.title}
 
-**Tournament Elo:** ${elo} · **Generation strategy:** \`${p.strategy}\`
+**Tournament Elo:** ${elo} · **Generation strategy:** \`${p.strategy}\`${radar}
 
 **The hypothesis.** ${p.summary}
 
@@ -461,6 +487,14 @@ concentration in the relevant compartment — worth a pilot exposure check first
 **What would falsify it.** No dose-dependent shift in the primary readout at a
 clinically achievable exposure, or rescue by the mechanism-dead control.`;
   }).join("\n\n---\n\n");
+
+  // Content figures woven into the relevant upper sections (empty strings when
+  // a figure has no data). A slim rating-model note trails under "## Analysis".
+  const figs = figureSet(top, figures);
+  const donut = figs.donut ? `\n\n${figs.donut}` : "";
+  const scores = figs.scores ? `${figs.scores}\n\n` : "";
+  const compFigs = [figs.elo, figs.lineage].filter(Boolean).join("\n\n");
+  const comparative = compFigs ? `\n\n${compFigs}` : "";
 
   return `# Research proposal
 
@@ -487,18 +521,18 @@ evidence.
 Independent generation strategies (literature-grounded, debate-driven,
 combination, and out-of-box) were each given room to explore, then forced to
 compete. Where several strategies nominated the same mechanism, that convergence
-is treated as a robustness signal rather than redundancy.
+is treated as a robustness signal rather than redundancy.${donut}
 
 ## Ranked proposals
 
-${sections}
+${scores}${sections}
 
 ## Comparative assessment
 
 The top proposals are not interchangeable: some converge on a shared pathway
 (mutually reinforcing evidence), while others are genuinely orthogonal bets worth
 running in parallel to hedge mechanism risk. Prefer starting with the highest-Elo
-idea that also has the cheapest decisive experiment.
+idea that also has the cheapest decisive experiment.${comparative}
 
 ## Recommended path and sequencing
 
@@ -513,7 +547,9 @@ is most likely to disagree — treat those proposals as exploratory. The tournam
 optimizes for debate-survivability, not ground truth, so a high Elo is a strong
 prior, not a proof.
 
-${buildAnalysis(top, figures)}
+## Analysis
+
+${figs.ratingModel}
 
 ${referencesSection(refs)}
 
