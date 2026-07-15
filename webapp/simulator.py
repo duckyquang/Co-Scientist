@@ -109,7 +109,9 @@ class Sim:
             if self._status(conn) in ("aborted", "failed"):
                 return
             self._ranking(conn, rounds=2)
-            self._evolution(conn)
+            self._evolution(conn)  # round 1: breed from the current leaders
+            self._ranking(conn, rounds=1)
+            self._evolution(conn)  # round 2: parents = top AFTER the re-rank
             self._ranking(conn, rounds=2)
             self._self_critique_rounds(conn)
             self._stress_test_rounds(conn)
@@ -178,7 +180,8 @@ class Sim:
         self._bump(conn, cost)
         h = {"id": hid, "title": c["title"], "summary": c["summary"], "elo": seed_elo,
              "elo0": seed_elo,  # fixed quality anchor for match outcomes
-             "matches": 0, "strategy": strat, "citations": c["citations"]}
+             "matches": 0, "strategy": strat, "citations": c["citations"],
+             "parent_ids": list(parents)}  # consumed by the overview's lineage figure
         self.hyps.append(h)
         return h
 
@@ -267,16 +270,23 @@ class Sim:
                 self._apply_match(conn, a, b, mode, winner)
 
     def _evolution(self, conn):
-        if not self.hyps or not self._wait(conn, 1.0):
+        """One evolution round: breed 2 offspring from the CURRENT top-ranked
+        parents. Called between ranking phases, so each round's parents (and
+        created_at cluster — the chat groups offspring into rounds by timestamp
+        gaps) reflect the standings at that moment."""
+        # 3.0 pre-round wait: widens the created_at gap between rounds so the
+        # chat's round clustering stays unambiguous even at high sim speeds.
+        if not self.hyps or not self._wait(conn, 3.0):
             return
         top = sorted(self.hyps, key=lambda h: -h["elo"])[:3]
         _emit(conn, self.sid, "evolution", "task_started",
               {"agent": "evolution", "action": "EvolveTopHypotheses"}, _now())
+        idx0 = len(self.hyps)  # unique hyp-id index base across rounds
         for j, strat in enumerate(["combine", "out_of_box"]):
             if not self._wait(conn, 2.0):
                 return
             parents = [top[0]["id"]] + ([top[1]["id"]] if strat == "combine" and len(top) > 1 else [])
-            h = self._add_hyp(conn, self.n_initial + j, strat, "evolution", parents)
+            h = self._add_hyp(conn, idx0 + j, strat, "evolution", parents)
             self._review(conn, h)
             conn.execute("UPDATE hypotheses SET state='in_tournament', elo=? WHERE id=?",
                          (h["elo"], h["id"]))
@@ -374,7 +384,8 @@ class Sim:
         self._bump(conn, cost)
         h = {"id": hid, "title": fix["title"], "summary": fix["summary"],
              "elo": start_elo, "elo0": start_elo, "matches": 0,
-             "strategy": "feedback_driven", "citations": parent["citations"]}
+             "strategy": "feedback_driven", "citations": parent["citations"],
+             "parent_ids": [parent["id"]]}
         self.hyps.append(h)
         return h
 
@@ -390,7 +401,7 @@ class Sim:
         top3 = sorted(self.hyps, key=lambda h: -h["elo"])[:3]
         stress_target = int(self.util_target * self.budget_tokens)
         per_hyp = max(1, int(STRESS_TEST_FRACTION * self.budget_tokens))
-        idx0 = self.n_initial + 2  # after generation + the 2 evolution children
+        idx0 = len(self.hyps)  # next free hyp-id index (after all evolution rounds)
         pairs: list[tuple[dict, dict]] = []
         for k, h in enumerate(top3):
             if self._status(conn) in ("aborted", "failed") or not self._wait(conn, 1.5):
