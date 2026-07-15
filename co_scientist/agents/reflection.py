@@ -126,6 +126,7 @@ class ReflectionAgent(BaseAgent):
                 feasibility=record.get("feasibility"),
             ),
             body=body_md,
+            thinking=loop_result.thinking or None,
             artifact_path=artifact_path,
         )
         await rev_repo.insert(self.deps.db, review)

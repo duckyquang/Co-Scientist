@@ -23,9 +23,9 @@ async def insert(conn: aiosqlite.Connection, h: Hypothesis) -> bool:
     cur = await conn.execute(
         """INSERT OR IGNORE INTO hypotheses(
                id, session_id, created_at, created_by, strategy, parent_ids,
-               title, summary, full_text, artifact_path,
+               title, summary, full_text, thinking, artifact_path,
                elo, matches_played, state, dedup_cluster)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (
             h.id,
             h.session_id,
@@ -36,6 +36,7 @@ async def insert(conn: aiosqlite.Connection, h: Hypothesis) -> bool:
             h.title,
             h.summary,
             h.full_text,
+            h.thinking,
             h.artifact_path,
             h.elo,
             h.matches_played,
@@ -164,6 +165,7 @@ def _row_to_hyp(row: aiosqlite.Row) -> Hypothesis:
         title=row["title"],
         summary=row["summary"],
         full_text=row["full_text"],
+        thinking=row["thinking"],
         citations=[],  # citations live in the JSON artifact, not the row
         artifact_path=row["artifact_path"],
         elo=row["elo"],
