@@ -12,6 +12,7 @@ budget_usd = 25.0
 critique_every_matches = 15          # self-critique cadence (matches); 0 disables
 evolution_min_mature = 4             # hypotheses with >=3 matches before evolving
 stress_test_top_k = 3                # finalists stress-tested in finalize; 0 disables
+high_risk = false                    # bold/contrarian mode: injects a high-risk directive into agent preferences
 
 [storage]
 data_dir = "./data"

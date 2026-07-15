@@ -264,7 +264,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _start_session(self, conn, goal, *, budget_tokens=5_000_000, budget=None,
                        wall_seconds=1800, n_initial=4, speed=1.0, provider="groq",
-                       origin_session_id=None):
+                       origin_session_id=None, high_risk=False):
         """Insert a session row + start the simulator. Returns the new session id."""
         from . import content
         if budget is None:
@@ -282,7 +282,8 @@ class Handler(BaseHTTPRequestHandler):
                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (sid, now, now, "running", goal, json.dumps(plan),
              json.dumps({"llm": {"provider": provider},
-                         "models": content.MODELS}),
+                         "models": content.MODELS,
+                         "high_risk": bool(high_risk)}),
              budget_tokens, budget, 0, 0.0, wall_deadline, None, origin_session_id))
         conn.execute(
             "INSERT INTO events (ts, session_id, agent, event, payload) VALUES (?,?,?,?,?)",
@@ -308,7 +309,7 @@ class Handler(BaseHTTPRequestHandler):
         sid = self._start_session(
             conn, goal, budget_tokens=budget_tokens, budget=budget,
             wall_seconds=wall_seconds, n_initial=n_initial, speed=speed,
-            provider=b.get("provider", "groq"))
+            provider=b.get("provider", "groq"), high_risk=bool(b.get("high_risk", False)))
         return _json(self, {"ok": True, "session_id": sid}, 201)
 
     def _chat(self, conn, sid):

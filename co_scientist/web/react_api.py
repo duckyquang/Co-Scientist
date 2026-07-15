@@ -69,6 +69,7 @@ class CreateSessionBody(BaseModel):
     n_initial: int = Field(default=4, ge=2, le=50)
     provider: str | None = None
     speed: float = 1.0  # accepted for API compat; real engine ignores demo pace
+    high_risk: bool = False  # bold/contrarian mode — injected into plan preferences
 
 
 class FeedbackBody(BaseModel):
@@ -378,6 +379,7 @@ def create_react_router(base_cfg: Config, *, live_sessions: set[str]) -> APIRout
         # Web sessions are token-capped: without an explicit USD override the
         # config default (25 USD) would stop Opus runs at ~1% of the token cap.
         cfg.run.budget_usd = body.budget_usd if body.budget_usd is not None else 0.0
+        cfg.run.high_risk = body.high_risk
         sid = await _spawn_session(cfg, goal, n_initial=body.n_initial,
                                    wall_clock_seconds=body.wall_clock_seconds)
         return JSONResponse({"session_id": sid, "ok": True}, status_code=201)

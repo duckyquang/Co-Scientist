@@ -150,7 +150,7 @@ export const api = {
 
   create: (body: {
     goal: string; budget_tokens: number; wall_clock_seconds: number;
-    n_initial: number; provider?: string; speed?: number;
+    n_initial: number; provider?: string; speed?: number; high_risk?: boolean;
   }) => {
     // No backend? Run the session entirely in the browser — free, no key.
     if (isSimulatedMode()) {

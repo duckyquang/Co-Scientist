@@ -28,6 +28,7 @@ class RunCfg(BaseModel):
     critique_every_matches: int = 15   # self-critique cadence; 0 disables
     evolution_min_mature: int = 4      # hypotheses with ≥3 matches before evolving
     stress_test_top_k: int = 3         # finalists stress-tested in finalize; 0 disables
+    high_risk: bool = False            # inject the high-risk directive into plan preferences
 
 
 class StorageCfg(BaseModel):
