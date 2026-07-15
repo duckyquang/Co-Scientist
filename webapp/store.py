@@ -154,7 +154,10 @@ def get_hypothesis(conn: sqlite3.Connection, hid: str) -> dict | None:
     h["reviews"] = list_reviews(conn, hid)
     h["scores"] = _avg_scores(conn, hid)
     h["elo_history"] = elo_history_for(conn, hid)
-    h["thinking"] = _hypothesis_thinking(conn, hid)
+    # Real-engine DBs store thinking as a column on `hypotheses` (loaded by
+    # SELECT *); the demo/sim stashes it in the hyp_thinking side table. Prefer
+    # the column, fall back to the side table.
+    h["thinking"] = h.get("thinking") or _hypothesis_thinking(conn, hid)
     return h
 
 
