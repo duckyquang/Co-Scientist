@@ -44,11 +44,20 @@ const clamp01 = (n: any) => {
 
 const str = (v: any, fallback = "") => (typeof v === "string" && v.trim() ? v.trim() : fallback);
 
+/** Appended to the prompt when the session was created with the HIGH RISK
+ *  switch on — mirrors the real engine's supervisor directive verbatim. */
+const HIGH_RISK_DIRECTIVE =
+  "HIGH-RISK MODE: strongly favor bold, unconventional, contrarian hypotheses " +
+  "that break from established framings; do NOT recycle or merely recombine " +
+  "already-proposed methods; propose novel mechanisms over incremental " +
+  "variations, even at higher failure risk.";
+
 /** Generate `count` hypotheses + an overview that genuinely address `goal`. */
 export async function generateSession(
   goal: string,
   count: number,
   signal?: AbortSignal,
+  highRisk?: boolean,
 ): Promise<GeneratedContent> {
   const system =
     "You are Co-Scientist, a rigorous multi-agent scientific hypothesis engine. " +
@@ -60,6 +69,7 @@ export async function generateSession(
     "Respond with ONLY a single valid JSON object, no prose, no code fences.";
 
   const user =
+    (highRisk ? `${HIGH_RISK_DIRECTIVE}\n\n` : "") +
     `Research goal: "${goal}"\n\n` +
     `Generate exactly ${count} DISTINCT hypotheses that directly and specifically address this goal. ` +
     `Each must be clearly about the goal's actual topic and field. Vary the angle across hypotheses ` +

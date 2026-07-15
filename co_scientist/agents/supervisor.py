@@ -61,6 +61,16 @@ from .schemas import RECORD_RESEARCH_PLAN_TOOL
 
 log = get_logger("supervisor")
 
+# Injected into plan.preferences when cfg.run.high_risk is set; the existing
+# {{ preferences }} interpolation carries it to generation, reflection,
+# evolution (incl. out_of_box) and ranking — no prompt-template edits needed.
+HIGH_RISK_DIRECTIVE = (
+    "HIGH-RISK MODE: strongly favor bold, unconventional, contrarian hypotheses "
+    "that break from established framings; do NOT recycle or merely recombine "
+    "already-proposed methods; propose novel mechanisms over incremental "
+    "variations, even at higher failure risk."
+)
+
 
 # ----------------------------- public API ----------------------------- #
 
@@ -227,6 +237,8 @@ class Supervisor:
     async def _apply_plan(
         self, conn: aiosqlite.Connection, session: Session, plan: ResearchPlan
     ) -> None:
+        if self.cfg.run.high_risk and HIGH_RISK_DIRECTIVE not in plan.preferences:
+            plan.preferences.append(HIGH_RISK_DIRECTIVE)
         await conn.execute(
             "UPDATE sessions SET research_plan=?, updated_at=? WHERE id=?",
             (plan.model_dump_json(), datetime.now(UTC).isoformat(), session.id),

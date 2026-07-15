@@ -62,6 +62,7 @@ export interface SimRecord {
   status: "running" | "paused" | "done" | "aborted";
   frozenSimSec: number | null; // set on abort
   origin_session_id?: string | null; // rerun-chain ROOT (tweak spawns); null = own root
+  high_risk?: boolean;         // HIGH RISK switch — bold/contrarian generation
   feedback: Feedback[];
   chat?: ChatMsg[];            // follow-up conversation (persisted in localStorage)
   stateOverrides: Record<string, Hypothesis["state"]>;
@@ -738,7 +739,7 @@ export function isSimSession(id: string | undefined): boolean {
 
 export function createSimSession(input: {
   goal: string; budget_tokens: number; wall_clock_seconds: number; n_initial: number; speed?: number;
-  origin_session_id?: string | null;
+  origin_session_id?: string | null; high_risk?: boolean;
 }): string {
   const rand = Math.floor(Math.random() * 1e9).toString(36);
   const id = `sim_${Date.now().toString(36)}${rand}`;
@@ -761,6 +762,7 @@ export function createSimSession(input: {
     status: "running",
     frozenSimSec: null,
     origin_session_id: input.origin_session_id ?? null,
+    high_risk: !!input.high_risk,
     feedback: [],
     stateOverrides: {},
     mode: live ? "groq" : "sim",
@@ -779,7 +781,7 @@ export function createSimSession(input: {
     // (groq.ts max_tokens) can't hold ~50 hypotheses of JSON; indices beyond
     // the live content fall back per-index to the prompt-aware template.
     // Chunked multi-call generation if fully-live Deep runs ever matter.
-    generateSession(input.goal, Math.min(n_initial + 2, 20), ctrl.signal)
+    generateSession(input.goal, Math.min(n_initial + 2, 20), ctrl.signal, input.high_risk)
       .then((content) => finishGenerating(id, content))
       .catch(() => finishGenerating(id, undefined))
       .finally(() => { clearTimeout(timer); _inFlight.delete(id); });
@@ -829,7 +831,7 @@ export function simDetail(id: string): SessionDetail {
     session: {
       ...row,
       research_plan: makePlan(rec.goal),
-      config_snapshot: { llm: { provider: "groq" }, simulated: true, model: SIM_MODEL },
+      config_snapshot: { llm: { provider: "groq" }, simulated: true, model: SIM_MODEL, high_risk: !!rec.high_risk },
     },
     metrics: metricsOf(s),
     counts: { hypothesis_states: stateCounts(s), task_status: {} },

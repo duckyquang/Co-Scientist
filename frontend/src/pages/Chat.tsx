@@ -45,6 +45,7 @@ function Landing() {
   const [params] = useSearchParams();
   const [goal, setGoal] = useState(() => params.get("goal") ?? "");
   const [presetId, setPresetId] = useState<RunPreset["id"]>("standard");
+  const [highRisk, setHighRisk] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const preset = RUN_PRESETS.find((p) => p.id === presetId)!;
@@ -57,6 +58,7 @@ function Landing() {
       const { session_id } = await api.create({
         goal: goal.trim(), budget_tokens: preset.budget_tokens,
         wall_clock_seconds: preset.wall_clock_seconds, n_initial: preset.n_initial, provider: "groq",
+        high_risk: highRisk,
       });
       nav(`/s/${session_id}`);
     } catch (e: any) { setError(e.message || "Failed to start session"); setSubmitting(false); }
@@ -76,6 +78,13 @@ function Landing() {
           {p.label}
         </button>
       ))}
+      <button onClick={() => setHighRisk((v) => !v)} aria-pressed={highRisk}
+        title="Push the agents far outside the box — bold, contrarian hypotheses instead of remixes of known methods"
+        className={`ml-2 border px-2 py-0.5 font-mono text-[10.5px] uppercase tracking-[0.08em] transition-colors ${
+          highRisk ? "border-accent bg-accent-soft text-accent" : "border-rule text-ink-soft hover:text-ink"
+        }`}>
+        High risk
+      </button>
     </div>
   );
 
@@ -221,6 +230,9 @@ function Thread({ id }: { id: string }) {
     );
   }
 
+  // Real engine snapshots the full cfg ({run:{high_risk}}); sim/webapp store it top-level.
+  const snap = session.config_snapshot;
+  const highRisk = !!(snap?.run?.high_risk ?? snap?.high_risk);
   const tokenUsed = session.budget_used_tokens || 0; // same source as Dashboard; enforces cap consistency
   const startMs = new Date(session.created_at).getTime();
   const endMs = live ? Date.now() : new Date(session.updated_at).getTime();
@@ -247,6 +259,12 @@ function Thread({ id }: { id: string }) {
           {live && <button disabled={busy} onClick={() => control("pause")} className="btn-ghost h-8 px-2.5"><Pause className="h-3.5 w-3.5" /></button>}
           {status === "paused" && <button disabled={busy} onClick={() => control("resume")} className="btn-primary h-8 px-2.5"><Play className="h-3.5 w-3.5" /></button>}
           {(live || status === "paused") && <button disabled={busy} onClick={() => control("abort")} className="btn-danger h-8 px-2.5"><Square className="h-3 w-3" /></button>}
+          {highRisk && (
+            <span title="This session runs in high-risk mode — bold, contrarian hypotheses"
+              className="border border-accent bg-accent-soft px-2 py-0.5 font-mono text-[10.5px] uppercase tracking-[0.08em] text-accent">
+              High risk
+            </span>
+          )}
           <button onClick={() => setExplore(true)} className="btn-ghost h-8">
             <Layers className="h-3.5 w-3.5" /> Explore
           </button>
