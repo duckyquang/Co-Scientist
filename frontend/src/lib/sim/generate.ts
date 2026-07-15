@@ -27,6 +27,9 @@ export interface GenHyp {
   testability: number;
   feasibility: number;
   critique: string;
+  /** The model's own short rationale for proposing this — flows into the
+   *  hypothesis `thinking` field (a genuine reasoning trace for BYOK hyps). */
+  reasoning: string;
 }
 
 export interface GeneratedContent {
@@ -85,7 +88,8 @@ export async function generateSession(
     `      "predicted_outcome": "1 sentence on the expected result if the hypothesis holds",\n` +
     `      "verdict": "one of: well_grounded, promising, needs_work, speculative",\n` +
     `      "novelty": 0.0-1.0, "correctness": 0.0-1.0, "testability": 0.0-1.0, "feasibility": 0.0-1.0,\n` +
-    `      "critique": "2-3 sentence critical review naming the key risk or assumption"\n` +
+    `      "critique": "2-3 sentence critical review naming the key risk or assumption",\n` +
+    `      "reasoning": "2-3 sentences of first-person reasoning: WHY you proposed this and what you weighed (a genuine thought trace, distinct from the critique)"\n` +
     `    }\n` +
     `  ],\n` +
     `  "overview": "200-320 word markdown overview organized as these three '## ' sections, in order and with these exact headings: '## Executive summary' (what the hypotheses converge on and the leading direction), '## Proposed directions' (the cross-cutting themes ACROSS these specific hypotheses and the recommended next experiments, referencing the actual hypotheses), and '## Limitations' (the key risks or assumptions). Do NOT invent citations, papers, DOIs, or URLs — a References note is appended automatically stating that no sources were retrieved in this mode."\n` +
@@ -118,6 +122,7 @@ export async function generateSession(
       testability: clamp01(h?.testability),
       feasibility: clamp01(h?.feasibility),
       critique: str(h?.critique),
+      reasoning: str(h?.reasoning),
     }));
 
     return { hyps, overview: str(data?.overview), source: provider };

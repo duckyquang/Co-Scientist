@@ -89,6 +89,10 @@ export interface Hypothesis {
   citations?: Citation[];
   reviews?: Review[];
   elo_history?: { t: string; elo: number }[];
+  /** Varied synthetic reasoning for sim hyps (labelled SIMULATED in the UI); the
+   *  model's real rationale for BYOK/Groq hyps. Optional — populated by the sim
+   *  engine. */
+  thinking?: string;
 }
 
 export interface Citation {

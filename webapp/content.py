@@ -27,43 +27,221 @@ MODELS = {
     "supervisor": "claude-sonnet-4-6",
 }
 
-# Templated mechanism fragments — combined to make distinct hypothesis bodies.
-_MECHANISMS = [
-    ("Repurposing {drug} via {pathway} modulation",
-     "{drug} is a clinically approved agent whose off-target inhibition of "
-     "{pathway} may suppress the disease-driving program identified in the goal."),
-    ("{pathway} blockade reverses the {phenotype} phenotype",
-     "Sustained {pathway} signaling maintains {phenotype}; pharmacological "
-     "blockade should collapse the feed-forward loop and restore homeostasis."),
-    ("Synthetic-lethal targeting of {gene} in {context}",
-     "Cells in {context} become dependent on {gene}; a selective inhibitor "
-     "exploits this dependency while sparing normal tissue."),
-    ("{microbe}-derived metabolites drive {phenotype}",
-     "Host exposure to {microbe} metabolites rewires {pathway}, providing a "
-     "tractable, diet-modifiable lever over {phenotype}."),
-    ("Combination of {drug} and {pathway} inhibition is synergistic",
-     "Each agent alone is sub-therapeutic, but co-inhibition closes a "
-     "compensatory escape route, predicting a strong synergy index."),
-    ("Epigenetic priming sensitizes {context} to {drug}",
-     "Low-dose epigenetic priming reopens silenced loci, restoring "
-     "{drug} sensitivity in otherwise refractory {context}."),
+# --------------------------------------------------------------------------- #
+# Prompt understanding (deterministic, no network) — mirrors sim/content.ts so a
+# NON-biomedical goal (e.g. "a reasoning method better than chain-of-thought")
+# yields on-topic hypotheses instead of drug/pathway mad-libs. Domain is inferred
+# from the goal's own vocabulary; biomedicine is one domain among several.
+# --------------------------------------------------------------------------- #
+
+_STOPWORDS = {
+    "the", "a", "an", "and", "or", "of", "to", "in", "on", "for", "with", "by",
+    "at", "from", "into", "as", "is", "are", "be", "will", "can", "could", "would",
+    "that", "this", "these", "those", "it", "its", "their", "our", "your", "we",
+    "how", "what", "why", "which", "using", "use", "via", "based", "new", "novel",
+    "testable", "strategies", "strategy", "mechanisms", "mechanism", "ways", "way",
+    "approach", "approaches", "study", "research", "goal", "propose", "proposing",
+    "find", "finding", "identify", "identifying", "generate", "generating",
+    "discover", "explore", "investigate", "develop", "improve", "improving",
+    "reduce", "reducing", "increase", "increasing", "extend", "extending",
+    "overcome", "overcoming", "between", "linking", "across", "within",
+}
+
+_ACTION_VERBS = [
+    "reduce", "lower", "cut", "decrease", "minimize", "minimise", "prevent",
+    "eliminate", "improve", "increase", "boost", "enhance", "raise", "maximize",
+    "maximise", "extend", "expand", "accelerate", "optimize", "optimise",
+    "strengthen", "overcome", "restore", "stabilize", "stabilise",
 ]
 
-_DRUGS = ["Nanvuranlat", "KIRA6", "Leflunomide", "Binimetinib", "Pacritinib",
-          "Cerivastatin", "Dimethyl fumarate", "Metformin", "Disulfiram",
-          "Niclosamide", "Auranofin", "Itraconazole"]
-_PATHWAYS = ["IRE1α–XBP1", "DHODH", "MEK/ERK", "JAK2/STAT5", "mevalonate",
-             "NRF2–KEAP1", "Wnt/β-catenin", "mTORC1", "ferroptosis", "cGAS–STING"]
-_GENES = ["WRN", "PRMT5", "MAT2A", "USP1", "POLQ", "WEE1", "ATR"]
-_PHENOTYPES = ["chronic inflammation", "drug tolerance", "stemness",
-               "immune evasion", "fibrotic remodeling", "metabolic rewiring"]
-_MICROBES = ["Akkermansia muciniphila", "Faecalibacterium prausnitzii",
-             "Bacteroides fragilis", "segmented filamentous bacteria"]
-_CONTEXTS = ["AML blasts", "senescent fibroblasts", "exhausted CD8 T cells",
-             "drug-tolerant persister cells", "the inflamed gut epithelium"]
+_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9+–-]*")  # noqa: RUF001 — en dash matches hyphenated terms (mirrors sim/content.ts)
 
-_JOURNALS = ["Nature", "Cell", "Science", "Nature Medicine", "Cell Metabolism",
-             "Immunity", "Nature Cancer", "PNAS", "eLife", "Blood"]
+
+def _extract_keywords(goal: str) -> tuple[list[str], list[str]]:
+    """(unigrams, topics): content unigrams + contiguous content-word phrases,
+    longest/most-specific first. Mirrors sim/content.ts extractKeywords."""
+    tokens = _TOKEN_RE.findall(goal)
+    unigrams: list[str] = []
+    phrases: list[str] = []
+    run: list[str] = []
+
+    def flush() -> None:
+        if run:
+            phrases.append(" ".join(run))
+            run.clear()
+
+    for tok in tokens:
+        low = tok.lower()
+        if len(tok) > 2 and low not in _STOPWORDS:
+            run.append(tok)
+            unigrams.append(low)
+        else:
+            flush()
+    flush()
+    topics = list(dict.fromkeys(" ".join(p.split()[:4]) for p in phrases))
+    topics.sort(key=lambda p: (-len(p.split()), -len(p)))
+    return unigrams, topics
+
+
+_DOMAINS = [
+    {
+        "id": "transportation",
+        "match": ["traffic", "congestion", "transit", "road", "commute", "vehicle",
+                  "mobility", "urban", "city", "parking", "transport", "bus", "rail",
+                  "driving", "highway", "pedestrian"],
+        "levers": ["dynamic congestion pricing", "adaptive signal control",
+                   "dedicated priority lanes", "demand-responsive routing",
+                   "a mode-shift incentive", "real-time rerouting"],
+        "metric": "average travel time", "unit": "%",
+        "methods": ["a calibrated traffic microsimulation",
+                    "a before-after field study on a corridor",
+                    "a staggered rollout across zones"],
+    },
+    {
+        "id": "energy-materials",
+        "match": ["battery", "batteries", "lithium", "lithium-ion", "ion", "energy",
+                  "solar", "wind", "grid", "turbine", "storage", "material",
+                  "photovoltaic", "fuel", "hydrogen", "electrode", "electrolyte",
+                  "power", "thermal", "capacity", "charge"],
+        "levers": ["a protective interface coating", "a tuned operating-temperature window",
+                   "a materials substitution", "a smart charge controller",
+                   "an electrolyte additive"],
+        "metric": "cycle-life retention", "unit": "%",
+        "methods": ["accelerated cycling on a test bench", "a controlled bench experiment",
+                    "a paired A/B hardware trial"],
+    },
+    {
+        "id": "computing",
+        "match": ["model", "algorithm", "software", "data", "network", "compute",
+                  "latency", "system", "code", "server", "database", "inference",
+                  "cache", "gpu", "throughput", "distributed", "spreadsheet",
+                  "layout", "app", "ui", "interface", "dashboard", "reasoning",
+                  "prompt", "prompting", "llm", "transformer", "agent"],
+        "levers": ["an algorithmic redesign", "a caching layer",
+                   "a scheduling-policy change", "a model-architecture tweak",
+                   "a batching strategy"],
+        "metric": "end-to-end latency", "unit": "%",
+        "methods": ["a benchmark with ablations", "an A/B experiment in staging",
+                    "a load test under production-like traffic"],
+    },
+    {
+        "id": "education-social",
+        "match": ["student", "students", "learning", "education", "retention",
+                  "teach", "school", "college", "training", "course", "curriculum",
+                  "literacy", "classroom", "tutor", "graduation"],
+        "levers": ["a structured mentoring program", "a low-cost behavioral nudge",
+                   "a curriculum redesign", "an early-warning outreach",
+                   "a peer-support cohort"],
+        "metric": "retention rate", "unit": "%",
+        "methods": ["a randomized controlled trial", "a difference-in-differences study",
+                    "a stepped-wedge pilot"],
+    },
+    {
+        "id": "economics-business",
+        "match": ["market", "price", "pricing", "cost", "revenue", "customer",
+                  "supply", "demand", "business", "retail", "sales", "inventory",
+                  "logistics", "churn", "profit", "supermarket", "supermarkets",
+                  "food", "grocery", "perishable", "spoilage", "stock"],
+        "levers": ["dynamic pricing", "a demand-forecasting model",
+                   "a process redesign", "a targeted incentive",
+                   "an inventory-routing change"],
+        "metric": "unit cost", "unit": "%",
+        "methods": ["an A/B pricing experiment", "a controlled pilot in selected sites",
+                    "a holdout-group trial"],
+    },
+    {
+        "id": "climate-environment",
+        "match": ["climate", "carbon", "emission", "emissions", "pollution",
+                  "pollutant", "air", "smog", "aqi", "ecosystem", "water",
+                  "sustainability", "sustainable", "recycling", "biodiversity",
+                  "greenhouse", "renewable"],
+        "levers": ["a deployment incentive", "a behavioral nudge",
+                   "a process electrification", "a monitoring-and-feedback loop",
+                   "a policy instrument"],
+        "metric": "emissions intensity", "unit": "%",
+        "methods": ["a field trial with matched controls", "a monitored pilot deployment",
+                    "a scenario simulation"],
+    },
+    {
+        "id": "biomedicine",
+        # NB: "cell"/"cells" intentionally omitted — too ambiguous (spreadsheet /
+        # battery / phone cell). Real bio prompts hit cancer/tumor/gene/organoid/etc.
+        "match": ["gene", "genetic", "protein", "disease", "cancer", "drug", "tissue",
+                  "organoid", "microbiome", "patient", "clinical", "neuro",
+                  "neuroinflammation", "therapy", "therapeutic", "molecular",
+                  "immune", "blood", "brain", "metabolic", "tumor", "leukemia",
+                  "antibody", "biomarker", "inflammation", "senescence", "fibrotic"],
+        "levers": ["a repurposed approved compound", "a targeted pathway inhibitor",
+                   "a genetic perturbation", "a combination regimen",
+                   "an epigenetic priming step"],
+        "metric": "the disease-signature score", "unit": "%",
+        "methods": ["an in-vitro assay in a relevant model",
+                    "an isogenic knockdown experiment", "a dose-response study"],
+    },
+]
+
+_GENERIC = {
+    "id": "generic", "match": [],
+    "levers": ["a targeted intervention", "a structural redesign",
+               "a data-driven policy", "an automated feedback controller",
+               "an incentive realignment", "an early screening step"],
+    "metric": "the primary outcome measure", "unit": "%",
+    "methods": ["a controlled pilot study", "a randomized experiment",
+                "a simulation calibrated to real data",
+                "a field trial with matched controls"],
+}
+
+
+def _infer_domain(unigrams: list[str]) -> dict:
+    """Pick the domain whose vocabulary best matches the prompt (else generic).
+    Tolerates simple plurals; counts DISTINCT stems. Mirrors sim/content.ts."""
+    stems = set()
+    for u in unigrams:
+        stems.add(u)
+        if u.endswith("s") and len(u) > 3:
+            stems.add(u[:-1])
+    best, best_score = _GENERIC, 0
+    for d in _DOMAINS:
+        hits = set()
+        for m in d["match"]:
+            stem = m[:-1] if m.endswith("s") and len(m) > 3 else m
+            if m in stems or stem in stems:
+                hits.add(stem)
+        if len(hits) > best_score:
+            best, best_score = d, len(hits)
+    return best
+
+
+def _cap(s: str) -> str:
+    return s[0].upper() + s[1:] if s else s
+
+
+def _clip(s: str, n: int) -> str:
+    if len(s) <= n:
+        return s
+    return re.sub(r"\s+\S*$", "", s[:n]) + "…"
+
+
+def _goal_aim(goal: str) -> str:
+    """A short, prompt-grounded 'aim' clause (uses the prompt's own words)."""
+    lower = goal.lower()
+    idx = -1
+    for v in _ACTION_VERBS:
+        m = re.search(rf"\b{v}\b", lower)
+        if m and (idx < 0 or m.start() < idx):
+            idx = m.start()
+    clause = goal[idx:] if idx >= 0 else goal
+    return _clip(re.sub(r"[.?!]+$", "", clause).strip().lower(), 90)
+
+
+_TITLE_SCAFFOLDS = [
+    lambda t, lv, lv2, m, me: f"{_cap(lv)} improves {m} in {t}",
+    lambda t, lv, lv2, m, me: f"{_cap(lv)} as a lever for {t}",
+    lambda t, lv, lv2, m, me: f"Combining {lv} and {lv2} in {t}",
+    lambda t, lv, lv2, m, me: f"{_cap(lv)} for {t}, tested via {me}",
+    lambda t, lv, lv2, m, me: f"Introducing {lv} early reduces failure in {t}",
+    lambda t, lv, lv2, m, me: f"{_cap(lv)} shifts {m} in {t}",
+]
 
 # Curated pool of REAL, landmark papers. Every DOI was verified to resolve to a
 # live publisher page (curl -sI -L → HTTP 200; transcript in the PR). The keyless
@@ -140,53 +318,90 @@ def _rng(seed_text: str) -> random.Random:
 
 def make_hypothesis(goal: str, idx: int, strategy: str) -> dict:
     r = _rng(f"{goal}|{idx}|{strategy}")
-    mech_title, mech_body = r.choice(_MECHANISMS)
-    fill = {
-        "drug": r.choice(_DRUGS),
-        "pathway": r.choice(_PATHWAYS),
-        "gene": r.choice(_GENES),
-        "phenotype": r.choice(_PHENOTYPES),
-        "microbe": r.choice(_MICROBES),
-        "context": r.choice(_CONTEXTS),
-    }
-    title = mech_title.format(**fill)
+    unigrams, topics = _extract_keywords(goal)
+    dom = _infer_domain(unigrams)
+    aim = _goal_aim(goal)
+    # Rotate through the prompt's own noun phrases so hypotheses cover its facets.
+    pool = topics or [_clip(goal, 48)]
+    topic = pool[idx % len(pool)] or _clip(goal, 48)
+    lever = r.choice(dom["levers"])
+    lever2 = r.choice(dom["levers"])
+    if lever2 == lever:
+        lever2 = dom["levers"][(dom["levers"].index(lever) + 1) % len(dom["levers"])]
+    method = r.choice(dom["methods"])
+    pct = r.randint(15, 45)
+
+    scaffold = _TITLE_SCAFFOLDS[idx % len(_TITLE_SCAFFOLDS)]
+    # Deep mode can ask for many hypotheses but there are only a few scaffolds —
+    # past the first rotation, tag a variant number so titles stay distinct.
+    cycle = idx // len(_TITLE_SCAFFOLDS)
+    base = _clip(scaffold(topic, lever, lever2, dom["metric"], method),
+                 96 if cycle > 0 else 110)
+    title = f"{base} — variant {cycle + 1}" if cycle > 0 else base
     summary = (
-        mech_body.format(**fill) + " The hypothesis is directly testable in "
-        f"existing {fill['context']} models with a clear, quantitative readout."
+        f"{_cap(lever)} is a plausible lever to {aim}. The effect should appear as "
+        f"a measurable change in {dom['metric']}, making it directly testable via "
+        f"{method} against a pre-registered threshold."
     )
+    combine_note = f" together with {lever2}" if strategy == "combine" else ""
     full_text = f"""## Mechanism
 
-{mech_body.format(**fill)}
-
-We propose that **{fill['pathway']}** acts as the central node linking the
-upstream stimulus to **{fill['phenotype']}** observed in {fill['context']}.
-
-## Rationale
-
-1. Genetic perturbation of {fill['gene']} phenocopies the proposed intervention.
-2. {fill['drug']} is already approved, de-risking translation and toxicity.
-3. The pathway is druggable with sub-micromolar tool compounds.
+We hypothesise that **{lever}** acts on the core driver of {topic}, and that this
+propagates to a measurable shift in **{dom['metric']}**. The link to the stated
+goal — *{aim}* — is direct: if the lever works, the outcome moves; if it does
+not, the outcome is unchanged, giving a clean falsification.
 
 ## Proposed experiment
 
-- **Model:** {fill['context']} (primary + isogenic line).
-- **Intervention:** titrate {fill['drug']} ± {fill['pathway']} inhibitor.
-- **Primary readout:** reversal of {fill['phenotype']} signature (RNA-seq + functional assay).
-- **Controls:** vehicle, isotype, and a pathway-dead mutant rescue.
-- **Success criterion:** >50% reduction in the {fill['phenotype']} score at a
-  clinically achievable exposure.
+- **Method:** {_cap(method)}.
+- **Intervention:** apply {lever}{combine_note}.
+- **Primary readout:** {dom['metric']} (with a matched control condition).
+- **Controls:** a no-intervention baseline and a plausibly-inert comparison.
+- **Success criterion:** a ≥{pct}{dom['unit']} improvement in {dom['metric']} versus control.
 
 ## Predicted outcome
 
-A dose-dependent collapse of the {fill['phenotype']} program with an
-EC50 within the approved therapeutic window of {fill['drug']}.
+A dose- or intensity-dependent change in {dom['metric']}, concentrated where
+{topic} is most acute — with no effect in the inert control arm.
 """
+    # Varied synthetic reasoning — three seeded picks referencing THIS idea's own
+    # lever/topic/metric/method, so every hypothesis carries a distinct rationale.
+    thinking = " ".join([
+        r.choice([
+            f"Starting from the goal — {aim} — I asked which single lever most "
+            f"plausibly moves {dom['metric']}.",
+            f"I worked backward from {dom['metric']}: what intervention on {topic} "
+            f"shifts it most for the least cost?",
+            f"The prompt points at {topic}; my instinct was to isolate one "
+            f"mechanism rather than bundle several.",
+            f"Before committing I weighed a few levers on {topic} and kept the one "
+            f"with the cleanest read on {dom['metric']}.",
+        ]),
+        r.choice([
+            f"{_cap(lever)} stood out because its effect on {dom['metric']} should "
+            f"be direct, not mediated by a long causal chain.",
+            f"I favoured {lever} since it acts close to the outcome, so a null "
+            f"result is informative rather than ambiguous.",
+            f"{_cap(lever)} is concrete enough to specify precisely and cheap "
+            f"enough to falsify quickly.",
+            f"The appeal of {lever} is that it fails loudly — if it does nothing "
+            f"to {dom['metric']}, that rules it out cleanly.",
+        ]),
+        r.choice([
+            f"Tested with {method}, a ≥{pct}{dom['unit']} move would be decisive; "
+            f"anything less and I would drop it.",
+            f"I would run {method} first — it gives a pass/fail on {dom['metric']} "
+            f"before any larger commitment.",
+            f"The plan is {method}, kept small and pre-registered so the "
+            f"{pct}{dom['unit']} threshold actually means something.",
+        ]),
+    ])
     # Sample distinct REAL landmark papers (verified-resolving DOIs) so the demo's
     # citations always link to a paper that exists — no fabricated/random DOIs.
     citations = [_paper_citation(p) for p in r.sample(_REAL_PAPERS, r.randint(2, 4))]
     return {
         "title": title, "summary": summary, "full_text": full_text,
-        "citations": citations, "strategy": strategy,
+        "citations": citations, "strategy": strategy, "thinking": thinking,
     }
 
 
@@ -195,29 +410,73 @@ def make_review(goal: str, hyp_title: str, kind: str) -> dict:
     verdict = r.choice(
         ["neutral", "missing_piece", "already_explained", "other_more_likely"]
     )
+    # Draw the scores FIRST so they stay stable regardless of the prose banks
+    # below (the scorecard, self-critique and stress stages all read these).
     scores = {
         "novelty": round(r.uniform(0.45, 0.95), 2),
         "correctness": round(r.uniform(0.5, 0.95), 2),
         "testability": round(r.uniform(0.55, 0.98), 2),
         "feasibility": round(r.uniform(0.4, 0.9), 2),
     }
+    # Seeded prose banks — the four dimension paragraphs vary per hyp/session so
+    # no two reviews read alike, while the **Dimension (score).** labels stay fixed.
+    nov = r.choice([
+        "The proposed lever is under-explored for this goal; adjacent work exists "
+        "but does not test this exact intervention.",
+        "A genuinely fresh angle — the surrounding literature circles the idea "
+        "without landing on this specific move.",
+        "Not unprecedented, but the particular framing here has not been put to a "
+        "direct test before.",
+        "The novelty is in how the pieces are combined rather than the pieces "
+        "themselves; the specific claim is under-tested.",
+    ])
+    cor = r.choice([
+        "Internally consistent — the causal chain from intervention to the primary "
+        "outcome is plausible, though one upstream assumption (below) is load-bearing.",
+        "The logic holds together; the weakest link is a single upstream step, "
+        "flagged below, that the design should pin down.",
+        "No obvious contradiction, and the mechanism is stated crisply enough to "
+        "check — one assumption still carries most of the weight.",
+        "Reasoning is sound end-to-end, with the caveat that the effect depends on "
+        "an intermediate step that is assumed rather than shown.",
+    ])
+    tes = r.choice([
+        "Strong: the readout is quantitative and the proposed method yields a clear "
+        "pass/fail against the stated threshold.",
+        "Highly testable — a pre-registered threshold on a measurable readout turns "
+        "this into a decisive experiment.",
+        "The claim exposes itself to falsification: one clean measurement either "
+        "clears the bar or sinks it.",
+        "Good — the outcome is numeric and the comparison is controlled, so the "
+        "result won't be open to interpretation.",
+    ])
+    fea = r.choice([
+        "Achievable with commonly available methods; the main risk is confounding, "
+        "which the control arm is designed to absorb.",
+        "Within reach of a modest setup and timeline; the chief hazard is a confound "
+        "the baseline arm has to neutralise.",
+        "Practical to run soon and cheaply — the open question is whether the "
+        "control fully isolates the effect.",
+        "No exotic resources required; the sensitivity is to a confounder that the "
+        "matched comparison is meant to rule out.",
+    ])
+    note = r.choice([
+        "that the measured outcome actually reflects the mechanism, not a proxy",
+        "that the intervention reaches the regime where it can act at all",
+        "that the control arm removes the most likely alternative explanation",
+        "that the effect size survives outside the tidy conditions of the pilot",
+    ])
     body = f"""**Verdict:** {verdict}
 
-**Novelty ({scores['novelty']}).** The mechanistic link is under-explored; a
-handful of adjacent papers exist but none test this exact intervention.
+**Novelty ({scores['novelty']}).** {nov}
 
-**Correctness ({scores['correctness']}).** Internally consistent. The proposed
-causal chain is plausible given the cited evidence, though one upstream step
-relies on an assumption flagged below.
+**Correctness ({scores['correctness']}).** {cor}
 
-**Testability ({scores['testability']}).** Strong — the readout is quantitative
-and the reagents are commercially available.
+**Testability ({scores['testability']}).** {tes}
 
-**Feasibility ({scores['feasibility']}).** Achievable within a standard wet-lab
-budget; the main risk is compound exposure in the relevant compartment.
+**Feasibility ({scores['feasibility']}).** {fea}
 
-**Key assumption checked:** that the approved agent reaches the target tissue at
-an active concentration. Rated *{r.choice(['plausible', 'uncertain'])}*.
+**Key assumption checked:** {note}. Rated *{r.choice(['plausible', 'uncertain'])}*.
 """
     return {"kind": kind, "verdict": verdict, "scores": scores, "body": body}
 
@@ -369,13 +628,15 @@ def _figure_set(goal: str, top: list[dict], lineage_nodes: list[dict]) -> dict[s
     }
 
 
-def _overview_refs(top: list[dict]) -> tuple[list[dict], list[str]]:
-    """Dedupe the proposals' citation objects (curated real papers) into a
-    numbered reference list, and return a parallel list of per-proposal inline
-    `[n]` marker strings. Deduped by URL (fallback DOI) so repeated sources share
-    a number. Consumes the citation objects as-is — nothing extra invented here."""
+def _overview_refs(top: list[dict]) -> tuple[list[dict], list[list[str]]]:
+    """Dedupe the proposals' OWN citation objects (curated real papers online, or
+    OpenAlex) into a numbered reference list, and return a parallel per-proposal
+    list of individual `[n]` marker strings so the caller can spread them across
+    the sentences that lean on a source. Deduped by URL (fallback DOI) so a paper
+    cited by two proposals shares one number — the overview, drawer and
+    per-proposal donut all cite the SAME papers. Mirrors sim/content.ts."""
     refs: list[dict] = []
-    markers: list[str] = []
+    markers: list[list[str]] = []
     key_to_n: dict[str, int] = {}
     for p in top:
         ns: list[int] = []
@@ -388,8 +649,9 @@ def _overview_refs(top: list[dict]) -> tuple[list[dict], list[str]]:
                 n = len(refs) + 1
                 key_to_n[key] = n
                 refs.append({"n": n, **c})
-            ns.append(n)
-        markers.append("".join(f"[{n}]" for n in sorted(set(ns))))
+            if n not in ns:
+                ns.append(n)
+        markers.append([f"[{n}]" for n in sorted(ns)])
     return refs, markers
 
 
@@ -471,11 +733,22 @@ def make_overview(goal: str, proposals: list[dict]) -> str:
         f"{c.get('url') or ('https://doi.org/' + c['doi'] if c.get('doi') else '')}".rstrip()
         for c in refs
     ) or "No verifiable citations were gathered."
+    # Seeded per SESSION (the proposal ids carry the session id) so two runs of
+    # the same goal read differently while a re-render is stable. Top-level
+    # sections draw from `r`; each proposal block gets its own stream.
+    seed_tail = "|".join(p.get("id") or p.get("title", "") for p in top)
+    r = _rng(f"{goal}|overview|{seed_tail}")
 
     sections = []
     for i, p in enumerate(top):
         elo = round(p["elo"]) if p.get("elo") is not None else "—"
-        mk = f" {markers[i]}" if markers[i] else ""
+        pr = _rng(f"{goal}|proposal|{p.get('id') or p.get('title')}")
+        # Spread this proposal's own citation markers across the sentences that
+        # lean on a source: the claim, why-it's-promising, and the experiment.
+        cm = markers[i]
+        at0 = f" {cm[0]}" if len(cm) > 0 else ""
+        at1 = f" {cm[1]}" if len(cm) > 1 else ""
+        exp_mk = f" {''.join(cm[2:])}" if len(cm) > 2 else ""
         # Per-proposal illustrations for the top-3: a compact score radar on the
         # Elo line, plus an experiment-pipeline mermaid and a citations mini-donut
         # at the END of the block. All UNNUMBERED (chart title only) so the
@@ -491,27 +764,71 @@ def make_overview(goal: str, proposals: list[dict]) -> str:
             if donut:
                 end_figs.append(donut)
         tail = ("\n\n" + "\n\n".join(end_figs)) if end_figs else ""
+        why = pr.choice([
+            "It survived repeated head-to-head debates against competing ideas, and "
+            "reviewers scored it well on novelty and testability. The mechanism is "
+            "specific enough to design a decisive experiment around.",
+            "It kept winning matches on the strength of its argument rather than its "
+            "framing, and the reviewers' marks back that up. Crucially, it is "
+            "concrete enough that one experiment can settle it.",
+            "Across the tournament it beat rivals that were vaguer or harder to "
+            "test, and it carries a specific, falsifiable claim rather than a "
+            "direction of travel.",
+            "The idea earned its rank by holding up under scrutiny, not by "
+            "out-arguing softer competitors — and its core claim is sharp enough to "
+            "design a clean test around.",
+        ])
+        exp = pr.choice([
+            "Set up the smallest faithful version of the system, apply the "
+            "intervention across a short range, and read out the primary measure "
+            "alongside one orthogonal check. Include an untouched baseline and a "
+            "plausibly-inert comparison so a positive result is interpretable.",
+            "Run a compact controlled trial: vary the lever over a few settings, "
+            "measure the primary outcome plus a second independent signal, and hold "
+            "a matched control so the effect can't be confused with drift.",
+            "Start with a cheap decisive experiment — the intervention at one or two "
+            "intensities, a quantitative readout, and both a do-nothing baseline and "
+            "an inert-looking control to keep the result unambiguous.",
+            "Build a minimal test bed, apply the intervention against a matched "
+            "control, and track the primary measure together with an orthogonal one "
+            "so a real effect and an artefact look different.",
+        ])
+        feas = pr.choice([
+            "Achievable within a modest budget and a single cycle. The main risk is "
+            "that the intervention never reaches the regime where it can act — worth "
+            "a quick pilot to check that first.",
+            "Cheap and quick to run. The chief hazard is a hidden confounder "
+            "producing the same reading, which the control arm is there to absorb.",
+            "No exotic resources needed and a short timeline. The open question is "
+            "whether the effect survives outside the tidy conditions of the pilot.",
+            "Practical to stand up soon. The real exposure is that the lever's "
+            "active range is narrower than the summary implies, so the pilot should "
+            "probe that window.",
+        ])
+        fal = pr.choice([
+            "No measurable shift in the primary readout when the intervention is "
+            "applied at a realistic setting, or the effect reproduced by the inert "
+            "control.",
+            "A flat primary measure across the intervention range, or a change that "
+            "the matched control reproduces just as well.",
+            "The orthogonal check failing to move with the primary one, or the whole "
+            "effect vanishing once a stricter control is added.",
+            "No dose- or intensity-dependent response where the phenomenon is most "
+            "acute, or rescue by the plausibly-inert comparison arm.",
+        ])
         sections.append(f"""### Proposal {i+1}. {p['title']}
 
 **Tournament Elo:** {elo} · **Generation strategy:** `{p.get('strategy', 'literature')}`{radar}
 
-**The hypothesis.** {p.get('summary', '').strip()}
+**The hypothesis.** {p.get('summary', '').strip()}{at0}
 
-**Why it's promising.**{mk} It survived repeated head-to-head debates against
-competing ideas, and reviewers scored it well on novelty and testability. The
-mechanism is specific enough to design a decisive experiment around.
+**Why it's promising.**{at1} {why}
 
-**Proposed first experiment.** Stand up the relevant model system and apply the
-intervention across a short dose range, reading out the primary phenotype with a
-quantitative assay plus an orthogonal molecular signature. Include vehicle and a
-mechanism-dead control so a positive result is interpretable.
+**Proposed first experiment.** {exp}{exp_mk}
 
-**Feasibility and risks.** Achievable within a standard wet-lab budget and a
-single quarter. The main risk is that the intervention does not reach an active
-concentration in the relevant compartment — worth a pilot exposure check first.
+**Feasibility and risks.** {feas}
 
-**What would falsify it.** No dose-dependent shift in the primary readout at a
-clinically achievable exposure, or rescue by the mechanism-dead control.{tail}""")
+**What would falsify it.** {fal}{tail}""")
     body = "\n\n---\n\n".join(sections)
 
     # Content figures woven into the relevant upper sections (empty strings when
@@ -521,31 +838,131 @@ clinically achievable exposure, or rescue by the mechanism-dead control.{tail}""
     scores = f"{figs['scores']}\n\n" if figs["scores"] else ""
     lineage = f"\n\n{figs['lineage']}" if figs["lineage"] else ""
 
+    framing = r.choice([
+        "The goal above defines a question where a testable, mechanism-anchored "
+        "answer would materially change what happens next. Across a multi-agent "
+        "tournament, the system generated candidate hypotheses, critiqued them, and "
+        "ranked them head-to-head so that only ideas surviving repeated scrutiny "
+        "rose to the top. The proposals below are the survivors, ordered by "
+        "tournament Elo.",
+        "Answering the goal well means turning it into something a team can "
+        "actually test. The system spread the question across competing agents, let "
+        "them argue and re-rank, and kept only the ideas that held up under "
+        "pressure. What follows is that shortlist, ordered by tournament Elo.",
+        "The question above rewards a concrete, falsifiable answer over a "
+        "plausible-sounding one. To find it, the system generated many candidate "
+        "directions, pitted them against each other, and let repeated critique thin "
+        "the field. The proposals below are what remained, ranked by Elo.",
+        "A useful answer here is one a lab can act on, not just agree with. The "
+        "tournament produced candidate hypotheses, stress-tested them against "
+        "rivals, and promoted the ones that kept winning on substance. Those "
+        "survivors are listed below in Elo order.",
+    ])
+    exec_summary = r.choice([
+        f"The tournament converged on {len(top)} strong "
+        f"candidate{'' if len(top) == 1 else 's'}, led by **{lead_title}**. The "
+        "leading ideas share a bias toward interventions that are testable with "
+        "what's already on hand and, where possible, reuse known levers to shorten "
+        "the path from hypothesis to evidence.",
+        f"{len(top)} candidate{'' if len(top) == 1 else 's'} rose above the rest, "
+        f"with **{lead_title}** in front. What unites the leaders is a preference "
+        "for cheap, decisive tests over ambitious ones, and for building on "
+        "established levers rather than inventing from scratch.",
+        f"After the dust settled, {len(top)} idea{'' if len(top) == 1 else 's'} "
+        f"stood out — **{lead_title}** most of all. The front-runners are linked "
+        "less by topic than by temperament: each is specified tightly enough to "
+        "falsify quickly and leans on existing methods to move fast.",
+        f"The field narrowed to {len(top)} serious "
+        f"contender{'' if len(top) == 1 else 's'}, headed by **{lead_title}**. The "
+        "common thread among them is pragmatism — testable with current tools, and "
+        "framed so a null result is as informative as a hit.",
+    ])
+    landscape = r.choice([
+        "Independent generation strategies (literature-grounded, debate-driven, "
+        "combination, and out-of-box) were each given room to explore, then forced "
+        "to compete. Where several strategies nominated the same mechanism, that "
+        "convergence is treated as a robustness signal rather than redundancy.",
+        "Several strategies ran in parallel — grounded in prior work, argued out in "
+        "debate, recombined, and deliberately unconventional — before being made to "
+        "fight for rank. When different strategies landed on the same idea, we read "
+        "that agreement as evidence, not repetition.",
+        "The candidates came from distinct angles: some read off the existing "
+        "literature, some emerged from debate, some from recombining earlier ideas, "
+        "and some from deliberately breaking the frame. Overlap between independent "
+        "angles is counted in an idea's favour rather than pruned as duplication.",
+        "Generation was intentionally diverse — literature-anchored, adversarial, "
+        "combinatorial, and contrarian lines all contributed — and then the "
+        "tournament forced a reckoning. A mechanism that surfaced from more than one "
+        "line is treated as corroborated, not redundant.",
+    ])
+    comparative = r.choice([
+        "The top proposals are not interchangeable: some converge on a shared "
+        "mechanism (mutually reinforcing evidence), while others are genuinely "
+        "orthogonal bets worth running in parallel to hedge mechanism risk. Prefer "
+        "starting with the highest-Elo idea that also has the cheapest decisive "
+        "experiment.",
+        "These leaders are not variations on one theme — a few reinforce each other "
+        "by pointing at the same mechanism, while others are independent wagers best "
+        "run side by side. The pragmatic opening move is the top-ranked idea whose "
+        "decisive experiment is also the cheapest.",
+        "Read together, the proposals split into overlapping bets and genuinely "
+        "separate ones; the overlaps strengthen each other, the separations hedge "
+        "against being wrong about the mechanism. Sequence them by starting where "
+        "high rank meets a low-cost decisive test.",
+        "The shortlist mixes mutually supporting ideas with orthogonal ones, and "
+        "both kinds earn their place — one for corroboration, the other for "
+        "insurance. Begin with whichever high-Elo idea can be settled most cheaply.",
+    ])
+    rec1 = r.choice([
+        "Run the single cheapest decisive experiment for the top proposal first.",
+        "Start with the top proposal's cheapest experiment that can actually settle it.",
+        "Spend the first dollar on the most decisive, lowest-cost test of the leader.",
+    ])
+    rec2 = r.choice([
+        "If it clears, add the orthogonal runner-up to hedge mechanism risk.",
+        "If that holds up, bring in the most independent runner-up as a hedge.",
+        "Assuming a positive read, run the orthogonal runner-up next to cover the "
+        "mechanism risk.",
+    ])
+    rec3 = r.choice([
+        "Pre-register every falsification threshold before any hands-on work begins.",
+        "Fix and record each pass/fail threshold up front, before collecting data.",
+        "Lock in the falsification criteria in advance so a near-miss can't be "
+        "argued away.",
+    ])
+    open_q = r.choice([
+        "Where the evidence was thin, reviewer confidence is lower and a domain "
+        "expert is most likely to disagree — treat those proposals as exploratory. "
+        "The tournament optimizes for debate-survivability, not ground truth, so a "
+        "high Elo is a strong prior, not a proof.",
+        "The proposals resting on the least support are exactly where an expert "
+        "would push back hardest; hold them loosely. Remember the ranking rewards "
+        "ideas that survive argument, which is correlated with being right but is "
+        "not the same thing.",
+        "Confidence should track the underlying support, which is uneven — the "
+        "thinner cases are best read as leads rather than conclusions. A high Elo "
+        "says an idea withstood scrutiny, not that it is true.",
+        "Some of these stand on firmer ground than others, and the shakier ones "
+        "deserve a skeptic's eye before any commitment. The tournament measures how "
+        "well an idea defends itself, so treat rank as a prior to update, not a "
+        "verdict.",
+    ])
+
     return f"""# Research proposal
 
 **Research goal.** {goal}
 
 ## Problem framing and significance
 
-The goal above defines a question where a testable, mechanism-anchored answer
-would materially change what a lab does next. Across a multi-agent tournament,
-the system generated candidate hypotheses, critiqued them, and ranked them
-head-to-head so that only ideas surviving repeated scrutiny rose to the top. The
-proposals below are the survivors, ordered by tournament Elo.
+{framing}
 
 ## Executive summary
 
-The tournament converged on {len(top)} strong candidate{'' if len(top) == 1 else 's'},
-led by **{lead_title}**. The leading ideas share a bias toward interventions that
-are testable with existing models and, where possible, repurpose known agents to
-shorten the path from hypothesis to evidence.
+{exec_summary}
 
 ## The approach landscape
 
-Independent generation strategies (literature-grounded, debate-driven,
-combination, and out-of-box) were each given room to explore, then forced to
-compete. Where several strategies nominated the same mechanism, that convergence
-is treated as a robustness signal rather than redundancy.{donut}
+{landscape}{donut}
 
 ## Ranked proposals
 
@@ -553,23 +970,17 @@ is treated as a robustness signal rather than redundancy.{donut}
 
 ## Comparative assessment
 
-The top proposals are not interchangeable: some converge on a shared pathway
-(mutually reinforcing evidence), while others are genuinely orthogonal bets worth
-running in parallel to hedge mechanism risk. Prefer starting with the highest-Elo
-idea that also has the cheapest decisive experiment.{lineage}
+{comparative}{lineage}
 
 ## Recommended path and sequencing
 
-1. Run the single cheapest decisive experiment for the top proposal first.
-2. If it clears, add the orthogonal runner-up to hedge mechanism risk.
-3. Pre-register every falsification threshold before wet-lab work begins.
+1. {rec1}
+2. {rec2}
+3. {rec3}
 
 ## Open questions and limitations
 
-Where the literature was thin, reviewer confidence is lower and a domain expert
-is most likely to disagree — treat those proposals as exploratory. The tournament
-optimizes for debate-survivability, not ground truth, so a high Elo is a strong
-prior, not a proof.
+{open_q}
 
 ## Analysis
 
@@ -585,17 +996,18 @@ prior, not a proof.
 
 def make_plan(goal: str) -> dict:
     r = _rng(goal)
+    dom = _infer_domain(_extract_keywords(goal)[0])
     return {
         "objective": goal,
         "preferences": r.sample(
-            ["prioritize testable mechanisms", "favor drug repurposing",
+            ["prioritize testable mechanisms", "favor low-cost interventions",
              "emphasize novelty", "require quantitative readouts",
-             "avoid CBRN-adjacent directions"], 3),
+             "prefer reversible/ethical directions"], 3),
         "constraints": r.sample(
-            ["existing models only", "clinically approved agents preferred",
-             "budget-bounded wet-lab", "no human-subjects work"], 2),
+            ["use existing methods where possible", "bounded budget",
+             "clear falsification criteria required", "no high-risk directions"], 2),
         "idea_attributes": ["mechanistic", "testable", "novel", "feasible"],
-        "domain_hint": "biomedicine",
+        "domain_hint": dom["id"],
         "notes": "Auto-parsed research plan.",
     }
 
@@ -863,40 +1275,72 @@ def make_self_critique(goal: str, round_no: int, top: list[dict]) -> str:
 
     opener = _CRITIQUE_OPENERS[(round_no - 1) % len(_CRITIQUE_OPENERS)]
     closer = _CRITIQUE_CLOSERS[(round_no - 1) % len(_CRITIQUE_CLOSERS)]
+    # Seeded stitching banks so the connective sentences vary by round + target,
+    # instead of being identical every session. The angle/opener/closer already
+    # rotate; this varies the prose that links them.
+    cr = _rng(f"{goal}|selfcritique|{round_no}|{title}")
+    low_str = f"{sc[low_dim]:.2f}"
+    e_txt = _elo_txt(target.get("elo"))
 
     if round_no > 1:
         prev = lst[(round_no - 2) % len(lst)]
         prev_angle = _CRITIQUE_ANGLES[(round_no - 2) % len(_CRITIQUE_ANGLES)]
         prev_title = (prev.get("title") or "an untitled idea").strip()
-        prior_ref = (
+        prior_ref = cr.choice([
             f"Round {round_no - 1} probed the {prev_angle['name']} in "
             f"**{prev_title}**; this round I turn to the {angle['name']} in "
-            f"**{title}**."
-        )
+            f"**{title}**.",
+            f"Last round it was the {prev_angle['name']} in **{prev_title}**. Now I "
+            f"switch targets to **{title}** and press on its {angle['name']}.",
+            f"Having leaned on the {prev_angle['name']} of **{prev_title}** in round "
+            f"{round_no - 1}, I move to a different idea and a different axis: the "
+            f"{angle['name']} in **{title}**.",
+        ])
     else:
-        prior_ref = (
-            f"This is the first critique pass, so I start by attacking the "
-            f"current leader's {angle['name']}."
-        )
+        prior_ref = cr.choice([
+            f"This is the first critique pass, so I start by attacking the current "
+            f"leader's {angle['name']}.",
+            f"First pass — I open on the leader and go straight at its "
+            f"{angle['name']}.",
+            f"Nothing to compare against yet, so I begin where the leader looks "
+            f"softest: its {angle['name']}.",
+        ])
 
+    reread = cr.choice([
+        f"I re-read **{title}** ({e_txt}) — its last review landed at {score_line}, "
+        f"verdict *{rv['verdict']}*. The softest mark is **{low_dim}** ({low_str}), "
+        f"and that is exactly where a {angle['name']} problem would bite.",
+        f"Back to **{title}** ({e_txt}). The scorecard reads {score_line}, verdict "
+        f"*{rv['verdict']}*; **{low_dim}** ({low_str}) is the weakest line, and a "
+        f"{angle['name']} flaw would land right there.",
+        f"Looking again at **{title}** ({e_txt}): review scores {score_line}, "
+        f"verdict *{rv['verdict']}*. Its low mark is **{low_dim}** ({low_str}) — the "
+        f"same place a {angle['name']} problem would do the most damage.",
+    ])
     probe_lines = "\n".join(f"{i + 1}. {p}" for i, p in enumerate(angle["probes"]))
-    thinking = (
-        f"Round {round_no}. {prior_ref}\n\n"
-        f"I re-read **{title}** ({_elo_txt(target.get('elo'))}) — its last review "
-        f"landed at {score_line}, verdict *{rv['verdict']}*. The softest mark is "
-        f"**{low_dim}** ({sc[low_dim]:.2f}), and that is exactly where a "
-        f"{angle['name']} problem would bite.\n\n"
-        f"{probe_lines}"
-    )
-    critique = (
-        f"{opener} Looking hard at **{title}**, I am not convinced. The weak axis "
-        f"this round is **{angle['name']}**: {angle['body']}.\n\n"
-        f"Its {low_dim} score ({sc[low_dim]:.2f}) is the softest on its "
-        f"scorecard, so {angle['threat']}. If that holds, the verdict of "
-        f"*{rv['verdict']}* is generous and the {_elo_txt(target.get('elo'))} gap "
-        f"to the field is doing more work than the evidence supports.\n\n"
-        f"{closer}"
-    )
+    thinking = f"Round {round_no}. {prior_ref}\n\n{reread}\n\n{probe_lines}"
+
+    doubt = cr.choice([
+        f"Looking hard at **{title}**, I am not convinced. The weak axis this round "
+        f"is **{angle['name']}**: {angle['body']}.",
+        f"I read **{title}** against the grain and it does not fully hold up. The "
+        f"exposed axis is **{angle['name']}** — {angle['body']}.",
+        f"Pressing on **{title}**, my doubt sharpens rather than fades. It turns on "
+        f"**{angle['name']}**: {angle['body']}.",
+    ])
+    stakes = cr.choice([
+        f"Its {low_dim} score ({low_str}) is the softest on its scorecard, so "
+        f"{angle['threat']}. If that holds, the verdict of *{rv['verdict']}* is "
+        f"generous and the {e_txt} gap to the field is doing more work than the "
+        f"evidence supports.",
+        f"With {low_dim} already the lowest mark ({low_str}), {angle['threat']}. "
+        f"Should that be right, *{rv['verdict']}* flatters it, and its {e_txt} lead "
+        f"is resting on argument more than proof.",
+        f"The {low_str} on {low_dim} is where it is thinnest, which means "
+        f"{angle['threat']}. If so, calling it *{rv['verdict']}* is charitable and "
+        f"the {e_txt} margin overstates the case.",
+    ])
+    critique = f"{opener} {doubt}\n\n{stakes}\n\n{closer}"
     return f"## Thinking\n\n{thinking}\n\n## Self-critique\n\n{critique}"
 
 
@@ -1019,24 +1463,64 @@ def make_stress_report(goal: str, hyp: dict, round_info: dict) -> str:
     }
     score_row = " · ".join(f"{d} {sc[d]:.2f} → {after[d]:.2f}" for d in _REVIEW_DIMS)
 
+    # Seeded prose banks (drawn AFTER the numeric picks so those stay stable).
+    # Only the connective sentences vary; the report's bold section frame is fixed.
+    cite_tail = r.choice([
+        f"on re-reading, it backs a ~{haircut}% smaller effect than the summary "
+        f"implies once a stricter control is added",
+        f"read closely, it supports an effect about {haircut}% weaker than the "
+        f"claim, and only before the stricter control",
+        f"the actual result is ~{haircut}% below what the summary leans on it for "
+        f"once you tighten the control",
+    ])
     cite_titles = list(dict.fromkeys(
         (c.get("title") or "untitled source").strip() for c in cites))
     if cite_titles:
         citation_line = "\n".join(
-            f"- *{t}* — on re-reading, it backs a ~{haircut}% smaller effect than "
-            f"the summary implies once a stricter control is added."
-            for t in cite_titles[:2]
+            f"- *{t}* — {cite_tail}." for t in cite_titles[:2]
         )
     else:
         citation_line = (
             "- No sources were attached — flagging the citation gap as a finding: "
             "the claim currently rests on uncited reasoning."
         )
+    break_line = r.choice([
+        f"Stress round {round_no}/{of}. I am trying to *break* **{title}**, not "
+        f"defend it.",
+        f"Stress round {round_no}/{of}. My job here is to falsify **{title}**, not "
+        f"to make its case.",
+        f"Stress round {round_no}/{of}. I approach **{title}** as an adversary "
+        f"looking for the crack, not an advocate.",
+    ])
+    claim_line = r.choice([
+        f"Its core claim: “{gist}”. That lever is what I have to falsify.",
+        f"The claim under fire: “{gist}”. If it is wrong, that is where it breaks.",
+        f"What it asserts: “{gist}”. This is the load-bearing lever I need to knock "
+        f"over.",
+    ])
+    attack_lead = r.choice([
+        f"**What I attacked.** I targeted the idea's core claim — “{gist}” — and "
+        f"{probe['attack']}.",
+        f"**What I attacked.** Going straight at the central claim — “{gist}” — I "
+        f"{probe['attack']}.",
+        f"**What I attacked.** I took aim at the load-bearing claim — “{gist}” — and "
+        f"{probe['attack']}.",
+    ])
+    feas_line = r.choice([
+        f"**Feasibility numbers.** At a realistic exposure the predicted effect is "
+        f"~{effect}% of the outcome measure — above noise, but the margin is thin, "
+        f"so any pilot must be powered for it.",
+        f"**Feasibility numbers.** Under realistic conditions the effect works out "
+        f"to ~{effect}% of the outcome — it clears noise, but only just, so a pilot "
+        f"needs real statistical power.",
+        f"**Feasibility numbers.** The back-of-envelope effect is ~{effect}% of the "
+        f"measure at a plausible setting — detectable, yet close enough to noise "
+        f"that an underpowered pilot would miss it.",
+    ])
 
     thinking = (
-        f"Stress round {round_no}/{of}. I am trying to *break* **{title}**, not "
-        f"defend it.\n\n"
-        f"Its core claim: “{gist}”. That lever is what I have to falsify.\n\n"
+        f"{break_line}\n\n"
+        f"{claim_line}\n\n"
         f"1. Adversarial search: what published result, if it exists, would kill "
         f"this specific claim?\n"
         f"2. Citation audit: "
@@ -1053,13 +1537,10 @@ def make_stress_report(goal: str, hyp: dict, round_info: dict) -> str:
     )
     report = (
         f"{token} — {driver}.\n\n"
-        f"**What I attacked.** I targeted the idea's core claim — “{gist}” — and "
-        f"{probe['attack']}.\n\n"
+        f"{attack_lead}\n\n"
         f"**Found evidence.**\n{citation_line}\n\n"
         f"**Scores before → after fix.** {score_row}.\n\n"
-        f"**Feasibility numbers.** At a realistic exposure the predicted effect is "
-        f"~{effect}% of the outcome measure — above noise, but the margin is thin, "
-        f"so any pilot must be powered for it.\n\n"
+        f"{feas_line}\n\n"
         f"**Prototype-scale pilot (run this BEFORE scaling).**\n"
         f"- *Model:* the smallest faithful test bed for “{title[:60]}”.\n"
         f"- *Intervention:* the hypothesis's own lever, a single dose/setting.\n"
@@ -1080,6 +1561,24 @@ def make_stress_fix(hyp: dict) -> dict:
     title = (hyp.get("title") or "an untitled idea").strip()
     r = _rng(f"fix|{hyp.get('id')}")
     fix = r.choice(_STRESS_FIXES)
+    thinking = " ".join([
+        r.choice([
+            f"The stress test on “{title}” found a real but bounded weakness, so I "
+            f"kept the mechanism and redesigned around the failure mode.",
+            f"Rather than abandon “{title}”, I isolated the one place the stress "
+            f"test broke it and closed that gap specifically.",
+            f"“{title}” survived scrutiny except at a single seam; this revision "
+            f"targets exactly that seam and nothing else.",
+        ]),
+        r.choice([
+            "The change is deliberately conservative — narrow the claim to what the "
+            "evidence defends and add the control the test showed was load-bearing.",
+            "I resisted broadening the idea; the fix only removes the failure the "
+            "test exposed, so the comparison to the parent stays clean.",
+            "Keeping the edit minimal means a re-rank measures the fix, not a "
+            "wholesale rewrite.",
+        ]),
+    ])
     return {
         "title": f"{title} — hardened",
         "summary": (
@@ -1087,6 +1586,7 @@ def make_stress_fix(hyp: dict) -> dict:
             f"core mechanism, but the failure mode the stress test surfaced is now "
             f"designed out before scaling."
         ),
+        "thinking": thinking,
     }
 
 

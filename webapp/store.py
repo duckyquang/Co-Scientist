@@ -154,7 +154,19 @@ def get_hypothesis(conn: sqlite3.Connection, hid: str) -> dict | None:
     h["reviews"] = list_reviews(conn, hid)
     h["scores"] = _avg_scores(conn, hid)
     h["elo_history"] = elo_history_for(conn, hid)
+    h["thinking"] = _hypothesis_thinking(conn, hid)
     return h
+
+
+def _hypothesis_thinking(conn: sqlite3.Connection, hid: str) -> str | None:
+    """Varied synthetic reasoning stashed by the demo seeder / live simulator in a
+    side table (see webapp/seed.py EXTRA_TABLES). None for real-engine DBs that
+    have no such table."""
+    try:
+        row = _row(conn, "SELECT thinking FROM hyp_thinking WHERE hypothesis_id=?", (hid,))
+        return row["thinking"] if row else None
+    except sqlite3.OperationalError:
+        return None
 
 
 def _hypothesis_citations(conn: sqlite3.Connection, hid: str) -> list[dict]:

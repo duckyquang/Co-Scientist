@@ -36,6 +36,10 @@ export interface SimHypothesisContent {
   full_text: string;
   citations: SimCitation[];
   strategy: string;
+  /** Varied synthetic reasoning (2-3 sentences, seeded per hyp). Labelled
+   *  SIMULATED by the UI. For Groq hyps the engine overrides this with the
+   *  model's real `reasoning`. */
+  thinking: string;
 }
 
 export interface SimReviewContent {
@@ -122,7 +126,7 @@ const DOMAINS: DomainProfile[] = [
   },
   {
     id: "computing",
-    match: ["model", "algorithm", "software", "data", "network", "compute", "latency", "system", "code", "server", "database", "inference", "cache", "gpu", "throughput", "distributed", "spreadsheet", "layout", "app", "ui", "interface", "dashboard"],
+    match: ["model", "algorithm", "software", "data", "network", "compute", "latency", "system", "code", "server", "database", "inference", "cache", "gpu", "throughput", "distributed", "spreadsheet", "layout", "app", "ui", "interface", "dashboard", "reasoning", "prompt", "prompting", "llm", "transformer", "agent"],
     levers: ["an algorithmic redesign", "a caching layer", "a scheduling-policy change", "a model-architecture tweak", "a batching strategy"],
     metric: "end-to-end latency", unit: "%",
     methods: ["a benchmark with ablations", "an A/B experiment in staging", "a load test under production-like traffic"],
@@ -152,7 +156,7 @@ const DOMAINS: DomainProfile[] = [
     id: "biomedicine",
     // NB: "cell"/"cells" intentionally omitted — too ambiguous (spreadsheet /
     // battery / phone cell). Real bio prompts hit cancer/tumor/gene/organoid/etc.
-    match: ["gene", "genetic", "protein", "disease", "cancer", "drug", "tissue", "organoid", "microbiome", "patient", "clinical", "neuro", "neuroinflammation", "therapy", "therapeutic", "molecular", "immune", "blood", "brain", "metabolic", "tumor", "leukemia", "antibody", "biomarker"],
+    match: ["gene", "genetic", "protein", "disease", "cancer", "drug", "tissue", "organoid", "microbiome", "patient", "clinical", "neuro", "neuroinflammation", "therapy", "therapeutic", "molecular", "immune", "blood", "brain", "metabolic", "tumor", "leukemia", "antibody", "biomarker", "inflammation", "senescence", "fibrotic"],
     levers: ["a repurposed approved compound", "a targeted pathway inhibitor", "a genetic perturbation", "a combination regimen", "an epigenetic priming step"],
     metric: "the disease-signature score", unit: "%",
     methods: ["an in-vitro assay in a relevant model", "an isogenic knockdown experiment", "a dose-response study"],
@@ -304,29 +308,84 @@ outcome is unchanged, giving a clean falsification.
 A dose- or intensity-dependent change in ${dom.metric}, concentrated where
 ${topic} is most acute — with no effect in the inert control arm.
 `;
-  return { title, summary, full_text, citations: makeCitations(r), strategy };
+  // Varied synthetic reasoning — three seeded picks referencing THIS idea's own
+  // lever/topic/metric/method, so every hypothesis carries a distinct rationale.
+  const thinking = [
+    r.choice([
+      `Starting from the goal — ${aim} — I asked which single lever most plausibly moves ${dom.metric}.`,
+      `I worked backward from ${dom.metric}: what intervention on ${topic} shifts it most for the least cost?`,
+      `The prompt points at ${topic}; my instinct was to isolate one mechanism rather than bundle several.`,
+      `Before committing I weighed a few levers on ${topic} and kept the one with the cleanest read on ${dom.metric}.`,
+    ]),
+    r.choice([
+      `${cap(lever)} stood out because its effect on ${dom.metric} should be direct, not mediated by a long causal chain.`,
+      `I favoured ${lever} since it acts close to the outcome, so a null result is informative rather than ambiguous.`,
+      `${cap(lever)} is concrete enough to specify precisely and cheap enough to falsify quickly.`,
+      `The appeal of ${lever} is that it fails loudly — if it does nothing to ${dom.metric}, that rules it out cleanly.`,
+    ]),
+    r.choice([
+      `Tested with ${method}, a ≥${pct}${dom.unit} move would be decisive; anything less and I would drop it.`,
+      `I would run ${method} first — it gives a pass/fail on ${dom.metric} before any larger commitment.`,
+      `The plan is ${method}, kept small and pre-registered so the ${pct}${dom.unit} threshold actually means something.`,
+    ]),
+  ].join(" ");
+  return { title, summary, full_text, citations: makeCitations(r), strategy, thinking };
 }
 
 export function makeReview(goal: string, hypTitle: string, kind: string): SimReviewContent {
   const r = makeRng(`${goal}|${hypTitle}|${kind}`);
   const verdict = r.choice(["neutral", "missing_piece", "already_explained", "other_more_likely"]);
+  // Draw the scores FIRST so they stay stable regardless of the prose banks
+  // below (the scorecard, self-critique and stress stages all read these).
   const scores = {
     novelty: round2(r.uniform(0.45, 0.95)),
     correctness: round2(r.uniform(0.5, 0.95)),
     testability: round2(r.uniform(0.55, 0.98)),
     feasibility: round2(r.uniform(0.4, 0.9)),
   };
+  // Seeded prose banks — the four dimension paragraphs vary per hyp/session so
+  // no two reviews read alike, while the **Dimension (score).** labels stay fixed.
+  const nov = r.choice([
+    "The proposed lever is under-explored for this goal; adjacent work exists but does not test this exact intervention.",
+    "A genuinely fresh angle — the surrounding literature circles the idea without landing on this specific move.",
+    "Not unprecedented, but the particular framing here has not been put to a direct test before.",
+    "The novelty is in how the pieces are combined rather than the pieces themselves; the specific claim is under-tested.",
+  ]);
+  const cor = r.choice([
+    "Internally consistent — the causal chain from intervention to the primary outcome is plausible, though one upstream assumption (below) is load-bearing.",
+    "The logic holds together; the weakest link is a single upstream step, flagged below, that the design should pin down.",
+    "No obvious contradiction, and the mechanism is stated crisply enough to check — one assumption still carries most of the weight.",
+    "Reasoning is sound end-to-end, with the caveat that the effect depends on an intermediate step that is assumed rather than shown.",
+  ]);
+  const tes = r.choice([
+    "Strong: the readout is quantitative and the proposed method yields a clear pass/fail against the stated threshold.",
+    "Highly testable — a pre-registered threshold on a measurable readout turns this into a decisive experiment.",
+    "The claim exposes itself to falsification: one clean measurement either clears the bar or sinks it.",
+    "Good — the outcome is numeric and the comparison is controlled, so the result won't be open to interpretation.",
+  ]);
+  const fea = r.choice([
+    "Achievable with commonly available methods; the main risk is confounding, which the control arm is designed to absorb.",
+    "Within reach of a modest setup and timeline; the chief hazard is a confound the baseline arm has to neutralise.",
+    "Practical to run soon and cheaply — the open question is whether the control fully isolates the effect.",
+    "No exotic resources required; the sensitivity is to a confounder that the matched comparison is meant to rule out.",
+  ]);
+  const note = r.choice([
+    "that the measured outcome actually reflects the mechanism, not a proxy",
+    "that the intervention reaches the regime where it can act at all",
+    "that the control arm removes the most likely alternative explanation",
+    "that the effect size survives outside the tidy conditions of the pilot",
+  ]);
   const body = `**Verdict:** ${verdict}
 
-**Novelty (${scores.novelty}).** The proposed lever is under-explored for this goal; adjacent work exists but does not test this exact intervention.
+**Novelty (${scores.novelty}).** ${nov}
 
-**Correctness (${scores.correctness}).** Internally consistent — the causal chain from intervention to the primary outcome is plausible, though one upstream assumption (below) is load-bearing.
+**Correctness (${scores.correctness}).** ${cor}
 
-**Testability (${scores.testability}).** Strong: the readout is quantitative and the proposed method yields a clear pass/fail against the stated threshold.
+**Testability (${scores.testability}).** ${tes}
 
-**Feasibility (${scores.feasibility}).** Achievable with commonly available methods; the main risk is confounding, which the control arm is designed to absorb.
+**Feasibility (${scores.feasibility}).** ${fea}
 
-**Key assumption checked:** that the measured outcome actually reflects the mechanism, not a proxy. Rated *${r.choice(["plausible", "uncertain"])}*.
+**Key assumption checked:** ${note}. Rated *${r.choice(["plausible", "uncertain"])}*.
 `;
   return { kind, verdict, scores, body };
 }
@@ -500,26 +559,34 @@ export function insertAfterHeading(md: string, n: number, block: string): string
   return md;
 }
 
-interface OverviewRef { n: number; title: string; year: number; url: string }
+interface OverviewRef { n: number; title: string; year: number | null; url: string }
 
-/** Pick one curated REAL paper per proposal (deterministic per proposal title).
- *  Returns numbered refs + per-proposal `[n]` markers, deduped by URL so repeated
- *  sources share a number. The real engine builds References from real data; the
- *  browser-LLM path passes null to referencesSection (honest, no sources). */
-function overviewRefs(goal: string, top: OverviewProposal[]): { refs: OverviewRef[]; markers: string[] } {
+/** Dedupe each proposal's OWN citations (real OpenAlex papers online, curated
+ *  REAL_PAPERS offline) into a numbered reference list, and return a parallel
+ *  per-proposal list of individual `[n]` marker strings so the caller can spread
+ *  them across the sentences that lean on a source. Deduped by url (fallback doi)
+ *  so a paper cited by two proposals shares one number — this makes the overview,
+ *  the drawer and the per-proposal donut all cite the SAME papers. Mirrors
+ *  webapp/content.py `_overview_refs`. The browser-LLM path never calls this; it
+ *  passes null to referencesSection (honest, no sources). */
+function overviewRefs(top: OverviewProposal[]): { refs: OverviewRef[]; markers: string[][] } {
   const refs: OverviewRef[] = [];
-  const markers: string[] = [];
-  const urlToN = new Map<string, number>();
+  const markers: string[][] = [];
+  const keyToN = new Map<string, number>();
   for (const p of top) {
-    const paper = makeRng(`ref|${goal}|${p.title}`).choice(REAL_PAPERS);
-    const url = `https://doi.org/${paper.doi}`;
-    let n = urlToN.get(url);
-    if (n === undefined) {
-      n = refs.length + 1;
-      urlToN.set(url, n);
-      refs.push({ n, title: paper.title, year: paper.year, url });
+    const ns: number[] = [];
+    for (const c of p.citations ?? []) {
+      const key = (c.url || c.doi || "").trim();
+      if (!key) continue;
+      let n = keyToN.get(key);
+      if (n === undefined) {
+        n = refs.length + 1;
+        keyToN.set(key, n);
+        refs.push({ n, title: c.title, year: c.year, url: c.url });
+      }
+      if (!ns.includes(n)) ns.push(n);
     }
-    markers.push(`[${n}]`);
+    markers.push(ns.sort((a, b) => a - b).map((n) => `[${n}]`));
   }
   return { refs, markers };
 }
@@ -606,10 +673,21 @@ function proposalEloBody(id: string | undefined, title: string, n: number, figur
 export function makeOverview(goal: string, proposals: OverviewProposal[], figures?: OverviewFigures): string {
   const top = proposals.slice(0, 3);
   const lead = top[0];
-  const { refs, markers } = overviewRefs(goal, top);
+  const { refs, markers } = overviewRefs(top);
+  // Seeded per SESSION (the proposal ids carry the session id) so two runs of the
+  // same goal read differently while a re-render of one run is stable. The
+  // top-level sections draw from `r`; each proposal block gets its own stream.
+  const seedTail = top.map((p) => p.id ?? p.title).join("|");
+  const r = makeRng(`${goal}|overview|${seedTail}`);
 
   const sections = top.map((p, i) => {
     const elo = p.elo != null ? Math.round(p.elo) : "—";
+    const pr = makeRng(`${goal}|proposal|${p.id ?? p.title}`);
+    // Spread this proposal's own citation markers across the sentences that
+    // lean on a source: the claim, why-it's-promising, and the experiment.
+    const cm = markers[i] ?? [];
+    const at = (k: number) => (cm[k] ? ` ${cm[k]}` : "");
+    const expMk = cm.slice(2).length ? ` ${cm.slice(2).join("")}` : "";
     // Per-proposal illustrations for the top-3: a compact score radar on the Elo
     // line, plus an experiment-pipeline mermaid, a cited-sources donut, and an
     // Elo sparkline at the END of the block. All UNNUMBERED (chart title only)
@@ -626,27 +704,43 @@ export function makeOverview(goal: string, proposals: OverviewProposal[], figure
       if (eloFig) endFigs.push(eloFig);
     }
     const tail = endFigs.length ? `\n\n${endFigs.join("\n\n")}` : "";
+    const why = pr.choice([
+      "It survived repeated head-to-head debates against competing ideas, and reviewers scored it well on novelty and testability. The mechanism is specific enough to design a decisive experiment around.",
+      "It kept winning matches on the strength of its argument rather than its framing, and the reviewers' marks back that up. Crucially, it is concrete enough that one experiment can settle it.",
+      "Across the tournament it beat rivals that were vaguer or harder to test, and it carries a specific, falsifiable claim rather than a direction of travel.",
+      "The idea earned its rank by holding up under scrutiny, not by out-arguing softer competitors — and its core claim is sharp enough to design a clean test around.",
+    ]);
+    const exp = pr.choice([
+      "Set up the smallest faithful version of the system, apply the intervention across a short range, and read out the primary measure alongside one orthogonal check. Include an untouched baseline and a plausibly-inert comparison so a positive result is interpretable.",
+      "Run a compact controlled trial: vary the lever over a few settings, measure the primary outcome plus a second independent signal, and hold a matched control so the effect can't be confused with drift.",
+      "Start with a cheap decisive experiment — the intervention at one or two intensities, a quantitative readout, and both a do-nothing baseline and an inert-looking control to keep the result unambiguous.",
+      "Build a minimal test bed, apply the intervention against a matched control, and track the primary measure together with an orthogonal one so a real effect and an artefact look different.",
+    ]);
+    const feas = pr.choice([
+      "Achievable within a modest budget and a single cycle. The main risk is that the intervention never reaches the regime where it can act — worth a quick pilot to check that first.",
+      "Cheap and quick to run. The chief hazard is a hidden confounder producing the same reading, which the control arm is there to absorb.",
+      "No exotic resources needed and a short timeline. The open question is whether the effect survives outside the tidy conditions of the pilot.",
+      "Practical to stand up soon. The real exposure is that the lever's active range is narrower than the summary implies, so the pilot should probe that window.",
+    ]);
+    const fal = pr.choice([
+      "No measurable shift in the primary readout when the intervention is applied at a realistic setting, or the effect reproduced by the inert control.",
+      "A flat primary measure across the intervention range, or a change that the matched control reproduces just as well.",
+      "The orthogonal check failing to move with the primary one, or the whole effect vanishing once a stricter control is added.",
+      "No dose- or intensity-dependent response where the phenomenon is most acute, or rescue by the plausibly-inert comparison arm.",
+    ]);
     return `### Proposal ${i + 1}. ${p.title}
 
 **Tournament Elo:** ${elo} · **Generation strategy:** \`${p.strategy}\`${radar}
 
-**The hypothesis.** ${p.summary}
+**The hypothesis.** ${p.summary}${at(0)}
 
-**Why it's promising.** ${markers[i]} It survived repeated head-to-head debates against
-competing ideas, and reviewers scored it well on novelty and testability. The
-mechanism is specific enough to design a decisive experiment around.
+**Why it's promising.**${at(1)} ${why}
 
-**Proposed first experiment.** Stand up the relevant model system and apply the
-intervention across a short dose range, reading out the primary phenotype with a
-quantitative assay plus an orthogonal molecular signature. Include vehicle and a
-mechanism-dead control so a positive result is interpretable.
+**Proposed first experiment.** ${exp}${expMk}
 
-**Feasibility and risks.** Achievable within a standard wet-lab budget and a
-single quarter. The main risk is that the intervention does not reach an active
-concentration in the relevant compartment — worth a pilot exposure check first.
+**Feasibility and risks.** ${feas}
 
-**What would falsify it.** No dose-dependent shift in the primary readout at a
-clinically achievable exposure, or rescue by the mechanism-dead control.${tail}`;
+**What would falsify it.** ${fal}${tail}`;
   }).join("\n\n---\n\n");
 
   // Content figures woven into the relevant upper sections (empty strings when
@@ -657,32 +751,67 @@ clinically achievable exposure, or rescue by the mechanism-dead control.${tail}`
   const compFigs = [figs.elo, figs.lineage].filter(Boolean).join("\n\n");
   const comparative = compFigs ? `\n\n${compFigs}` : "";
 
+  const framing = r.choice([
+    "The goal above defines a question where a testable, mechanism-anchored answer would materially change what happens next. Across a multi-agent tournament, the system generated candidate hypotheses, critiqued them, and ranked them head-to-head so that only ideas surviving repeated scrutiny rose to the top. The proposals below are the survivors, ordered by tournament Elo.",
+    "Answering the goal well means turning it into something a team can actually test. The system spread the question across competing agents, let them argue and re-rank, and kept only the ideas that held up under pressure. What follows is that shortlist, ordered by tournament Elo.",
+    "The question above rewards a concrete, falsifiable answer over a plausible-sounding one. To find it, the system generated many candidate directions, pitted them against each other, and let repeated critique thin the field. The proposals below are what remained, ranked by Elo.",
+    "A useful answer here is one a lab can act on, not just agree with. The tournament produced candidate hypotheses, stress-tested them against rivals, and promoted the ones that kept winning on substance. Those survivors are listed below in Elo order.",
+  ]);
+  const exec = r.choice([
+    `The tournament converged on ${top.length} strong candidate${top.length === 1 ? "" : "s"}, led by **${lead ? lead.title : "the top-ranked hypothesis"}**. The leading ideas share a bias toward interventions that are testable with what's already on hand and, where possible, reuse known levers to shorten the path from hypothesis to evidence.`,
+    `${top.length} candidate${top.length === 1 ? "" : "s"} rose above the rest, with **${lead ? lead.title : "the top-ranked hypothesis"}** in front. What unites the leaders is a preference for cheap, decisive tests over ambitious ones, and for building on established levers rather than inventing from scratch.`,
+    `After the dust settled, ${top.length} idea${top.length === 1 ? "" : "s"} stood out — **${lead ? lead.title : "the top-ranked hypothesis"}** most of all. The front-runners are linked less by topic than by temperament: each is specified tightly enough to falsify quickly and leans on existing methods to move fast.`,
+    `The field narrowed to ${top.length} serious contender${top.length === 1 ? "" : "s"}, headed by **${lead ? lead.title : "the top-ranked hypothesis"}**. The common thread among them is pragmatism — testable with current tools, and framed so a null result is as informative as a hit.`,
+  ]);
+  const landscape = r.choice([
+    "Independent generation strategies (literature-grounded, debate-driven, combination, and out-of-box) were each given room to explore, then forced to compete. Where several strategies nominated the same mechanism, that convergence is treated as a robustness signal rather than redundancy.",
+    "Several strategies ran in parallel — grounded in prior work, argued out in debate, recombined, and deliberately unconventional — before being made to fight for rank. When different strategies landed on the same idea, we read that agreement as evidence, not repetition.",
+    "The candidates came from distinct angles: some read off the existing literature, some emerged from debate, some from recombining earlier ideas, and some from deliberately breaking the frame. Overlap between independent angles is counted in an idea's favour rather than pruned as duplication.",
+    "Generation was intentionally diverse — literature-anchored, adversarial, combinatorial, and contrarian lines all contributed — and then the tournament forced a reckoning. A mechanism that surfaced from more than one line is treated as corroborated, not redundant.",
+  ]);
+  const comparativeText = r.choice([
+    "The top proposals are not interchangeable: some converge on a shared mechanism (mutually reinforcing evidence), while others are genuinely orthogonal bets worth running in parallel to hedge mechanism risk. Prefer starting with the highest-Elo idea that also has the cheapest decisive experiment.",
+    "These leaders are not variations on one theme — a few reinforce each other by pointing at the same mechanism, while others are independent wagers best run side by side. The pragmatic opening move is the top-ranked idea whose decisive experiment is also the cheapest.",
+    "Read together, the proposals split into overlapping bets and genuinely separate ones; the overlaps strengthen each other, the separations hedge against being wrong about the mechanism. Sequence them by starting where high rank meets a low-cost decisive test.",
+    "The shortlist mixes mutually supporting ideas with orthogonal ones, and both kinds earn their place — one for corroboration, the other for insurance. Begin with whichever high-Elo idea can be settled most cheaply.",
+  ]);
+  const rec1 = r.choice([
+    "Run the single cheapest decisive experiment for the top proposal first.",
+    "Start with the top proposal's cheapest experiment that can actually settle it.",
+    "Spend the first dollar on the most decisive, lowest-cost test of the leader.",
+  ]);
+  const rec2 = r.choice([
+    "If it clears, add the orthogonal runner-up to hedge mechanism risk.",
+    "If that holds up, bring in the most independent runner-up as a hedge.",
+    "Assuming a positive read, run the orthogonal runner-up next to cover the mechanism risk.",
+  ]);
+  const rec3 = r.choice([
+    "Pre-register every falsification threshold before any hands-on work begins.",
+    "Fix and record each pass/fail threshold up front, before collecting data.",
+    "Lock in the falsification criteria in advance so a near-miss can't be argued away.",
+  ]);
+  const open = r.choice([
+    "Where the evidence was thin, reviewer confidence is lower and a domain expert is most likely to disagree — treat those proposals as exploratory. The tournament optimizes for debate-survivability, not ground truth, so a high Elo is a strong prior, not a proof.",
+    "The proposals resting on the least support are exactly where an expert would push back hardest; hold them loosely. Remember the ranking rewards ideas that survive argument, which is correlated with being right but is not the same thing.",
+    "Confidence should track the underlying support, which is uneven — the thinner cases are best read as leads rather than conclusions. A high Elo says an idea withstood scrutiny, not that it is true.",
+    "Some of these stand on firmer ground than others, and the shakier ones deserve a skeptic's eye before any commitment. The tournament measures how well an idea defends itself, so treat rank as a prior to update, not a verdict.",
+  ]);
+
   return `# Research proposal
 
 **Research goal.** ${goal}
 
 ## Problem framing and significance
 
-The goal above defines a question where a testable, mechanism-anchored answer
-would materially change what a lab does next. Across a multi-agent tournament,
-the system generated candidate hypotheses, critiqued them, and ranked them
-head-to-head so that only ideas surviving repeated scrutiny rose to the top. The
-proposals below are the survivors, ordered by tournament Elo.
+${framing}
 
 ## Executive summary
 
-The tournament converged on ${top.length} strong candidate${top.length === 1 ? "" : "s"},
-led by **${lead ? lead.title : "the top-ranked hypothesis"}**. The leading ideas
-share a bias toward interventions that are testable with existing models and,
-where possible, repurpose known agents to shorten the path from hypothesis to
-evidence.
+${exec}
 
 ## The approach landscape
 
-Independent generation strategies (literature-grounded, debate-driven,
-combination, and out-of-box) were each given room to explore, then forced to
-compete. Where several strategies nominated the same mechanism, that convergence
-is treated as a robustness signal rather than redundancy.${donut}
+${landscape}${donut}
 
 ## Ranked proposals
 
@@ -690,23 +819,17 @@ ${scores}${sections}
 
 ## Comparative assessment
 
-The top proposals are not interchangeable: some converge on a shared pathway
-(mutually reinforcing evidence), while others are genuinely orthogonal bets worth
-running in parallel to hedge mechanism risk. Prefer starting with the highest-Elo
-idea that also has the cheapest decisive experiment.${comparative}
+${comparativeText}${comparative}
 
 ## Recommended path and sequencing
 
-1. Run the single cheapest decisive experiment for the top proposal first.
-2. If it clears, add the orthogonal runner-up to hedge mechanism risk.
-3. Pre-register every falsification threshold before wet-lab work begins.
+1. ${rec1}
+2. ${rec2}
+3. ${rec3}
 
 ## Open questions and limitations
 
-Where the literature was thin, reviewer confidence is lower and a domain expert
-is most likely to disagree — treat those proposals as exploratory. The tournament
-optimizes for debate-survivability, not ground truth, so a high Elo is a strong
-prior, not a proof.
+${open}
 
 ## Analysis
 
@@ -870,24 +993,52 @@ export function makeSelfCritique(goal: string, roundNo: number, top: CritiqueHyp
 
   const opener = CRITIQUE_OPENERS[(roundNo - 1) % CRITIQUE_OPENERS.length];
   const closer = CRITIQUE_CLOSERS[(roundNo - 1) % CRITIQUE_CLOSERS.length];
+  // Seeded stitching banks so the connective sentences vary by round + target,
+  // instead of being identical every session. The angle/opener/closer already
+  // rotate; this varies the prose that links them.
+  const cr = makeRng(`${goal}|selfcritique|${roundNo}|${title}`);
+  const lowStr = sc[lowDim].toFixed(2);
+  const eTxt = eloTxt(target.elo);
 
   let priorRef: string;
   if (roundNo > 1) {
     const prev = list[(roundNo - 2) % list.length];
     const prevAngle = CRITIQUE_ANGLES[(roundNo - 2) % CRITIQUE_ANGLES.length];
-    priorRef = `Round ${roundNo - 1} probed the ${prevAngle.name} in **${(prev.title || "an untitled idea").trim()}**; this round I turn to the ${angle.name} in **${title}**.`;
+    const prevTitle = (prev.title || "an untitled idea").trim();
+    priorRef = cr.choice([
+      `Round ${roundNo - 1} probed the ${prevAngle.name} in **${prevTitle}**; this round I turn to the ${angle.name} in **${title}**.`,
+      `Last round it was the ${prevAngle.name} in **${prevTitle}**. Now I switch targets to **${title}** and press on its ${angle.name}.`,
+      `Having leaned on the ${prevAngle.name} of **${prevTitle}** in round ${roundNo - 1}, I move to a different idea and a different axis: the ${angle.name} in **${title}**.`,
+    ]);
   } else {
-    priorRef = `This is the first critique pass, so I start by attacking the current leader's ${angle.name}.`;
+    priorRef = cr.choice([
+      `This is the first critique pass, so I start by attacking the current leader's ${angle.name}.`,
+      `First pass — I open on the leader and go straight at its ${angle.name}.`,
+      `Nothing to compare against yet, so I begin where the leader looks softest: its ${angle.name}.`,
+    ]);
   }
 
+  const reread = cr.choice([
+    `I re-read **${title}** (${eTxt}) — its last review landed at ${scoreLine}, verdict *${rv.verdict}*. The softest mark is **${lowDim}** (${lowStr}), and that is exactly where a ${angle.name} problem would bite.`,
+    `Back to **${title}** (${eTxt}). The scorecard reads ${scoreLine}, verdict *${rv.verdict}*; **${lowDim}** (${lowStr}) is the weakest line, and a ${angle.name} flaw would land right there.`,
+    `Looking again at **${title}** (${eTxt}): review scores ${scoreLine}, verdict *${rv.verdict}*. Its low mark is **${lowDim}** (${lowStr}) — the same place a ${angle.name} problem would do the most damage.`,
+  ]);
   const thinking =
     `Round ${roundNo}. ${priorRef}\n\n` +
-    `I re-read **${title}** (${eloTxt(target.elo)}) — its last review landed at ${scoreLine}, verdict *${rv.verdict}*. The softest mark is **${lowDim}** (${sc[lowDim].toFixed(2)}), and that is exactly where a ${angle.name} problem would bite.\n\n` +
+    `${reread}\n\n` +
     angle.probes.map((p, i) => `${i + 1}. ${p}`).join("\n");
-  const critique =
-    `${opener} Looking hard at **${title}**, I am not convinced. The weak axis this round is **${angle.name}**: ${angle.body}.\n\n` +
-    `Its ${lowDim} score (${sc[lowDim].toFixed(2)}) is the softest on its scorecard, so ${angle.threat}. If that holds, the verdict of *${rv.verdict}* is generous and the ${eloTxt(target.elo)} gap to the field is doing more work than the evidence supports.\n\n` +
-    `${closer}`;
+
+  const doubt = cr.choice([
+    `Looking hard at **${title}**, I am not convinced. The weak axis this round is **${angle.name}**: ${angle.body}.`,
+    `I read **${title}** against the grain and it does not fully hold up. The exposed axis is **${angle.name}** — ${angle.body}.`,
+    `Pressing on **${title}**, my doubt sharpens rather than fades. It turns on **${angle.name}**: ${angle.body}.`,
+  ]);
+  const stakes = cr.choice([
+    `Its ${lowDim} score (${lowStr}) is the softest on its scorecard, so ${angle.threat}. If that holds, the verdict of *${rv.verdict}* is generous and the ${eTxt} gap to the field is doing more work than the evidence supports.`,
+    `With ${lowDim} already the lowest mark (${lowStr}), ${angle.threat}. Should that be right, *${rv.verdict}* flatters it, and its ${eTxt} lead is resting on argument more than proof.`,
+    `The ${lowStr} on ${lowDim} is where it is thinnest, which means ${angle.threat}. If so, calling it *${rv.verdict}* is charitable and the ${eTxt} margin overstates the case.`,
+  ]);
+  const critique = `${opener} ${doubt}\n\n${stakes}\n\n${closer}`;
   return `## Thinking\n\n${thinking}\n\n## Self-critique\n\n${critique}`;
 }
 
@@ -997,26 +1148,51 @@ export function makeStressReport(goal: string, hyp: StressHyp, roundInfo: { roun
   };
   const scoreRow = REVIEW_DIMS.map((d) => `${d} ${sc[d].toFixed(2)} → ${after[d].toFixed(2)}`).join(" · ");
 
+  // Seeded prose banks (drawn AFTER the numeric picks so those stay stable).
+  // Only the connective sentences vary; the report's bold section frame is fixed.
+  const citeTail = r.choice([
+    `on re-reading, it backs a ~${haircut}% smaller effect than the summary implies once a stricter control is added`,
+    `read closely, it supports an effect about ${haircut}% weaker than the claim, and only before the stricter control`,
+    `the actual result is ~${haircut}% below what the summary leans on it for once you tighten the control`,
+  ]);
   const citeTitles = [...new Set(cites.map((c) => (c.title || "untitled source").trim()))];
   const citationLine = citeTitles.length
-    ? citeTitles.slice(0, 2).map((t) =>
-        `- *${t}* — on re-reading, it backs a ~${haircut}% smaller effect than the summary implies once a stricter control is added.`,
-      ).join("\n")
+    ? citeTitles.slice(0, 2).map((t) => `- *${t}* — ${citeTail}.`).join("\n")
     : "- No sources were attached — flagging the citation gap as a finding: the claim currently rests on uncited reasoning.";
+  const breakLine = r.choice([
+    `Stress round ${roundInfo.round}/${roundInfo.of}. I am trying to *break* **${title}**, not defend it.`,
+    `Stress round ${roundInfo.round}/${roundInfo.of}. My job here is to falsify **${title}**, not to make its case.`,
+    `Stress round ${roundInfo.round}/${roundInfo.of}. I approach **${title}** as an adversary looking for the crack, not an advocate.`,
+  ]);
+  const claimLine = r.choice([
+    `Its core claim: “${gist}”. That lever is what I have to falsify.`,
+    `The claim under fire: “${gist}”. If it is wrong, that is where it breaks.`,
+    `What it asserts: “${gist}”. This is the load-bearing lever I need to knock over.`,
+  ]);
+  const attackLead = r.choice([
+    `**What I attacked.** I targeted the idea's core claim — “${gist}” — and ${probe.attack}.`,
+    `**What I attacked.** Going straight at the central claim — “${gist}” — I ${probe.attack}.`,
+    `**What I attacked.** I took aim at the load-bearing claim — “${gist}” — and ${probe.attack}.`,
+  ]);
+  const feasLine = r.choice([
+    `**Feasibility numbers.** At a realistic exposure the predicted effect is ~${effect}% of the outcome measure — above noise, but the margin is thin, so any pilot must be powered for it.`,
+    `**Feasibility numbers.** Under realistic conditions the effect works out to ~${effect}% of the outcome — it clears noise, but only just, so a pilot needs real statistical power.`,
+    `**Feasibility numbers.** The back-of-envelope effect is ~${effect}% of the measure at a plausible setting — detectable, yet close enough to noise that an underpowered pilot would miss it.`,
+  ]);
 
   const thinking =
-    `Stress round ${roundInfo.round}/${roundInfo.of}. I am trying to *break* **${title}**, not defend it.\n\n` +
-    `Its core claim: “${gist}”. That lever is what I have to falsify.\n\n` +
+    `${breakLine}\n\n` +
+    `${claimLine}\n\n` +
     `1. Adversarial search: what published result, if it exists, would kill this specific claim?\n` +
     `2. Citation audit: ${nCites ? `re-open each of the ${nCites} supporting reference(s) and ask whether it shows *this* effect or an adjacent one` : "there are no attached sources, so the absence of evidence is itself the first finding"}.\n` +
     `3. Feasibility math: put rough numbers on the lever to see if the claimed effect is plausible at a realistic dose/setting.\n` +
     `4. Design the cheapest experiment that could falsify it at prototype scale — before anyone commits real resources.`;
   const report =
     `${token} — ${driver}.\n\n` +
-    `**What I attacked.** I targeted the idea's core claim — “${gist}” — and ${probe.attack}.\n\n` +
+    `${attackLead}\n\n` +
     `**Found evidence.**\n${citationLine}\n\n` +
     `**Scores before → after fix.** ${scoreRow}.\n\n` +
-    `**Feasibility numbers.** At a realistic exposure the predicted effect is ~${effect}% of the outcome measure — above noise, but the margin is thin, so any pilot must be powered for it.\n\n` +
+    `${feasLine}\n\n` +
     `**Prototype-scale pilot (run this BEFORE scaling).**\n` +
     `- *Model:* the smallest faithful test bed for “${title.slice(0, 60)}”.\n` +
     `- *Intervention:* the hypothesis's own lever, a single dose/setting.\n` +
@@ -1028,13 +1204,26 @@ export function makeStressReport(goal: string, hyp: StressHyp, roundInfo: { roun
 
 /** Title + summary for the stress-hardened fix child. Shared contract with
  *  webapp/content.py `make_stress_fix`. Deterministic (seeded by hyp id). */
-export function makeStressFix(hyp: { id: string; title: string }): { title: string; summary: string } {
+export function makeStressFix(hyp: { id: string; title: string }): { title: string; summary: string; thinking: string } {
   const title = (hyp.title || "an untitled idea").trim();
   const r = makeRng(`fix|${hyp.id}`);
   const fix = r.choice(STRESS_FIXES);
+  const thinking = [
+    r.choice([
+      `The stress test on “${title}” found a real but bounded weakness, so I kept the mechanism and redesigned around the failure mode.`,
+      `Rather than abandon “${title}”, I isolated the one place the stress test broke it and closed that gap specifically.`,
+      `“${title}” survived scrutiny except at a single seam; this revision targets exactly that seam and nothing else.`,
+    ]),
+    r.choice([
+      "The change is deliberately conservative — narrow the claim to what the evidence defends and add the control the test showed was load-bearing.",
+      "I resisted broadening the idea; the fix only removes the failure the test exposed, so the comparison to the parent stays clean.",
+      "Keeping the edit minimal means a re-rank measures the fix, not a wholesale rewrite.",
+    ]),
+  ].join(" ");
   return {
     title: `${title} — hardened`,
     summary: `A stress-hardened revision of “${title}” that ${fix}. Same core mechanism, but the failure mode the stress test surfaced is now designed out before scaling.`,
+    thinking,
   };
 }
 
