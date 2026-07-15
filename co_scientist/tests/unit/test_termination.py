@@ -134,10 +134,10 @@ def _stable_tracker() -> StabilityTracker:
     return tr
 
 
-def test_floor_stops_at_95_pct() -> None:
+def test_floor_stops_at_90_pct() -> None:
     cfg = Config()
     tr = StabilityTracker(k=3, n=3, eps=25)
-    s = _session(used_tokens=950_000, budget_tokens=1_000_000)
+    s = _session(used_tokens=900_000, budget_tokens=1_000_000)
     assert floor_reached(cfg, s)
     assert should_stop(cfg, s, tr) is StopReason.BUDGET
 
@@ -145,7 +145,7 @@ def test_floor_stops_at_95_pct() -> None:
 def test_below_floor_keeps_running() -> None:
     cfg = Config()
     tr = StabilityTracker(k=3, n=3, eps=25)
-    s = _session(used_tokens=949_999, budget_tokens=1_000_000)
+    s = _session(used_tokens=899_999, budget_tokens=1_000_000)
     assert not floor_reached(cfg, s)
     assert should_stop(cfg, s, tr) is None
 

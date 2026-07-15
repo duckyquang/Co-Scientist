@@ -27,6 +27,7 @@ class RunCfg(BaseModel):
     budget_usd: float = 25.0
     critique_every_matches: int = 15   # self-critique cadence; 0 disables
     evolution_min_mature: int = 4      # hypotheses with ≥3 matches before evolving
+    stress_test_top_k: int = 3         # finalists stress-tested in finalize; 0 disables
 
 
 class StorageCfg(BaseModel):
@@ -69,17 +70,20 @@ class TerminationCfg(BaseModel):
     elo_stability_n: int = 3
     elo_stability_eps: float = 25.0
     match_snapshot_every: int = 10
-    budget_floor_pct: float = 0.95     # keep working until ≥95% of token budget spent
+    # Keep working until ≥90% of the token budget is spent; the 10% tail funds
+    # the finalize stage (stress tests + fixes + re-rank + final overview).
+    budget_floor_pct: float = 0.90
     stall_after_seconds: int = 600     # no token progress + idle queue → IDLE
 
 
 class BudgetSharesCfg(BaseModel):
     generation: float = 0.20
     reflection: float = 0.20
-    ranking: float = 0.25
-    evolution: float = 0.15
+    ranking: float = 0.22
+    evolution: float = 0.12
     metareview: float = 0.10
     proximity: float = 0.02
+    stresstest: float = 0.06
     reserve: float = 0.08
 
 
@@ -93,6 +97,7 @@ class ModelsCfg(BaseModel):
     ranking_priority: str = "claude-opus-4-7"
     metareview_feedback: str = "claude-sonnet-4-6"
     metareview_final: str = "claude-opus-4-7"
+    stresstest: str = "claude-opus-4-7"
     classifier: str = "claude-haiku-4-5-20251001"
     judge: str = "claude-sonnet-4-6"
     chat: str = "claude-sonnet-4-6"
@@ -113,6 +118,8 @@ class ThinkingCfg(BaseModel):
     metareview_feedback: int = 8000
     metareview_final: int = 16000
     metareview_critique: int = 10_000
+    stresstest_probe: int = 8000
+    stresstest_fix: int = 4000
 
 
 class ToolLoopCfg(BaseModel):
@@ -121,6 +128,7 @@ class ToolLoopCfg(BaseModel):
     ranking_max_iters: int = 3
     evolution_max_iters: int = 6
     metareview_max_iters: int = 12
+    stresstest_max_iters: int = 8
     parallel_cap: int = 4
     tool_timeout_seconds: int = 30
 

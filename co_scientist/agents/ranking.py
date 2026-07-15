@@ -85,6 +85,12 @@ class RankingAgent(BaseAgent):
         candidates = await hyp_repo.list_for_session(
             self.deps.db, session.id, state="in_tournament"
         )
+        # `only_ids` restricts pair selection to a fixed set — used by the
+        # finalize stress-test stage to re-rank exactly the 3 finalists.
+        only_ids = task.payload.get("only_ids")
+        if only_ids:
+            allow = set(only_ids)
+            candidates = [h for h in candidates if h.id in allow]
         if len(candidates) < 2:
             return TaskResult(kind="noop", extra={"reason": "fewer than 2 candidates"})
 

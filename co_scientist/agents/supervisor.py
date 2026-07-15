@@ -36,7 +36,7 @@ from ..llm.prompts import render
 from ..llm.provider import get_provider
 from ..llm.routing import route
 from ..logging import bind, get_logger
-from ..models import ResearchPlan, Session, Task
+from ..models import ResearchPlan, Session, SystemFeedback, Task
 from ..orchestrator.events import GLOBAL_BUS
 from ..orchestrator.termination import (
     StabilityTracker,
@@ -532,6 +532,14 @@ class Supervisor:
         session: Session,
         stop_reason: StopReason | None,
     ) -> None:
+        # Stress-test stage runs FIRST (before we cancel pending work) so it
+        # executes for every stop reason. Fully best-effort: any failure inside
+        # degrades to the next step and never blocks the final overview.
+        try:
+            await self._run_stress_stage(conn, deps, session)
+        except Exception as e:
+            log.exception("stress_stage_failed", err=str(e))
+
         n_cancel = await task_repo.cancel_pending_for_session(conn, session.id)
         if n_cancel:
             log.info("pending_cancelled", n=n_cancel)
@@ -578,6 +586,189 @@ class Supervisor:
 
         await self._emit(conn, session.id, "session_done",
                          {"stop_reason": stop_reason.value if stop_reason else None})
+
+    # ----------------------------- stress-test stage ----------------------------- #
+
+    async def _run_stress_stage(
+        self, conn: aiosqlite.Connection, deps: AgentDeps, session: Session
+    ) -> None:
+        """Stress-test the top-K finalists, apply fixes, then re-rank the 3.
+
+        Every step is wrapped so a failure degrades to the next rather than
+        killing finalize. Emits task_started/completed events per inline task.
+        """
+        top_k = self.cfg.run.stress_test_top_k
+        if top_k <= 0:
+            return
+        agents = self._build_agents(deps)
+        stress = agents.get("stresstest")
+        if stress is None:
+            log.info("stress_stage_skipped", reason="agent unavailable")
+            return
+        # Idempotent at stage granularity: if a re-rank row already exists (e.g.
+        # a resumed session that already finalized), don't re-run the stage.
+        if await fb_repo.latest_system_feedback(conn, session.id, kind="stress_ranking"):
+            log.info("stress_stage_skipped", reason="already ran")
+            return
+
+        refreshed = await sess_repo.fetch(conn, session.id)
+        if (
+            refreshed is not None and refreshed.budget_tokens > 0
+            and refreshed.budget_used_tokens >= refreshed.budget_tokens
+        ):
+            log.info("stress_stage_skipped", reason="budget exhausted")
+            return
+
+        top = await hyp_repo.top_by_elo(conn, session.id, k=top_k)
+        if len(top) < 2:
+            log.info("stress_stage_skipped", reason="fewer than 2 finalists")
+            return
+
+        await self._emit(conn, session.id, "stress_stage_started",
+                         {"hypothesis_ids": [h.id for h in top]})
+
+        # Phase 1 — stress test each finalist.
+        stress_extra: dict[str, dict[str, Any]] = {}
+        for h in top:
+            res = await self._inline(conn, session, stress, "stresstest",
+                                     "StressTestHypothesis", target_id=h.id)
+            if res is not None and res.kind == "stress_test_completed":
+                stress_extra[h.id] = res.extra
+
+        # Phase 2 — apply fixes (feedback-driven child) and prime it for ranking.
+        # `final_ids` are the 3 ids to re-rank: the fixed child where a fix
+        # landed, else the original finalist.
+        final_ids: list[str] = []
+        fix_of: dict[str, str] = {}         # original id -> child id
+        for h in top:
+            extra = stress_extra.get(h.id)
+            replacement = h.id
+            if extra and extra.get("verdict") != "survives" and extra.get("fix_directives"):
+                fix_res = await self._inline(
+                    conn, session, stress, "stresstest", "ApplyStressFixes",
+                    target_id=h.id,
+                    payload={
+                        "verdict": extra.get("verdict", ""),
+                        "report": extra.get("report", ""),
+                        "fix_directives": extra.get("fix_directives", []),
+                    },
+                )
+                if (
+                    fix_res is not None and fix_res.kind == "hypothesis_created"
+                    and fix_res.hypothesis_ids
+                ):
+                    child = fix_res.hypothesis_ids[0]
+                    await self._prime_for_ranking(conn, session, agents, child)
+                    replacement = child
+                    fix_of[h.id] = child
+            final_ids.append(replacement)
+
+        # Phase 3 — re-rank exactly these 3 head-to-head.
+        ranking = agents.get("ranking")
+        if ranking is not None and len(final_ids) >= 2:
+            for _ in range(6):
+                await self._inline(conn, session, ranking, "ranking",
+                                   "RunTournamentBatch",
+                                   payload={"only_ids": final_ids})
+
+        # Phase 4 — the single stress_ranking summary row.
+        await self._write_stress_ranking(conn, session, top, final_ids, fix_of, stress_extra)
+        await self._emit(conn, session.id, "stress_stage_done",
+                         {"final_ids": final_ids})
+
+    async def _inline(
+        self,
+        conn: aiosqlite.Connection,
+        session: Session,
+        agent: object,
+        agent_name: str,
+        action: str,
+        *,
+        target_id: str | None = None,
+        payload: dict[str, Any] | None = None,
+    ):
+        """Enqueue → mark_in_progress → execute → complete, all inline. Returns
+        the TaskResult (or None on failure). Never raises — the stage is
+        best-effort."""
+        t = Task(
+            id=ids.task_id(), session_id=session.id, created_at=datetime.now(UTC),
+            agent=agent_name, action=action, target_id=target_id,   # type: ignore[arg-type]
+            payload=payload or {}, priority=1, status="pending",
+        )
+        await task_repo.enqueue(conn, t)
+        await task_repo.mark_in_progress(conn, t.id)
+        await self._emit(conn, session.id, "task_started",
+                         {"task_id": t.id, "agent": agent_name, "action": action,
+                          "target": target_id})
+        try:
+            res = await agent.execute(t)   # type: ignore[attr-defined]
+        except Exception as e:
+            await task_repo.fail(conn, t.id, error=str(e),
+                                  max_attempts=self.cfg.lease.max_attempts)
+            log.warning("stress_inline_failed", action=action, target=target_id, err=str(e))
+            await self._emit(conn, session.id, "task_failed",
+                             {"task_id": t.id, "err": str(e)[:300]})
+            return None
+        await task_repo.complete(conn, t.id)
+        await self._emit(conn, session.id, "task_completed",
+                         {"task_id": t.id, "kind": res.kind})
+        return res
+
+    async def _prime_for_ranking(
+        self, conn: aiosqlite.Connection, session: Session,
+        agents: dict[str, object], child_id: str
+    ) -> None:
+        """Give a fix child a quick review then add it to the tournament so it
+        can be re-ranked against the other finalists."""
+        reflection = agents.get("reflection")
+        if reflection is not None:
+            await self._inline(conn, session, reflection, "reflection",
+                               "ReviewHypothesis", target_id=child_id,
+                               payload={"kind": "full"})
+        ranking = agents.get("ranking")
+        if ranking is not None:
+            await self._inline(conn, session, ranking, "ranking",
+                               "AddToTournament", target_id=child_id)
+
+    async def _write_stress_ranking(
+        self,
+        conn: aiosqlite.Connection,
+        session: Session,
+        top: list,
+        final_ids: list[str],
+        fix_of: dict[str, str],
+        stress_extra: dict[str, dict[str, Any]],
+    ) -> None:
+        """Insert the single stress_ranking feedback row summarizing the tested,
+        fixed, and re-ranked top ideas (final Elo order)."""
+        # Map final id -> (original hyp, final hyp row).
+        rows: list[tuple[float, str]] = []
+        for orig in top:
+            child_id = fix_of.get(orig.id)
+            final_id = child_id or orig.id
+            final_h = await hyp_repo.fetch(conn, final_id)
+            elo = final_h.elo if (final_h and final_h.elo is not None) else (orig.elo or 0.0)
+            extra = stress_extra.get(orig.id) or {}
+            verdict = extra.get("verdict", "not tested")
+            fix_txt = (
+                f" Fix applied — revised as `{child_id}`."
+                if child_id else " No fix needed."
+            )
+            line = (
+                f"**{orig.title or orig.id}** (`{final_id}`, Elo {elo:.0f}) — "
+                f"stress test: _{verdict}_.{fix_txt}"
+            )
+            rows.append((elo, line))
+
+        rows.sort(key=lambda r: -r[0])
+        body = "## Stress-tested final ranking\n\n" + "\n".join(
+            f"{i}. {line}" for i, (_, line) in enumerate(rows, 1)
+        )
+        await fb_repo.insert(conn, SystemFeedback(
+            id=ids.feedback_id(), session_id=session.id, created_at=datetime.now(UTC),
+            source="meta_review", kind="stress_ranking",
+            target_id=None, text=body[:8000], active=True,
+        ))
 
     async def _write_simple_overview(
         self, conn: aiosqlite.Connection, session: Session
@@ -640,6 +831,12 @@ class Supervisor:
             from .metareview import MetaReviewAgent
 
             out["metareview"] = MetaReviewAgent(deps)
+        except ImportError:
+            pass
+        try:
+            from .stresstest import StressTestAgent
+
+            out["stresstest"] = StressTestAgent(deps)
         except ImportError:
             pass
         return out

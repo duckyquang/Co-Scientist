@@ -127,6 +127,82 @@ RECORD_REVIEW_TOOL: dict[str, Any] = {
 }
 
 
+RECORD_STRESS_TEST_TOOL: dict[str, Any] = {
+    "name": "record_stress_test",
+    "description": (
+        "Record the structured result of an adversarial stress test of one hypothesis. "
+        "Call this exactly once when your investigation is complete. Every URL in "
+        "`contradicting_evidence[]` must have appeared in your tool_result outputs. "
+        "The pilot experiment must be prototype-scale — a small, cheap check of "
+        "viability, not a full study."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "verdict": {
+                "type": "string",
+                "enum": ["survives", "survives_with_fixes", "undermined"],
+                "description": "Did the hypothesis survive the stress test?",
+            },
+            "contradicting_evidence": {
+                "type": "array",
+                "description": "Evidence AGAINST the hypothesis you actually found via tools (empty if a genuine search found none).",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "claim":   {"type": "string", "description": "What this evidence contradicts."},
+                        "url":     {"type": "string"},
+                        "excerpt": {"type": "string", "description": "Verbatim short quote from the source."},
+                    },
+                    "required": ["claim", "url", "excerpt"],
+                },
+            },
+            "citation_checks": {
+                "type": "array",
+                "description": "For each citation the hypothesis relies on: does the source actually support the claim?",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "url":            {"type": "string"},
+                        "supports_claim": {"type": "boolean"},
+                        "note":           {"type": "string", "description": "What the source actually says vs. what is claimed."},
+                    },
+                    "required": ["url", "supports_claim", "note"],
+                },
+            },
+            "feasibility_check": {
+                "type": "string",
+                "description": "Back-of-envelope numbers: doses, effect sizes, sample sizes, costs, timescales — and whether they hold up.",
+            },
+            "pilot_experiment": {
+                "type": "object",
+                "description": "A SMALL prototype-scale experiment to check the idea works before scaling up.",
+                "properties": {
+                    "model_system":      {"type": "string"},
+                    "intervention":      {"type": "string"},
+                    "readout":           {"type": "string", "description": "Primary readout / measurement."},
+                    "success_criterion": {"type": "string", "description": "Quantitative go/no-go threshold."},
+                    "scale":             {"type": "string", "description": "Explicit pilot bounds: sample size, duration, rough cost."},
+                },
+                "required": ["model_system", "intervention", "readout", "success_criterion", "scale"],
+            },
+            "fix_directives": {
+                "type": "array", "items": {"type": "string"},
+                "description": "Concrete revisions the hypothesis needs to survive (empty if verdict is 'survives').",
+            },
+            "correctness": {"type": "number", "minimum": 0, "maximum": 1},
+            "testability": {"type": "number", "minimum": 0, "maximum": 1},
+            "feasibility": {"type": "number", "minimum": 0, "maximum": 1},
+            "notes":       {"type": "string"},
+        },
+        "required": [
+            "verdict", "contradicting_evidence", "citation_checks",
+            "feasibility_check", "pilot_experiment", "fix_directives",
+        ],
+    },
+}
+
+
 RECORD_SYSTEM_FEEDBACK_TOOL: dict[str, Any] = {
     "name": "record_system_feedback",
     "description": "Record a structured meta-review of the session's reviews + debates.",

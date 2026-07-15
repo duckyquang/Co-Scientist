@@ -35,6 +35,8 @@ TEMPLATES = {
     "metareview.system": "metareview_system.md",
     "metareview.final": "metareview_final.md",
     "metareview.critique": "metareview_critique.md",
+    "stresstest.probe": "stresstest_probe.md",
+    "stresstest.fix": "stresstest_fix.md",
     "chat_router": "chat_router.md",
 }
 

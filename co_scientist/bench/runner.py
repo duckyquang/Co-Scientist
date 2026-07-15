@@ -623,6 +623,7 @@ def _candidate_cfg(base_cfg: Config, provider: str, model: str) -> Config:
     cfg.budget_shares.evolution = 0.0
     cfg.budget_shares.metareview = 0.0
     cfg.budget_shares.proximity = 0.0
+    cfg.budget_shares.stresstest = 0.0
     cfg.budget_shares.reserve = 0.0
     return cfg
 

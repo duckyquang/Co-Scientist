@@ -150,6 +150,8 @@ def thinking_budget_for(cfg: Config, mode: str) -> int:
         "metareview.system":       th.metareview_feedback,
         "metareview.final":        th.metareview_final,
         "metareview.critique":     th.metareview_critique,
+        "stresstest.probe":        th.stresstest_probe,
+        "stresstest.fix":          th.stresstest_fix,
     }.get(mode, 0)
 
 
@@ -172,6 +174,8 @@ def route(cfg: Config, agent: str, mode: str | None = None, *, degraded: bool = 
         ("metareview", "system"):      m.metareview_feedback,
         ("metareview", "final"):       m.metareview_final,
         ("metareview", "critique"):    m.metareview_final,   # Opus + thinking
+        ("stresstest", "probe"):       m.stresstest,
+        ("stresstest", "fix"):         m.stresstest,
         ("parse_goal", None):          m.parse_goal,
         ("classifier", None):          m.classifier,
         ("judge", None):               m.judge,
