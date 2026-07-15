@@ -59,6 +59,7 @@ async def run_tool_loop(
         "record_system_feedback",
         "record_rubric_score",
         "record_research_plan",
+        "record_stress_test",
     ),
 ) -> ToolLoopResult:
     """Drive the assistant ↔ tool_use ↔ tool_result loop.

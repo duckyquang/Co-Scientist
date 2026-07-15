@@ -11,6 +11,7 @@ budget_tokens = 5_000_000
 budget_usd = 25.0
 critique_every_matches = 15          # self-critique cadence (matches); 0 disables
 evolution_min_mature = 4             # hypotheses with >=3 matches before evolving
+stress_test_top_k = 3                # finalists stress-tested in finalize; 0 disables
 
 [storage]
 data_dir = "./data"
@@ -47,16 +48,17 @@ elo_stability_k = 5                  # top-K tracked
 elo_stability_n = 3                  # snapshots compared
 elo_stability_eps = 25.0
 match_snapshot_every = 10
-budget_floor_pct = 0.95              # keep working until >=95% of token budget spent
+budget_floor_pct = 0.90              # stop at >=90%; the tail funds stress tests + final overview
 stall_after_seconds = 600            # no token progress + idle queue -> IDLE
 
 [budget_shares]
 generation = 0.20
 reflection = 0.20
-ranking    = 0.25
-evolution  = 0.15
+ranking    = 0.22
+evolution  = 0.12
 metareview = 0.10
 proximity  = 0.02
+stresstest = 0.06
 reserve    = 0.08
 
 [models]
@@ -69,6 +71,7 @@ ranking_debate      = "claude-sonnet-4-6"
 ranking_priority    = "claude-opus-4-7"
 metareview_feedback = "claude-sonnet-4-6"
 metareview_final    = "claude-opus-4-7"
+stresstest          = "claude-opus-4-7"
 classifier          = "claude-haiku-4-5-20251001"
 judge               = "claude-sonnet-4-6"
 chat                = "claude-sonnet-4-6"
@@ -89,6 +92,8 @@ evolution_simplify      = 0
 metareview_feedback     = 8000
 metareview_final        = 16000
 metareview_critique     = 10000
+stresstest_probe        = 8000
+stresstest_fix          = 4000
 
 [tool_loop]
 generation_max_iters = 8
@@ -96,6 +101,7 @@ reflection_max_iters = 8
 ranking_max_iters    = 3
 evolution_max_iters  = 6
 metareview_max_iters = 12
+stresstest_max_iters = 8
 parallel_cap         = 4
 tool_timeout_seconds = 30
 

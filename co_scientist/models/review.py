@@ -7,9 +7,11 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-ReviewKind = Literal["full", "verification", "observation", "simulation"]
+ReviewKind = Literal["full", "verification", "observation", "simulation", "stress_test"]
 ReviewVerdict = Literal[
-    "already_explained", "other_more_likely", "missing_piece", "neutral", "disproved"
+    "already_explained", "other_more_likely", "missing_piece", "neutral", "disproved",
+    # stress_test reviews
+    "survives", "survives_with_fixes", "undermined",
 ]
 
 

@@ -7,7 +7,9 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-TaskAgent = Literal["generation", "reflection", "ranking", "evolution", "proximity", "metareview"]
+TaskAgent = Literal[
+    "generation", "reflection", "ranking", "evolution", "proximity", "metareview", "stresstest",
+]
 TaskAction = Literal[
     # Generation
     "CreateInitialHypotheses",
@@ -26,6 +28,9 @@ TaskAction = Literal[
     "GenerateSystemFeedback",
     "GenerateSelfCritique",
     "GenerateFinalResearchOverview",
+    # Stress test (finalize stage)
+    "StressTestHypothesis",
+    "ApplyStressFixes",
 ]
 TaskStatus = Literal["pending", "leased", "in_progress", "done", "failed", "dead", "cancelled"]
 
@@ -63,6 +68,7 @@ TaskResultKind = Literal[
     "system_feedback_generated",
     "self_critique_generated",
     "final_overview_generated",
+    "stress_test_completed",
     "noop",
 ]
 

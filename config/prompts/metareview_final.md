@@ -13,6 +13,10 @@ Top-ranked hypotheses (ordered by tournament Elo, with their reviews and winning
 
 Available references (the ONLY sources you may cite — each is a real paper gathered from the top hypotheses):
 {{ citations_block | default('(none)') }}
+{% if stress_test_block %}
+Stress-test results (each top idea was adversarially probed — contradicting evidence sought, citations verified, feasibility checked, a prototype-scale pilot designed — then revised and re-ranked):
+{{ stress_test_block }}
+{% endif %}
 
 Write a complete research-proposal document in markdown with the following structure. Be substantive in every section — this should read like a proposal a lab could fund, not an abstract.
 
@@ -40,6 +44,10 @@ For each top proposal (use the tournament order; cover the top 3-5), write a sub
 
 ## Comparative assessment
 Note which proposals converge on a shared mechanism (mutually reinforcing) versus which are genuinely orthogonal alternatives worth running in parallel. Say which to start with and why.
+
+{% if stress_test_block %}## Stress test of the top ideas
+Summarize how each leading idea held up under adversarial probing: the strongest contradicting evidence found (or that an honest search found none), any citation that failed to support its claim, the feasibility verdict, and the prototype-scale pilot proposed to check viability before scaling. State the post-fix ranking and what each fix changed. Be honest where a stress test undermined an idea.
+{% endif %}
 
 ## Recommended path and sequencing
 A short ordered plan: which experiment to run first, what result gates the next step, and where to hedge mechanism risk.

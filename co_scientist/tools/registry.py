@@ -39,6 +39,11 @@ AGENT_TOOLS: dict[str, set[str]] = {
     },
     "proximity": set(),
     "metareview": set(),
+    "stresstest": {
+        "web_search", "web_fetch",
+        "pubmed_search", "arxiv_search", "europe_pmc_search",
+        "literature_*",
+    },
 }
 
 

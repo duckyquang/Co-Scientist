@@ -522,6 +522,8 @@ class MetaReviewAgent(BaseAgent):
         # Real citations only — built from the top hypotheses' CitedPaper records.
         cites = await hydrate_citations(self.deps.cfg, top)
 
+        stress_block = await self._stress_block(session.id)
+
         prompt = render(
             "metareview.final",
             goal=session.research_plan.objective,
@@ -529,6 +531,7 @@ class MetaReviewAgent(BaseAgent):
             system_feedback=latest_fb.text if latest_fb else "",
             top_hypotheses_block=top_block,
             citations_block=citations_prompt_block(cites),
+            stress_test_block=stress_block,
         )
         r = route(self.deps.cfg, "metareview", "final")
         spec = AgentCallSpec(
@@ -582,6 +585,31 @@ class MetaReviewAgent(BaseAgent):
             kind="final_overview_generated",
             extra={"overview_path": overview_path, "n_top": len(top)},
         )
+
+    async def _stress_block(self, session_id: str) -> str:
+        """Stress-test reports + the post-fix ranking, for the final proposal.
+
+        Returns '' when the stress stage did not run so the template omits the
+        section. Reads the meta_review feedback rows the stress stage wrote.
+        """
+        async with self.deps.db.execute(
+            """SELECT kind, target_id, text FROM system_feedback
+                  WHERE session_id=? AND source='meta_review'
+                    AND kind IN ('stress_test','stress_ranking')
+                  ORDER BY created_at""",
+            (session_id,),
+        ) as cur:
+            rows = await cur.fetchall()
+        if not rows:
+            return ""
+        parts: list[str] = []
+        for r in rows:
+            if r["kind"] == "stress_ranking":
+                parts.append(r["text"])
+            else:
+                tgt = f" (`{r['target_id']}`)" if r["target_id"] else ""
+                parts.append(f"### Stress test{tgt}\n{r['text']}")
+        return "\n\n---\n\n".join(parts)
 
     async def _unverified_urls(self, session, top, reviews_by_hyp) -> frozenset[str]:
         """URLs the citation verifier could not confirm (status != 'ok').

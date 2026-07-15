@@ -9,7 +9,8 @@ from pydantic import BaseModel, Field
 
 FeedbackSource = Literal["human", "meta_review"]
 FeedbackKind = Literal[
-    "directive", "preference", "rejection", "pin", "system_feedback", "self_critique"
+    "directive", "preference", "rejection", "pin", "system_feedback", "self_critique",
+    "stress_test", "stress_ranking",
 ]
 
 
