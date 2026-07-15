@@ -24,15 +24,18 @@ _RUNNING: dict[str, "Sim"] = {}
 _LOCK = threading.Lock()
 
 TOKENS_PER_USD = 220_000
-# Recurring self-critique loop keeps reasoning until the simulated token spend
-# reaches HIT of the budget. Each critique chunk is clamped so it never pushes
-# past HIT; only the tiny re-rank burst lands on top, so the total settles in a
-# ~95-97% band — never over 100%.
+# Reasoning spends the budget in two stages. The self-critique loop fills to
+# CRITIQUE_HIT; the stress-test stage then tops it up to BUDGET_HIT, so both
+# stages get budget and the gauge still settles in a ~95-99% band, never >100%.
 BUDGET_HIT = 0.95
+CRITIQUE_HIT = 0.85
 # Each critique round burns ~this fraction of the budget, so the number of
 # rounds stays bounded (~3-5) regardless of budget size → wall time stays sane.
 CRITIQUE_ROUND_FRACTION = 0.22
 MAX_CRITIQUE_ROUNDS = 8
+# Token chunk each stress-test report spends (budget-scaled, clamped to the
+# BUDGET_HIT target). 3 tested hyps x this comfortably covers the 0.85..0.95 gap.
+STRESS_TEST_FRACTION = 0.05
 
 
 def _now() -> datetime:
@@ -99,6 +102,7 @@ class Sim:
             self._evolution(conn)
             self._ranking(conn, rounds=2)
             self._self_critique_rounds(conn)
+            self._stress_test_rounds(conn)
             self._finalize(conn)
         except Exception as e:  # keep the thread from dying silently
             _emit(conn, self.sid, "supervisor", "task_failed",
@@ -243,8 +247,9 @@ class Sim:
         """Keep reasoning past the standard phases: each round writes a
         meta-review self-critique (re-questioning the leaders), then runs a short
         low-K re-rank burst that wobbles Elo without churning the order — looping
-        until the simulated token spend reaches BUDGET_HIT of the budget."""
-        target = int(BUDGET_HIT * self.budget_tokens)
+        until the simulated token spend reaches CRITIQUE_HIT of the budget (the
+        stress-test stage then tops it up to BUDGET_HIT)."""
+        target = int(CRITIQUE_HIT * self.budget_tokens)
         per_round = max(1, int(CRITIQUE_ROUND_FRACTION * self.budget_tokens))
         round_no = 0
         while self.tokens < target and round_no < MAX_CRITIQUE_ROUNDS:
@@ -277,6 +282,129 @@ class Sim:
                 a, b = self.r.sample(self.hyps, 2)
                 winner = "a" if self.r.random() < 0.5 else "b"
                 self._apply_match(conn, a, b, "pairwise", winner, k=6)
+
+    def _stress_review(self, conn, h):
+        """A reviews row with kind='stress_test' for a tested hyp (mirrors the
+        `_review` INSERT so the hypothesis detail shows the stress verdict)."""
+        now = _now()
+        rv = content.make_review(self.goal, h["title"], "full")
+        rid = "rev_" + hashlib.sha256(f"{h['id']}stress".encode()).hexdigest()[:16]
+        conn.execute(
+            """INSERT INTO reviews
+               (id, hypothesis_id, session_id, created_at, kind, verdict,
+                novelty, correctness, testability, feasibility, body, artifact_path)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (rid, h["id"], self.sid, _ts(now), "stress_test", rv["verdict"],
+             rv["scores"]["novelty"], rv["scores"]["correctness"],
+             rv["scores"]["testability"], rv["scores"]["feasibility"],
+             rv["body"], f"reviews/{rid}.json"))
+
+    def _add_fix_child(self, conn, i, parent, fix):
+        """Insert a stress-hardened fix child (strategy feedback_driven, created
+        by evolution, parent = the tested hyp) seeded just above its parent's Elo
+        so a short re-rank generally leaves it on top. Returns the hyp dict."""
+        hid = "hyp_" + hashlib.sha256(f"{self.sid}|fix|{parent['id']}".encode()).hexdigest()[:18]
+        now = _now()
+        start_elo = round(parent["elo"] + 8.0, 1)
+        full_text = (
+            f"## Hardening\n\n{fix['summary']}\n\nThis is a stress-hardened "
+            f"revision of *{parent['title']}*, addressing the failure mode the "
+            f"stress test surfaced before any scale-up.")
+        conn.execute(
+            """INSERT INTO hypotheses
+               (id, session_id, created_at, created_by, strategy, parent_ids,
+                title, summary, full_text, artifact_path, elo, matches_played,
+                state, dedup_cluster)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (hid, self.sid, _ts(now), "evolution", "feedback_driven",
+             json.dumps([parent["id"]]), fix["title"], fix["summary"], full_text,
+             f"hypotheses/{hid}.json", start_elo, 0, "draft",
+             f"clu_{i % max(2, self.n_initial // 2)}"))
+        for cit in parent["citations"]:
+            conn.execute(
+                "INSERT INTO web_citations (hypothesis_id, title, url, excerpt, doi, year)"
+                " VALUES (?,?,?,?,?,?)",
+                (hid, cit["title"], cit["url"], cit["excerpt"], cit["doi"], cit["year"]))
+        cost = round(self.r.uniform(0.04, 0.2), 4)
+        _transcript(conn, self.sid, "evolution", "evolution.feedback_driven",
+                    content.MODELS["evolution"], now, cost)
+        _emit(conn, self.sid, "evolution", "hypothesis_created",
+              {"hypothesis_id": hid, "title": fix["title"][:80],
+               "strategy": "feedback_driven"}, now)
+        self._bump(conn, cost)
+        h = {"id": hid, "title": fix["title"], "summary": fix["summary"],
+             "elo": start_elo, "matches": 0, "strategy": "feedback_driven",
+             "citations": parent["citations"]}
+        self.hyps.append(h)
+        return h
+
+    def _stress_test_rounds(self, conn):
+        """Fabricated stress-test stage (mimics the real engine's stage so the
+        demo shows the full workflow): take the top-3 leaders, write a meta-review
+        stress report + review for each, breed a hardened fix child, then a short
+        re-rank burst so the fixes generally overtake their parents, and finish
+        with a stress_ranking summary. Tops token spend from CRITIQUE_HIT up to
+        BUDGET_HIT."""
+        if self._status(conn) in ("aborted", "failed") or len(self.hyps) < 2:
+            return
+        top3 = sorted(self.hyps, key=lambda h: -h["elo"])[:3]
+        stress_target = int(BUDGET_HIT * self.budget_tokens)
+        per_hyp = max(1, int(STRESS_TEST_FRACTION * self.budget_tokens))
+        idx0 = self.n_initial + 2  # after generation + the 2 evolution children
+        pairs: list[tuple[dict, dict]] = []
+        for k, h in enumerate(top3):
+            if self._status(conn) in ("aborted", "failed") or not self._wait(conn, 1.5):
+                return
+            now = _now()
+            _emit(conn, self.sid, "stresstest", "task_started",
+                  {"agent": "stresstest", "action": "StressTest",
+                   "hypothesis_id": h["id"]}, now)
+            report = content.make_stress_report(
+                self.goal, h, {"round": k + 1, "of": len(top3)})
+            fid = "fb_" + hashlib.sha256(f"{self.sid}st{k}".encode()).hexdigest()[:12]
+            conn.execute(
+                "INSERT INTO system_feedback (id, session_id, created_at, source,"
+                " kind, target_id, text, active) VALUES (?,?,?,?,?,?,?,1)",
+                (fid, self.sid, _ts(now), "meta_review", "stress_test", h["id"], report))
+            self._stress_review(conn, h)
+            add_tokens = min(per_hyp, max(0, stress_target - int(self.tokens)))
+            cost = round(add_tokens / TOKENS_PER_USD, 4)
+            _transcript(conn, self.sid, "stresstest", "stresstest.report",
+                        content.MODELS["metareview"], now, cost)
+            _emit(conn, self.sid, "stresstest", "task_completed",
+                  {"agent": "stresstest", "kind": "stress_test",
+                   "hypothesis_id": h["id"], "action": "StressTest"}, now)
+            self._bump(conn, cost, add_tokens)
+            child = self._add_fix_child(conn, idx0 + k, h, content.make_stress_fix(h))
+            self._review(conn, child)
+            conn.execute("UPDATE hypotheses SET state='in_tournament' WHERE id=?",
+                         (child["id"],))
+            conn.commit()
+            pairs.append((h, child))
+        # Short re-rank burst: 2 random wobble matches (low K) first, then each
+        # child beats its parent (higher K) so the fixes end up on top.
+        for _ in range(2):
+            if len(self.hyps) < 2 or not self._wait(conn, 0.8):
+                break
+            a, b = self.r.sample(self.hyps, 2)
+            winner = "a" if self.r.random() < 0.5 else "b"
+            self._apply_match(conn, a, b, "pairwise", winner, k=6)
+        for parent, child in pairs:
+            if not self._wait(conn, 0.8):
+                break
+            self._apply_match(conn, child, parent, "pairwise", "a", k=16)
+        # stress_ranking summary row, ordered by the fix children's final Elo.
+        ranked = sorted(
+            ({"tested": p, "fix": c, "elo": c["elo"], "parent_elo": p["elo"]}
+             for p, c in pairs),
+            key=lambda e: -e["elo"])
+        text = content.make_stress_ranking(self.goal, ranked)
+        conn.execute(
+            "INSERT INTO system_feedback (id, session_id, created_at, source,"
+            " kind, target_id, text, active) VALUES (?,?,?,?,?,?,?,1)",
+            ("fb_" + hashlib.sha256(f"{self.sid}strank".encode()).hexdigest()[:12],
+             self.sid, _ts(_now()), "meta_review", "stress_ranking", None, text))
+        conn.commit()
 
     def _finalize(self, conn):
         if self._status(conn) in ("aborted", "failed"):
