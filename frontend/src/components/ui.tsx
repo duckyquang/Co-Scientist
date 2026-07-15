@@ -76,12 +76,79 @@ export function slugify(s: string): string {
   return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
 
+/* ── Inline citation links ───────────────────────────────────────
+ * Turn bracketed integers ([1], [42]) in body text into links to the matching
+ * `## References` entry, and give each reference line a `cite-n` scroll target.
+ * Operates on hast (after remark/katex) so it never touches `[H-…]` hypothesis
+ * ids, task checkboxes, code spans, or KaTeX math. */
+type HNode = {
+  type: string; tagName?: string; value?: string;
+  properties?: Record<string, unknown>; children?: HNode[];
+};
+const CITE_RE = /\[(\d+)\]/g;
+const SKIP_TAGS = new Set(["code", "pre", "a"]); // don't rewrite code or nest anchors
+
+function hastText(node: HNode): string {
+  return node.type === "text" ? node.value || "" : (node.children || []).map(hastText).join("");
+}
+function isMath(node: HNode): boolean {
+  const cn = node.properties?.className;
+  const arr = Array.isArray(cn) ? cn : typeof cn === "string" ? [cn] : [];
+  return arr.some((c) => typeof c === "string" && (c.includes("katex") || c.includes("math")));
+}
+/** Split a text value on `[n]`. In the References section the first marker at
+ *  the start of a line becomes the target span (id="cite-n"); every other
+ *  marker becomes a link to its reference. Returns null when nothing matched. */
+function citeSplit(value: string, inRefs: boolean): HNode[] | null {
+  CITE_RE.lastIndex = 0;
+  const out: HNode[] = [];
+  let last = 0, m: RegExpExecArray | null, matched = false;
+  while ((m = CITE_RE.exec(value))) {
+    if (m.index > last) out.push({ type: "text", value: value.slice(last, m.index) });
+    const n = m[1];
+    const isEntry = inRefs && !matched && value.slice(0, m.index).trim() === "";
+    out.push(isEntry
+      ? { type: "element", tagName: "span",
+          properties: { id: `cite-${n}`, style: "scroll-margin-top:76px" },
+          children: [{ type: "text", value: m[0] }] }
+      : { type: "element", tagName: "a",
+          properties: { href: `#cite-${n}` }, children: [{ type: "text", value: m[0] }] });
+    matched = true;
+    last = m.index + m[0].length;
+  }
+  if (!matched) return null;
+  if (last < value.length) out.push({ type: "text", value: value.slice(last) });
+  return out;
+}
+function rehypeCitations() {
+  return (tree: HNode) => {
+    let inRefs = false; // ponytail: References is a flat trailing section; a heading toggles it
+    const walk = (node: HNode) => {
+      if (!node.children) return;
+      if (node.tagName && /^h[1-6]$/.test(node.tagName)) {
+        inRefs = hastText(node).trim().toLowerCase() === "references";
+      }
+      const out: HNode[] = [];
+      for (const child of node.children) {
+        if (child.type === "text") {
+          out.push(...(citeSplit(child.value || "", inRefs) ?? [child]));
+        } else {
+          if (!(child.tagName && SKIP_TAGS.has(child.tagName)) && !isMath(child)) walk(child);
+          out.push(child);
+        }
+      }
+      node.children = out;
+    };
+    walk(tree);
+  };
+}
+
 export function Markdown({ md }: { md: string }) {
   return (
     <div className="prose-sci">
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeKatex]}
+        rehypePlugins={[rehypeKatex, rehypeCitations]}
         components={{
           // Slugged ids on headings so a table of contents can anchor-scroll.
           h1: ({ children }) => <h1 id={slugify(nodeText(children))}>{children}</h1>,
