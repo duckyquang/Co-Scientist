@@ -208,11 +208,14 @@ class EvolutionAgent(BaseAgent):
         record["strategy"] = strategy
         record["parent_ids"] = parent_ids
 
-        hid, was_new = await self._persist(session.id, record, strategy=strategy)
+        hid, was_new = await self._persist(
+            session.id, record, strategy=strategy, thinking=result.thinking or None,
+        )
         return hid if was_new else None
 
     async def _persist(
-        self, session_id: str, record: dict[str, Any], *, strategy: str
+        self, session_id: str, record: dict[str, Any], *, strategy: str,
+        thinking: str | None = None,
     ) -> tuple[str, bool]:
         statement = record.get("statement") or record.get("title") or ""
         if not statement:
@@ -253,6 +256,7 @@ class EvolutionAgent(BaseAgent):
             title=record.get("title", "")[:300],
             summary=(record.get("statement") or "")[:1000],
             full_text=full_text,
+            thinking=thinking,
             citations=citations,
             artifact_path=artifact_path,
             state="draft",

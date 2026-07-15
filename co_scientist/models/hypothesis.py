@@ -40,6 +40,9 @@ class Hypothesis(BaseModel):
     title: str
     summary: str                 # ~3 sentences; what's embedded for proximity
     full_text: str               # detailed markdown for domain experts
+    # Real extended-thinking the agent produced while generating/evolving this
+    # hypothesis (None when the model emitted no thinking). Surfaced in the UI.
+    thinking: str | None = None
     citations: list[CitedPaper] = Field(default_factory=list)
     artifact_path: str           # relative under data_dir
     elo: float | None = None

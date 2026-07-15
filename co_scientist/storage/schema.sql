@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS hypotheses (
     title           TEXT NOT NULL,
     summary         TEXT NOT NULL,
     full_text       TEXT NOT NULL,
+    thinking        TEXT,                              -- real extended-thinking captured during generation/evolution
     artifact_path   TEXT NOT NULL,
     elo             REAL,
     matches_played  INTEGER NOT NULL DEFAULT 0,
@@ -53,6 +54,7 @@ CREATE TABLE IF NOT EXISTS reviews (
     testability     REAL,
     feasibility     REAL,
     body            TEXT NOT NULL,
+    thinking        TEXT,                              -- real extended-thinking captured during reflection
     artifact_path   TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS rev_hyp ON reviews(hypothesis_id, created_at DESC);

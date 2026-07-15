@@ -54,4 +54,7 @@ class Review(BaseModel):
     assumptions: list[AssumptionCheck] = Field(default_factory=list)
     evidence: list[Evidence] = Field(default_factory=list)
     body: str                              # markdown
+    # Real extended-thinking the Reflection agent produced while reviewing
+    # (None when the model emitted no thinking). Surfaced in the UI.
+    thinking: str | None = None
     artifact_path: str

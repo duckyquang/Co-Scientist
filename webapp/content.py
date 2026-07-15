@@ -733,11 +733,10 @@ def make_overview(goal: str, proposals: list[dict]) -> str:
         f"{c.get('url') or ('https://doi.org/' + c['doi'] if c.get('doi') else '')}".rstrip()
         for c in refs
     ) or "No verifiable citations were gathered."
-    # Seeded per SESSION (the proposal ids carry the session id) so two runs of
-    # the same goal read differently while a re-render is stable. Top-level
-    # sections draw from `r`; each proposal block gets its own stream.
+    # Session-unique token (proposal ids carry the session id) mixed into every
+    # per-section AND per-proposal seed, so two runs of the same goal read
+    # differently while a re-render of one run stays stable.
     seed_tail = "|".join(p.get("id") or p.get("title", "") for p in top)
-    r = _rng(f"{goal}|overview|{seed_tail}")
 
     sections = []
     for i, p in enumerate(top):
@@ -838,114 +837,158 @@ def make_overview(goal: str, proposals: list[dict]) -> str:
     scores = f"{figs['scores']}\n\n" if figs["scores"] else ""
     lineage = f"\n\n{figs['lineage']}" if figs["lineage"] else ""
 
-    framing = r.choice([
-        "The goal above defines a question where a testable, mechanism-anchored "
-        "answer would materially change what happens next. Across a multi-agent "
-        "tournament, the system generated candidate hypotheses, critiqued them, and "
-        "ranked them head-to-head so that only ideas surviving repeated scrutiny "
-        "rose to the top. The proposals below are the survivors, ordered by "
-        "tournament Elo.",
-        "Answering the goal well means turning it into something a team can "
-        "actually test. The system spread the question across competing agents, let "
-        "them argue and re-rank, and kept only the ideas that held up under "
-        "pressure. What follows is that shortlist, ordered by tournament Elo.",
-        "The question above rewards a concrete, falsifiable answer over a "
-        "plausible-sounding one. To find it, the system generated many candidate "
-        "directions, pitted them against each other, and let repeated critique thin "
-        "the field. The proposals below are what remained, ranked by Elo.",
-        "A useful answer here is one a lab can act on, not just agree with. The "
-        "tournament produced candidate hypotheses, stress-tested them against "
-        "rivals, and promoted the ones that kept winning on substance. Those "
-        "survivors are listed below in Elo order.",
+    # Each top-level section is COMPOSED from independent seeded sub-picks (not one
+    # r.choice), seeded per (section|seed_tail). Multiplicative entropy (≈100-125
+    # combos/section) drives the cross-session collision rate to well under 1% — a
+    # single 4-variant pick collides ~1/4 of the time even with a session seed, so
+    # two same-goal runs would otherwise share a section by luck.
+    # ponytail: finite banks, so not a hard guarantee; add a 4th sub-pick if a
+    # section ever collides in practice.
+    plural = "" if len(top) == 1 else "s"
+
+    fr = _rng(f"{goal}|framing|{seed_tail}")
+    framing = " ".join([
+        fr.choice([
+            "The goal above rewards a concrete, falsifiable answer over a plausible-sounding one.",
+            "Answering this goal well means turning it into something a team can actually test.",
+            "A useful answer here is one a lab can act on, not merely nod along to.",
+            "The question above is only worth posing if it can be pushed to a decisive test.",
+            "What this goal needs is a mechanism-anchored answer, not a confident-sounding one.",
+        ]),
+        fr.choice([
+            "Across a multi-agent tournament, candidate hypotheses were generated, critiqued, and ranked head-to-head.",
+            "The system spread the question across competing agents, let them argue, and re-ranked repeatedly.",
+            "Many candidate directions were generated, pitted against each other, and thinned by repeated critique.",
+            "Independent agents proposed ideas, attacked them, and re-scored until an order emerged.",
+            "The workflow generated ideas, stress-tested them against rivals, and kept the ones that held up.",
+        ]),
+        fr.choice([
+            "Only ideas surviving repeated scrutiny rose to the top; the proposals below are those survivors, ordered by Elo.",
+            "What remained is the shortlist below, ranked by tournament Elo.",
+            "The proposals that follow are the ones left standing, in tournament-Elo order.",
+            "Below are the survivors of that process, ordered by tournament Elo.",
+            "The result is the Elo-ranked shortlist that follows.",
+        ]),
     ])
-    exec_summary = r.choice([
-        f"The tournament converged on {len(top)} strong "
-        f"candidate{'' if len(top) == 1 else 's'}, led by **{lead_title}**. The "
-        "leading ideas share a bias toward interventions that are testable with "
-        "what's already on hand and, where possible, reuse known levers to shorten "
-        "the path from hypothesis to evidence.",
-        f"{len(top)} candidate{'' if len(top) == 1 else 's'} rose above the rest, "
-        f"with **{lead_title}** in front. What unites the leaders is a preference "
-        "for cheap, decisive tests over ambitious ones, and for building on "
-        "established levers rather than inventing from scratch.",
-        f"After the dust settled, {len(top)} idea{'' if len(top) == 1 else 's'} "
-        f"stood out — **{lead_title}** most of all. The front-runners are linked "
-        "less by topic than by temperament: each is specified tightly enough to "
-        "falsify quickly and leans on existing methods to move fast.",
-        f"The field narrowed to {len(top)} serious "
-        f"contender{'' if len(top) == 1 else 's'}, headed by **{lead_title}**. The "
-        "common thread among them is pragmatism — testable with current tools, and "
-        "framed so a null result is as informative as a hit.",
+
+    ex = _rng(f"{goal}|execsum|{seed_tail}")
+    exec_summary = " ".join([
+        ex.choice([
+            f"The tournament converged on {len(top)} strong candidate{plural}, led by **{lead_title}**.",
+            f"{len(top)} candidate{plural} rose above the rest, with **{lead_title}** in front.",
+            f"After the dust settled, {len(top)} idea{plural} stood out — **{lead_title}** most of all.",
+            f"The field narrowed to {len(top)} serious contender{plural}, headed by **{lead_title}**.",
+            f"{len(top)} idea{plural} pulled ahead, and **{lead_title}** leads them.",
+        ]),
+        ex.choice([
+            "The leaders share a bias toward interventions testable with what's already on hand, reusing known levers to shorten the path to evidence.",
+            "What unites them is a preference for cheap, decisive tests and for building on established levers rather than inventing from scratch.",
+            "They are linked less by topic than by temperament: each is tight enough to falsify quickly and leans on existing methods to move fast.",
+            "The common thread is pragmatism — testable with current tools, and framed so a null result is as informative as a hit.",
+            "Across them runs the same instinct: keep the mechanism specific and the first experiment cheap.",
+        ]),
+        ex.choice([
+            "None depends on a breakthrough to be worth running.",
+            "Each earns its rank by being decisive, not merely plausible.",
+            "The point of the shortlist is to act, not to admire.",
+            "Read them as a queue of experiments, not a wish list.",
+        ]),
     ])
-    landscape = r.choice([
-        "Independent generation strategies (literature-grounded, debate-driven, "
-        "combination, and out-of-box) were each given room to explore, then forced "
-        "to compete. Where several strategies nominated the same mechanism, that "
-        "convergence is treated as a robustness signal rather than redundancy.",
-        "Several strategies ran in parallel — grounded in prior work, argued out in "
-        "debate, recombined, and deliberately unconventional — before being made to "
-        "fight for rank. When different strategies landed on the same idea, we read "
-        "that agreement as evidence, not repetition.",
-        "The candidates came from distinct angles: some read off the existing "
-        "literature, some emerged from debate, some from recombining earlier ideas, "
-        "and some from deliberately breaking the frame. Overlap between independent "
-        "angles is counted in an idea's favour rather than pruned as duplication.",
-        "Generation was intentionally diverse — literature-anchored, adversarial, "
-        "combinatorial, and contrarian lines all contributed — and then the "
-        "tournament forced a reckoning. A mechanism that surfaced from more than one "
-        "line is treated as corroborated, not redundant.",
+
+    ls = _rng(f"{goal}|landscape|{seed_tail}")
+    landscape = " ".join([
+        ls.choice([
+            "Independent strategies ran in parallel — literature-grounded, debate-driven, combinatorial, and deliberately unconventional.",
+            "The candidates came from distinct angles: prior work, adversarial debate, recombination, and breaking the frame.",
+            "Generation was intentionally diverse, spanning grounded, contrarian, and combinatorial lines.",
+            "Several strategies explored separately — some anchored in the literature, some argued out, some recombined, some out-of-box.",
+            "Ideas were sourced from competing playbooks rather than a single method.",
+        ]),
+        ls.choice([
+            "Each was then forced to compete for rank.",
+            "They were only ranked after being made to fight it out.",
+            "The tournament then forced a reckoning among them.",
+            "Competition, not consensus, decided the order.",
+            "Only after head-to-head pressure did an ordering emerge.",
+        ]),
+        ls.choice([
+            "Where several strategies nominated the same mechanism, that convergence is read as a robustness signal, not redundancy.",
+            "Overlap between independent angles is counted in an idea's favour rather than pruned as duplication.",
+            "A mechanism that surfaced from more than one line is treated as corroborated, not repeated.",
+            "Agreement across independent strategies is evidence here, not noise.",
+        ]),
     ])
-    comparative = r.choice([
-        "The top proposals are not interchangeable: some converge on a shared "
-        "mechanism (mutually reinforcing evidence), while others are genuinely "
-        "orthogonal bets worth running in parallel to hedge mechanism risk. Prefer "
-        "starting with the highest-Elo idea that also has the cheapest decisive "
-        "experiment.",
-        "These leaders are not variations on one theme — a few reinforce each other "
-        "by pointing at the same mechanism, while others are independent wagers best "
-        "run side by side. The pragmatic opening move is the top-ranked idea whose "
-        "decisive experiment is also the cheapest.",
-        "Read together, the proposals split into overlapping bets and genuinely "
-        "separate ones; the overlaps strengthen each other, the separations hedge "
-        "against being wrong about the mechanism. Sequence them by starting where "
-        "high rank meets a low-cost decisive test.",
-        "The shortlist mixes mutually supporting ideas with orthogonal ones, and "
-        "both kinds earn their place — one for corroboration, the other for "
-        "insurance. Begin with whichever high-Elo idea can be settled most cheaply.",
+
+    cp = _rng(f"{goal}|comparative|{seed_tail}")
+    comparative = " ".join([
+        cp.choice([
+            "The top proposals are not interchangeable.",
+            "These leaders are not variations on one theme.",
+            "Read together, the shortlist is genuinely heterogeneous.",
+            "The finalists split into distinct kinds of bet.",
+            "The leaders are not a single idea in different clothes.",
+        ]),
+        cp.choice([
+            "Some converge on a shared mechanism and reinforce each other; others are orthogonal bets worth running in parallel to hedge mechanism risk.",
+            "A few point at the same mechanism and corroborate each other, while others are independent wagers best run side by side.",
+            "The overlaps strengthen each other; the separations hedge against being wrong about the mechanism.",
+            "Where they overlap they corroborate; where they diverge they insure against a single point of failure.",
+            "Mutually supporting ideas sit next to orthogonal ones, and both earn their place.",
+        ]),
+        cp.choice([
+            "Prefer starting with the highest-Elo idea whose decisive experiment is also the cheapest.",
+            "Begin where high rank meets a low-cost decisive test.",
+            "Open with the top-ranked idea that can be settled most cheaply.",
+            "Sequence them so the first move is both high-Elo and cheap to falsify.",
+        ]),
     ])
-    rec1 = r.choice([
+
+    rp = _rng(f"{goal}|recommend|{seed_tail}")
+    rec1 = rp.choice([
         "Run the single cheapest decisive experiment for the top proposal first.",
         "Start with the top proposal's cheapest experiment that can actually settle it.",
         "Spend the first dollar on the most decisive, lowest-cost test of the leader.",
+        "Open with the one experiment that could kill the top proposal fastest.",
+        "Begin by trying hardest to falsify the leader, as cheaply as possible.",
     ])
-    rec2 = r.choice([
+    rec2 = rp.choice([
         "If it clears, add the orthogonal runner-up to hedge mechanism risk.",
         "If that holds up, bring in the most independent runner-up as a hedge.",
         "Assuming a positive read, run the orthogonal runner-up next to cover the "
         "mechanism risk.",
+        "On a clean result, follow with the least-correlated runner-up as insurance.",
+        "Should the leader survive, pair it with an orthogonal bet before scaling.",
     ])
-    rec3 = r.choice([
+    rec3 = rp.choice([
         "Pre-register every falsification threshold before any hands-on work begins.",
         "Fix and record each pass/fail threshold up front, before collecting data.",
         "Lock in the falsification criteria in advance so a near-miss can't be "
         "argued away.",
+        "Commit to the stop/go thresholds on paper before the first measurement.",
+        "Write down what counts as failure first, so results can't be rationalised.",
     ])
-    open_q = r.choice([
-        "Where the evidence was thin, reviewer confidence is lower and a domain "
-        "expert is most likely to disagree — treat those proposals as exploratory. "
-        "The tournament optimizes for debate-survivability, not ground truth, so a "
-        "high Elo is a strong prior, not a proof.",
-        "The proposals resting on the least support are exactly where an expert "
-        "would push back hardest; hold them loosely. Remember the ranking rewards "
-        "ideas that survive argument, which is correlated with being right but is "
-        "not the same thing.",
-        "Confidence should track the underlying support, which is uneven — the "
-        "thinner cases are best read as leads rather than conclusions. A high Elo "
-        "says an idea withstood scrutiny, not that it is true.",
-        "Some of these stand on firmer ground than others, and the shakier ones "
-        "deserve a skeptic's eye before any commitment. The tournament measures how "
-        "well an idea defends itself, so treat rank as a prior to update, not a "
-        "verdict.",
+
+    op = _rng(f"{goal}|openq|{seed_tail}")
+    open_q = " ".join([
+        op.choice([
+            "Some proposals stand on firmer ground than others, and confidence should track that unevenness.",
+            "Where the evidence was thin, reviewer confidence is lower.",
+            "The proposals resting on the least support deserve the most skepticism.",
+            "Support is uneven across the shortlist, and so should be your confidence.",
+            "Not every proposal here is equally grounded.",
+        ]),
+        op.choice([
+            "Treat the thinner cases as leads rather than conclusions, and expect a domain expert to push back hardest there.",
+            "Hold the weakly-supported ones loosely; that is exactly where an expert would disagree.",
+            "The shakier ideas are best read as exploratory and flagged for expert review.",
+            "Read the least-supported proposals as directions to probe, not settled findings.",
+        ]),
+        op.choice([
+            "The tournament optimizes for debate-survivability, not ground truth, so a high Elo is a strong prior, not a proof.",
+            "Remember the ranking rewards ideas that survive argument — correlated with being right, but not the same thing.",
+            "A high Elo says an idea withstood scrutiny, not that it is true; treat rank as a prior to update.",
+            "Elo measures how well an idea defends itself, not whether it is correct.",
+        ]),
     ])
 
     return f"""# Research proposal

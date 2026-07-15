@@ -17,14 +17,14 @@ import type { Feedback, Hypothesis, Match, ResearchPlan } from "../../types";
 export type ChatMsg =
   | { id: string; role: "user"; kind: "goal" | "feedback"; text: string }
   | { id: string; role: "assistant"; kind: "understanding"; plan: ResearchPlan }
-  | { id: string; role: "assistant"; kind: "generating"; hyps: Hypothesis[]; reviewed: number; active: boolean }
-  | { id: string; role: "assistant"; kind: "ranking"; top: Hypothesis[]; series: Record<string, { i: number; elo: number }[]>; matches: number; active: boolean }
-  | { id: string; role: "assistant"; kind: "evolving"; round: number; offspring: Hypothesis[] }
+  | { id: string; role: "assistant"; kind: "generating"; hyps: Hypothesis[]; reviewed: number; active: boolean; simulated: boolean }
+  | { id: string; role: "assistant"; kind: "ranking"; top: Hypothesis[]; series: Record<string, { i: number; elo: number }[]>; matches: number; rationales: string[]; active: boolean; simulated: boolean }
+  | { id: string; role: "assistant"; kind: "evolving"; round: number; offspring: Hypothesis[]; simulated: boolean }
   | { id: string; role: "assistant"; kind: "feedback"; text: string }
   // Self-critique ("requestioning") round — optional Thinking section + narrative.
-  | { id: string; role: "assistant"; kind: "critique"; round: number; thinking: string | null; body: string }
+  | { id: string; role: "assistant"; kind: "critique"; round: number; thinking: string | null; body: string; simulated: boolean }
   // Stress-test report for one top hypothesis; `first` carries the stage header.
-  | { id: string; role: "assistant"; kind: "stresstest"; hypId: string; hypTitle: string; thinking: string | null; body: string; first: boolean; active: boolean }
+  | { id: string; role: "assistant"; kind: "stresstest"; hypId: string; hypTitle: string; thinking: string | null; body: string; first: boolean; active: boolean; simulated: boolean }
   // Final ranking after stress tests + fixes.
   | { id: string; role: "assistant"; kind: "stressranking"; md: string; refs: Hypothesis[] }
   | { id: string; role: "assistant"; kind: "proposal"; md: string }
@@ -44,8 +44,11 @@ export function deriveMessages(input: {
   live: boolean;
   done: boolean;
   chat?: ChatTurn[];
+  /** Sim sessions mark all reasoning disclosures as "Simulated reasoning". */
+  simulated?: boolean;
 }): ChatMsg[] {
   const { goal, plan, hyps, matches, eloHistory, feedback, reviewed, overview, live, done, chat } = input;
+  const simulated = !!input.simulated;
   const msgs: ChatMsg[] = [];
 
   msgs.push({ id: "goal", role: "user", kind: "goal", text: goal });
@@ -56,15 +59,21 @@ export function deriveMessages(input: {
   if (initial.length) {
     msgs.push({
       id: "generating", role: "assistant", kind: "generating",
-      hyps: initial, reviewed, active: live && matches.length === 0,
+      hyps: initial, reviewed, active: live && matches.length === 0, simulated,
     });
   }
 
   if (matches.length) {
     const ranked = [...hyps].filter((h) => h.elo != null).sort((a, b) => (b.elo ?? 0) - (a.elo ?? 0));
+    // A few most-recent debate rationales, newest first — the "reasoning" behind the standings.
+    const rationales = [...matches]
+      .sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at))
+      .map((m) => m.rationale?.trim())
+      .filter((r): r is string => !!r)
+      .slice(0, 3);
     msgs.push({
       id: "ranking", role: "assistant", kind: "ranking",
-      top: ranked.slice(0, 6), series: eloHistory, matches: matches.length, active: live,
+      top: ranked.slice(0, 6), series: eloHistory, matches: matches.length, rationales, active: live, simulated,
     });
   }
 
@@ -74,7 +83,7 @@ export function deriveMessages(input: {
     .filter((h) => h.created_by === "evolution" && h.strategy !== "feedback_driven")
     .sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at));
   clusterRounds(offspring).forEach((round, i) => {
-    msgs.push({ id: `evolving-${i + 1}`, role: "assistant", kind: "evolving", round: i + 1, offspring: round });
+    msgs.push({ id: `evolving-${i + 1}`, role: "assistant", kind: "evolving", round: i + 1, offspring: round, simulated });
   });
 
   // Feedback endpoints return newest-first (correct for the Explore feed), but a
@@ -89,7 +98,7 @@ export function deriveMessages(input: {
       const { thinking, body } = parseSections(f.text, "Self-critique");
       msgs.push({
         id: `fb-${f.id}`, role: "assistant", kind: "critique",
-        round: ++critiqueRound, thinking, body,
+        round: ++critiqueRound, thinking, body, simulated,
       });
       continue;
     }
@@ -102,6 +111,7 @@ export function deriveMessages(input: {
         thinking, body,
         first: firstStress,
         active: live && !hasStressRanking && !done,
+        simulated,
       });
       firstStress = false;
       continue;
@@ -217,6 +227,21 @@ function UserBubble({ text }: { text: string }) {
   );
 }
 
+/** Collapsible reasoning disclosure — the shared pattern across every phase.
+ *  Labelled "Simulated reasoning" for sim sessions, "Thinking process" otherwise. */
+function Thinking({ text, simulated, className = "mb-3" }: { text: string; simulated: boolean; className?: string }) {
+  return (
+    <details className={className}>
+      <summary className="cursor-pointer select-none font-mono text-[10.5px] uppercase tracking-[0.08em] text-ink-soft transition-colors hover:text-ink">
+        {simulated ? "Simulated reasoning" : "Thinking process"}
+      </summary>
+      <div className="mt-2 whitespace-pre-wrap border-l-2 border-rule pl-3 font-mono text-[12px] leading-relaxed text-ink-soft">
+        {text}
+      </div>
+    </details>
+  );
+}
+
 function HypRow({ h, rank, onSelect }: { h: Hypothesis; rank?: number; onSelect: (id: string) => void }) {
   return (
     <button onClick={() => onSelect(h.id)}
@@ -266,7 +291,12 @@ export function ChatMessage({ msg, onSelect }: { msg: ChatMsg; onSelect: (id: st
           {msg.reviewed > 0 && <> · reviewed <span className="num font-semibold text-ink">{msg.reviewed}</span></>}.
         </p>
         <div className="space-y-1.5">
-          {msg.hyps.map((h) => <HypRow key={h.id} h={h} onSelect={onSelect} />)}
+          {msg.hyps.map((h) => (
+            <div key={h.id} className="space-y-1.5">
+              <HypRow h={h} onSelect={onSelect} />
+              {h.thinking && <Thinking text={h.thinking} simulated={msg.simulated} className="mb-1 pl-3" />}
+            </div>
+          ))}
         </div>
       </Assistant>
     );
@@ -289,6 +319,11 @@ export function ChatMessage({ msg, onSelect }: { msg: ChatMsg; onSelect: (id: st
             <EloRace series={msg.series} onSelect={onSelect} height={180} />
           </div>
         )}
+        {msg.rationales.length > 0 && (
+          <div className="mt-3">
+            <Thinking text={msg.rationales.map((r) => `• ${r}`).join("\n\n")} simulated={msg.simulated} className="" />
+          </div>
+        )}
       </Assistant>
     );
   }
@@ -302,7 +337,12 @@ export function ChatMessage({ msg, onSelect }: { msg: ChatMsg; onSelect: (id: st
           combining and mutating the top-ranked parents{msg.round > 1 ? " after re-ranking" : ""}.
         </p>
         <div className="space-y-1.5">
-          {msg.offspring.map((h) => <HypRow key={h.id} h={h} onSelect={onSelect} />)}
+          {msg.offspring.map((h) => (
+            <div key={h.id} className="space-y-1.5">
+              <HypRow h={h} onSelect={onSelect} />
+              {h.thinking && <Thinking text={h.thinking} simulated={msg.simulated} className="mb-1 pl-3" />}
+            </div>
+          ))}
         </div>
       </Assistant>
     );
@@ -321,16 +361,7 @@ export function ChatMessage({ msg, onSelect }: { msg: ChatMsg; onSelect: (id: st
           </span>
         </div>
         <div className="border border-rule bg-card p-4 text-[13px]">
-          {msg.thinking && (
-            <details className="mb-3">
-              <summary className="cursor-pointer select-none font-mono text-[10.5px] uppercase tracking-[0.08em] text-ink-soft transition-colors hover:text-ink">
-                Thinking process
-              </summary>
-              <div className="mt-2 whitespace-pre-wrap border-l-2 border-rule pl-3 font-mono text-[12px] leading-relaxed text-ink-soft">
-                {msg.thinking}
-              </div>
-            </details>
-          )}
+          {msg.thinking && <Thinking text={msg.thinking} simulated={msg.simulated} />}
           <Markdown md={msg.body} />
         </div>
       </Assistant>
@@ -351,16 +382,7 @@ export function ChatMessage({ msg, onSelect }: { msg: ChatMsg; onSelect: (id: st
           </span>
         </div>
         <div className="border border-rule bg-card p-4 text-[13px]">
-          {msg.thinking && (
-            <details className="mb-3">
-              <summary className="cursor-pointer select-none font-mono text-[10.5px] uppercase tracking-[0.08em] text-ink-soft transition-colors hover:text-ink">
-                Thinking process
-              </summary>
-              <div className="mt-2 whitespace-pre-wrap border-l-2 border-rule pl-3 font-mono text-[12px] leading-relaxed text-ink-soft">
-                {msg.thinking}
-              </div>
-            </details>
-          )}
+          {msg.thinking && <Thinking text={msg.thinking} simulated={msg.simulated} />}
           <Markdown md={msg.body} />
         </div>
       </Assistant>
