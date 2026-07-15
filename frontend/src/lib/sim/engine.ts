@@ -87,6 +87,7 @@ interface PlanHyp {
   id: string; idx: number; strategy: string;
   created_by: "generation" | "evolution"; parents: string[];
   tCreate: number; tReview: number;
+  elo0: number; // quality-seeded initial Elo (1000..1800)
   title: string; summary: string; full_text: string;
   citations: { title: string; url: string; excerpt: string | null; doi: string | null; year: number | null }[];
   review: HypReview;
@@ -100,6 +101,7 @@ interface PlanEvent { t: number; agent: string; event: string; payload: any }
 interface Plan {
   steps: Step[]; hyps: PlanHyp[]; matches: PlanMatch[]; events: PlanEvent[];
   tEnd: number; pinnedId: string | null; overview: string;
+  utilTarget: number; // per-session budget-gauge cap (0.90..0.99)
   metaFeedback: Feedback;
   critiques: { t: number; fb: Feedback }[]; // recurring self-critique rounds, timed
   stress: { t: number; fb: Feedback }[];    // stress-test reports + ranking, timed
@@ -107,19 +109,23 @@ interface Plan {
   failed?: boolean;  // groq generation errored
 }
 
-/** Recurring self-critique loop keeps reasoning until simulated token spend
- *  reaches HIT of the budget. Critique chunks are clamped so they never cross
- *  HIT; only the tiny re-rank burst lands on top → ~95-97% band, never >100%. */
-const BUDGET_HIT = 0.95;
-/** Self-critique loop fills to CRITIQUE_HIT; the stress-test stage tops up to
- *  BUDGET_HIT — so both stages get budget and the gauge still lands ~95-99%. */
-const CRITIQUE_HIT = 0.85;
+/** Per-session utilization target range: each session draws a deterministic
+ *  target in [0.90, 0.99] so finished runs land at *varied* 90-99% utilization
+ *  instead of a fixed 95%. The self-critique loop fills to target−CRITIQUE_GAP;
+ *  the stress-test stage tops up to the target. Never >100% (99% clamp below). */
+const UTIL_MIN = 0.90;
+const UTIL_MAX = 0.99;
+const CRITIQUE_GAP = 0.10;
+/** Initial-Elo seeding, mirroring the real engine's review-composite seeding:
+ *  hidden quality q ∈ [0.05, 0.95] per hyp → Elo = BASE + SPAN·q + noise. */
+const ELO_SEED_BASE = 1000;
+const ELO_SEED_SPAN = 800;
 /** Each round burns ~this fraction of the budget, so round count stays bounded
  *  (~3-5) for any budget → wall time stays close to today's. */
 const CRITIQUE_ROUND_FRACTION = 0.22;
 const MAX_CRITIQUE_ROUNDS = 8;
 /** Token chunk each stress-test report spends (budget-scaled, clamped to the
- *  BUDGET_HIT target). 3 tested hyps × this covers the 0.85→0.95 gap. */
+ *  utilization target). 3 tested hyps × this covers the critique→target gap. */
 const STRESS_TEST_FRACTION = 0.05;
 
 /** Assemble a markdown body from Groq's structured hypothesis fields. */
@@ -154,6 +160,7 @@ function buildPlan(rec: SimRecord): Plan {
     ];
     return {
       steps: [], hyps: [], matches: [], events, tEnd: Infinity, pinnedId: null, overview: "",
+      utilTarget: UTIL_MAX,
       metaFeedback: { id: `fb_${rec.id}_meta`, created_at: new Date(rec.created_ms).toISOString(), source: "meta_review", kind: "system_feedback", target_id: null, active: 1, text: "" },
       critiques: [],
       stress: [],
@@ -167,6 +174,8 @@ function buildPlan(rec: SimRecord): Plan {
 
   const { id: simId, goal, n_initial: n } = rec;
   const r = makeRng(simId);
+  // Per-session utilization target — finished gauges read 90-99%, varied.
+  const utilTarget = makeRng(`${simId}|util`).uniform(UTIL_MIN, UTIL_MAX);
   let t = 0;
   let matchCounter = 0;
   let tokSum = 0; // running input+output tokens (drives the budget gauge)
@@ -222,15 +231,31 @@ function buildPlan(rec: SimRecord): Plan {
       review: { verdict: rv.verdict, scores: rv.scores, body: rv.body } as HypReview,
     };
   };
+  /** Win probability from each idea's fixed quality anchor (seed Elo, elo0), not
+   *  its drifting live Elo — so consistent winners climb toward 2000 and losers
+   *  fall toward 1000 instead of mean-reverting, spreading the leaderboard. */
+  const pWinA = (a: PlanHyp, b: PlanHyp) => 1 / (1 + Math.pow(10, (b.elo0 - a.elo0) / 400));
+  /** Quality-seeded initial Elo: evolution children inherit their best parent's
+   *  rating + a small boost; fresh generations get a hidden quality stratified
+   *  across the batch by index (with per-id jitter) so seeds reliably span the
+   *  range — independent draws over a small batch occasionally cluster. */
+  const seedElo = (id: string, idx: number, parents: string[]): number => {
+    const parentElos = parents.map((p) => elo.get(p)).filter((e): e is number => e != null);
+    if (parentElos.length) return round1(Math.max(...parentElos) + r.uniform(10, 40));
+    const rq = makeRng(`${id}|q`);
+    const frac = Math.min(1, Math.max(0, (idx + rq.uniform(-0.4, 0.4)) / Math.max(1, n - 1)));
+    const q = 0.05 + 0.90 * frac;
+    return round1(ELO_SEED_BASE + ELO_SEED_SPAN * q + rq.uniform(-15, 15));
+  };
   const addHyp = (idx: number, strategy: string, createdBy: "generation" | "evolution", parents: string[]): PlanHyp => {
     const c = hypContent(idx, strategy);
     const h: PlanHyp = {
       id: hypId(idx), idx, strategy, created_by: createdBy, parents,
-      tCreate: t, tReview: t,
+      tCreate: t, tReview: t, elo0: seedElo(hypId(idx), idx, parents),
       title: c.title, summary: c.summary, full_text: c.full_text, citations: c.citations, review: c.review,
     };
     hyps.push(h);
-    elo.set(h.id, 1200);
+    elo.set(h.id, h.elo0);
     transcript(createdBy, `${createdBy}.${strategy}`, 0.04, 0.2);
     emit(createdBy, "hypothesis_created", { hypothesis_id: h.id, title: c.title.slice(0, 80), strategy });
     return h;
@@ -246,8 +271,8 @@ function buildPlan(rec: SimRecord): Plan {
         const a = shuffled[k], b = shuffled[k + 1];
         t += 1.2;
         const mode = r.random() < 0.35 ? "debate" : "pairwise";
-        const winner: "a" | "b" = r.random() < 0.5 ? "a" : "b";
         const ea = elo.get(a.id)!, eb = elo.get(b.id)!;
+        const winner: "a" | "b" = r.random() < pWinA(a, b) ? "a" : "b";
         const [ra, rb] = eloUpdate(ea, eb, winner);
         const mid = `mat_${simId}_${matchCounter++}`;
         matches.push({
@@ -299,10 +324,11 @@ function buildPlan(rec: SimRecord): Plan {
   // ── Phase 4.5: recurring self-critique rounds ──
   // Keep reasoning past the fixed phases: each round writes a meta-review
   // self-critique (re-questioning the leaders) + a short low-K re-rank burst,
-  // looping until simulated token spend reaches BUDGET_HIT of the budget. The
-  // per-round chunk scales with the budget so the round COUNT stays bounded.
+  // looping until simulated token spend reaches utilTarget−CRITIQUE_GAP of the
+  // budget. The per-round chunk scales with the budget so the round COUNT
+  // stays bounded.
   const budgetTok = rec.budget_tokens > 0 ? rec.budget_tokens : DEFAULT_BUDGET_TOKENS;
-  const targetTok = CRITIQUE_HIT * budgetTok;
+  const targetTok = (utilTarget - CRITIQUE_GAP) * budgetTok;
   const perRound = Math.max(1, Math.floor(CRITIQUE_ROUND_FRACTION * budgetTok));
   const critiques: { t: number; fb: Feedback }[] = [];
   let critRound = 0;
@@ -327,8 +353,8 @@ function buildPlan(rec: SimRecord): Plan {
       t += 0.8;
       const [a, b] = r.sample(hyps, 2);
       const mode = r.random() < 0.35 ? "debate" : "pairwise";
-      const winner: "a" | "b" = r.random() < 0.5 ? "a" : "b";
       const ea = elo.get(a.id)!, eb = elo.get(b.id)!;
+      const winner: "a" | "b" = r.random() < pWinA(a, b) ? "a" : "b";
       const [ra, rb] = eloUpdate(ea, eb, winner, 6);
       const mid = `mat_${simId}_${matchCounter++}`;
       matches.push({
@@ -348,11 +374,12 @@ function buildPlan(rec: SimRecord): Plan {
   // workflow: take the top-3 leaders, write a meta-review stress report + review
   // for each, breed a hardened fix child (seeded just above its parent), a short
   // re-rank burst so the fixes generally overtake their parents, then a
-  // stress_ranking summary. Tops token spend from CRITIQUE_HIT up to BUDGET_HIT.
+  // stress_ranking summary. Tops token spend from the critique level up to the
+  // per-session utilTarget.
   const stress: { t: number; fb: Feedback }[] = [];
   if (hyps.length >= 2) {
     const stressTop3 = [...hyps].sort((x, y) => elo.get(y.id)! - elo.get(x.id)!).slice(0, 3);
-    const stressTargetTok = BUDGET_HIT * budgetTok;
+    const stressTargetTok = utilTarget * budgetTok;
     const perStress = Math.max(1, Math.floor(STRESS_TEST_FRACTION * budgetTok));
     const pairs: { parent: PlanHyp; child: PlanHyp }[] = [];
     stressTop3.forEach((h, k) => {
@@ -376,16 +403,19 @@ function buildPlan(rec: SimRecord): Plan {
       const fix = makeStressFix({ id: h.id, title: h.title });
       const cidx = n + 2 + k;
       const rv = makeReview(goal, fix.title, "full");
+      // Inherit parent quality + a small boost so hardened ideas rank high.
+      const childElo = round1(elo.get(h.id)! + r.uniform(10, 30));
       const child: PlanHyp = {
         id: hypId(cidx), idx: cidx, strategy: "feedback_driven",
         created_by: "evolution", parents: [h.id], tCreate: t, tReview: t,
+        elo0: childElo,
         title: fix.title, summary: fix.summary,
         full_text: `## Hardening\n\n${fix.summary}`,
         citations: h.citations,
         review: { verdict: rv.verdict, scores: rv.scores, body: rv.body },
       };
       hyps.push(child);
-      elo.set(child.id, elo.get(h.id)! + 8);
+      elo.set(child.id, childElo);
       transcript("evolution", "evolution.feedback_driven", 0.04, 0.2);
       emit("evolution", "hypothesis_created", { hypothesis_id: child.id, title: fix.title.slice(0, 80), strategy: "feedback_driven" });
       review(child);
@@ -409,7 +439,8 @@ function buildPlan(rec: SimRecord): Plan {
     };
     for (let bi = 0; bi < 2 && hyps.length >= 2; bi++) {
       const [a, b] = r.sample(hyps, 2);
-      stressMatch(a, b, r.random() < 0.5 ? "a" : "b", 6, `Idea held up under re-examination.`);
+      const w: "a" | "b" = r.random() < pWinA(a, b) ? "a" : "b";
+      stressMatch(a, b, w, 6, `Idea held up under re-examination.`);
     }
     for (const { parent, child } of pairs) {
       stressMatch(child, parent, "a", 16, "Hardened revision beat its parent under stress re-test.");
@@ -492,7 +523,7 @@ function buildPlan(rec: SimRecord): Plan {
     text: "Top candidates converge on a shared pathway — a robust signal. Consider one more out-of-box round to stress-test the consensus.",
   };
 
-  const plan: Plan = { steps, hyps, matches, events, tEnd, pinnedId, overview, metaFeedback, critiques, stress, pending: false, failed: false };
+  const plan: Plan = { steps, hyps, matches, events, tEnd, pinnedId, overview, utilTarget, metaFeedback, critiques, stress, pending: false, failed: false };
   _planCache.set(cacheKey, plan);
   return plan;
 }
@@ -544,7 +575,7 @@ function visibleHyps(s: Snapshot): PlanHyp[] {
 }
 function currentElo(s: Snapshot, h: PlanHyp): number | null {
   if (h.tReview > s.el) return null; // still a draft → no Elo yet
-  let e = 1200;
+  let e = h.elo0;
   for (const m of s.plan.matches) {
     if (m.t > s.el) break;
     if (m.hyp_a === h.id) e = m.elo_a_after;
@@ -631,11 +662,12 @@ function sessionRow(s: Snapshot): SessionRow {
     budget_usd: s.rec.budget_usd ?? round4(cost),
     budget_used_usd: cost,
     budget_tokens: s.rec.budget_tokens ?? DEFAULT_BUDGET_TOKENS,
-    // Cap the gauge at 99% so the finalize + re-rank-burst spend that lands on
-    // top of the 95% target can never read at/over 100%.
+    // Cap the gauge at the per-session util target (90-99%): incidental
+    // match/review/finalize tokens always overshoot it, so a finished run reads
+    // exactly its varied target rather than pinning at a fixed value.
     budget_used_tokens: Math.min(
       u.input_tokens + u.output_tokens || Math.round(cost * TOKENS_PER_USD),
-      Math.floor((s.rec.budget_tokens ?? DEFAULT_BUDGET_TOKENS) * 0.99)),
+      Math.floor((s.rec.budget_tokens ?? DEFAULT_BUDGET_TOKENS) * s.plan.utilTarget)),
     wall_clock_seconds: s.rec.wall_clock_seconds ?? DEFAULT_WALL_CLOCK_SECONDS,
     final_overview: s.status === "done" ? `artifacts/${s.rec.id}/final/overview.md` : null,
     n_hyps: vis.length,
@@ -668,12 +700,20 @@ function toHypothesis(s: Snapshot, h: PlanHyp): Hypothesis {
 }
 
 /* ── Persistence ───────────────────────────────────────────── */
+/** Current maximum budget preset (Deep). Legacy records persisted caps from the
+ *  old presets (20M Standard / 150M Deep); clamp on load so their cards read
+ *  sanely — usage is derived downstream, so the percentage stays consistent. */
+const MAX_BUDGET_TOKENS = 5_000_000;
 function loadRecords(): SimRecord[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const arr = JSON.parse(raw);
-    return Array.isArray(arr) ? arr : [];
+    if (!Array.isArray(arr)) return [];
+    return arr.map((r: SimRecord) => ({
+      ...r,
+      budget_tokens: Math.min(r.budget_tokens || DEFAULT_BUDGET_TOKENS, MAX_BUDGET_TOKENS),
+    }));
   } catch { return []; }
 }
 function saveRecords(recs: SimRecord[]): void {

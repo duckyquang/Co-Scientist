@@ -67,13 +67,30 @@ class RankingAgent(BaseAgent):
             raise ValueError("AddToTournament requires target_id")
         changed = await hyp_repo.init_tournament(
             self.deps.db, hypothesis_id,
-            initial_elo=float(self.deps.cfg.ranking.elo_initial),
+            initial_elo=await self._seed_elo(hypothesis_id),
         )
         return TaskResult(
             kind="added_to_tournament",
             hypothesis_ids=[hypothesis_id] if changed else [],
             extra={"already_in_tournament": not changed},
         )
+
+    async def _seed_elo(self, hypothesis_id: str) -> float:
+        """Initial Elo from review quality: base + span * composite (0..1).
+
+        Review precedes AddToTournament, so scores normally exist — quality
+        differences are visible on the leaderboard from the first match. Falls
+        back to `elo_initial` when no scored review is found.
+        """
+        cfg = self.deps.cfg.ranking
+        for r in await rev_repo.list_for_hypothesis(self.deps.db, hypothesis_id):
+            vals = [v for v in (r.scores.novelty, r.scores.correctness,
+                                r.scores.testability, r.scores.feasibility)
+                    if v is not None]
+            if vals:
+                composite = sum(vals) / len(vals)
+                return float(cfg.elo_seed_base + cfg.elo_seed_span * composite)
+        return float(cfg.elo_initial)
 
     # ----------------------------- RunTournamentBatch -------------------------- #
 

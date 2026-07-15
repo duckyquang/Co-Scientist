@@ -53,11 +53,13 @@ class VectorsCfg(BaseModel):
 
 
 class RankingCfg(BaseModel):
-    k_factor_new: int = 32
-    k_factor_warm: int = 16
-    elo_initial: int = 1200
+    k_factor_new: int = 48
+    k_factor_warm: int = 32
+    elo_initial: int = 1200          # fallback when a hypothesis has no review scores
+    elo_seed_base: int = 1000        # initial Elo = base + span * review composite (0..1)
+    elo_seed_span: int = 800
     debate_when_matches_lt: int = 2
-    debate_when_elo_delta_lt: int = 50
+    debate_when_elo_delta_lt: int = 150
     batch_below_decile: bool = True
     batch_submit_every_seconds: int = 1800
     p_new: float = 0.4
@@ -68,7 +70,7 @@ class RankingCfg(BaseModel):
 class TerminationCfg(BaseModel):
     elo_stability_k: int = 5
     elo_stability_n: int = 3
-    elo_stability_eps: float = 25.0
+    elo_stability_eps: float = 60.0
     match_snapshot_every: int = 10
     # Keep working until ≥90% of the token budget is spent; the 10% tail funds
     # the finalize stage (stress tests + fixes + re-rank + final overview).

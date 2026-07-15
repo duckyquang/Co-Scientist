@@ -5,7 +5,7 @@ import { StrategyTag } from "../ui";
 import type { Hypothesis, Metrics } from "../../types";
 
 const LEGEND: [LucideIcon, string, string][] = [
-  [Trophy, "Elo rating", "Every hypothesis starts at 1200. It wins or loses Elo each time the Ranking agent pits it against another. Higher = it survived more debates."],
+  [Trophy, "Elo rating", "Every hypothesis enters seeded 1000-1800 by review quality. It wins or loses Elo each time the Ranking agent pits it against another. Higher = it survived more debates."],
   [Swords, "Tournament", "The list of head-to-head matches and how each idea's rating moved over time."],
   [GitBranch, "Lineage", "How ideas evolved: original hypotheses on the left, offspring the Evolution agent bred from top parents on the right."],
   [Radar, "Clusters", "A map where ideas exploring the same theme sit close together — so you can see where the agents converged."],

@@ -25,17 +25,23 @@ _LOCK = threading.Lock()
 
 TOKENS_PER_USD = 220_000
 # Reasoning spends the budget in two stages. The self-critique loop fills to
-# CRITIQUE_HIT; the stress-test stage then tops it up to BUDGET_HIT, so both
-# stages get budget and the gauge still settles in a ~95-99% band, never >100%.
-BUDGET_HIT = 0.95
-CRITIQUE_HIT = 0.85
+# (util_target - CRITIQUE_GAP); the stress-test stage then tops it up to the
+# per-session util_target (seeded in UTIL_RANGE so finished runs land at
+# *varied* 90-99% utilization instead of a fixed 95%), never >100%.
+UTIL_RANGE = (0.90, 0.99)
+CRITIQUE_GAP = 0.10
 # Each critique round burns ~this fraction of the budget, so the number of
 # rounds stays bounded (~3-5) regardless of budget size → wall time stays sane.
 CRITIQUE_ROUND_FRACTION = 0.22
 MAX_CRITIQUE_ROUNDS = 8
 # Token chunk each stress-test report spends (budget-scaled, clamped to the
-# BUDGET_HIT target). 3 tested hyps x this comfortably covers the 0.85..0.95 gap.
+# util_target). 3 tested hyps x this comfortably covers the critique->util gap.
 STRESS_TEST_FRACTION = 0.05
+# Initial Elo seeding: each fabricated hypothesis has a hidden quality
+# q ∈ [0.05, 0.95] (deterministic per hyp id) → Elo = BASE + SPAN*q + noise,
+# mirroring the real engine's review-composite seeding (1000..1800).
+ELO_SEED_BASE = 1000.0
+ELO_SEED_SPAN = 800.0
 
 
 def _now() -> datetime:
@@ -57,6 +63,8 @@ class Sim:
         self.n_initial = n_initial
         self.speed = speed  # seconds multiplier (lower = faster)
         self.r = random.Random(sid)
+        # Per-session utilization target: finished runs read 90-99%, varied.
+        self.util_target = random.Random(f"{sid}|util").uniform(*UTIL_RANGE)
         self.cost = 0.0
         self.tokens = 0.0  # simulated cumulative tokens (drives the budget gauge)
         self.hyps: list[dict] = []
@@ -83,9 +91,11 @@ class Sim:
         self.tokens += add_tokens if add_tokens is not None else add_cost * TOKENS_PER_USD
         conn.execute(
             "UPDATE sessions SET budget_used_usd=?, budget_used_tokens=?, updated_at=? WHERE id=?",
-            # Cap the gauge at 99% so the finalize + re-rank-burst spend that
-            # lands on top of the 95% target can never read at/over 100%.
-            (round(self.cost, 4), min(int(self.tokens), int(self.budget_tokens * 0.99)),
+            # Cap the gauge at the per-session util_target (90-99%): incidental
+            # match/review/finalize tokens always overshoot it, so a finished run
+            # reads exactly its varied target instead of pinning at a fixed value.
+            (round(self.cost, 4),
+             min(int(self.tokens), int(self.budget_tokens * self.util_target)),
              _ts(_now()), self.sid),
         )
         conn.commit()
@@ -113,10 +123,38 @@ class Sim:
             with _LOCK:
                 _RUNNING.pop(self.sid, None)
 
+    def _seed_elo(self, hid: str, i: int, n: int) -> float:
+        """Quality-seeded initial Elo (1000..1800 + noise), deterministic per hyp.
+
+        Quality is stratified across the batch by index (with per-id jitter) so
+        the initial seeds reliably span the range — independent draws over a
+        small batch occasionally cluster and would leave the spread too narrow.
+        """
+        rq = random.Random(f"{hid}|q")
+        frac = min(1.0, max(0.0, (i + rq.uniform(-0.4, 0.4)) / max(1, n - 1)))
+        q = 0.05 + 0.90 * frac
+        return round(ELO_SEED_BASE + ELO_SEED_SPAN * q + rq.uniform(-15, 15), 1)
+
+    @staticmethod
+    def _p_win_a(a, b) -> float:
+        """Win probability from each idea's fixed quality anchor (seed Elo).
+
+        Anchoring on the seed rather than the drifting live Elo keeps the
+        favourite winning at a constant rate, so consistent winners climb toward
+        2000 and losers fall toward 1000 instead of mean-reverting — which is
+        what widens the leaderboard into the 1000-2000 band.
+        """
+        return 1.0 / (1.0 + 10 ** ((b["elo0"] - a["elo0"]) / 400.0))
+
     def _add_hyp(self, conn, i, strat, created_by, parents):
         c = content.make_hypothesis(self.goal, i, strat)
         hid = "hyp_" + hashlib.sha256(f"{self.sid}|{i}".encode()).hexdigest()[:18]
         now = _now()
+        # Evolution children inherit their best parent's quality plus a small
+        # boost; fresh generations get a hidden seeded quality.
+        parent_elos = [h["elo"] for h in self.hyps if h["id"] in parents]
+        seed_elo = (round(max(parent_elos) + self.r.uniform(10, 40), 1)
+                    if parent_elos else self._seed_elo(hid, i, self.n_initial))
         conn.execute(
             """INSERT INTO hypotheses
                (id, session_id, created_at, created_by, strategy, parent_ids,
@@ -138,7 +176,8 @@ class Sim:
         _emit(conn, self.sid, created_by, "hypothesis_created",
               {"hypothesis_id": hid, "title": c["title"][:80], "strategy": strat}, now)
         self._bump(conn, cost)
-        h = {"id": hid, "title": c["title"], "summary": c["summary"], "elo": 1200.0,
+        h = {"id": hid, "title": c["title"], "summary": c["summary"], "elo": seed_elo,
+             "elo0": seed_elo,  # fixed quality anchor for match outcomes
              "matches": 0, "strategy": strat, "citations": c["citations"]}
         self.hyps.append(h)
         return h
@@ -174,11 +213,11 @@ class Sim:
             if not self._wait(conn, 1.5):
                 return
             self._review(conn, h)
-            conn.execute("UPDATE hypotheses SET state='in_tournament', elo=1200 WHERE id=?",
-                         (h["id"],))
+            conn.execute("UPDATE hypotheses SET state='in_tournament', elo=? WHERE id=?",
+                         (h["elo"], h["id"]))
             conn.commit()
 
-    def _apply_match(self, conn, a, b, mode: str, winner: str, k: int = 32):
+    def _apply_match(self, conn, a, b, mode: str, winner: str, k: int = 48):
         """Record one tournament match: Elo update, match + journal rows,
         transcript, event and a small cost bump. Shared by the main ranking
         phase and the self-critique re-rank bursts."""
@@ -224,7 +263,7 @@ class Sim:
                 if a is b or not self._wait(conn, 1.2):
                     return
                 mode = "debate" if self.r.random() < 0.35 else "pairwise"
-                winner = "a" if self.r.random() < 0.5 else "b"
+                winner = "a" if self.r.random() < self._p_win_a(a, b) else "b"
                 self._apply_match(conn, a, b, mode, winner)
 
     def _evolution(self, conn):
@@ -239,17 +278,17 @@ class Sim:
             parents = [top[0]["id"]] + ([top[1]["id"]] if strat == "combine" and len(top) > 1 else [])
             h = self._add_hyp(conn, self.n_initial + j, strat, "evolution", parents)
             self._review(conn, h)
-            conn.execute("UPDATE hypotheses SET state='in_tournament', elo=1200 WHERE id=?",
-                         (h["id"],))
+            conn.execute("UPDATE hypotheses SET state='in_tournament', elo=? WHERE id=?",
+                         (h["elo"], h["id"]))
             conn.commit()
 
     def _self_critique_rounds(self, conn):
         """Keep reasoning past the standard phases: each round writes a
         meta-review self-critique (re-questioning the leaders), then runs a short
         low-K re-rank burst that wobbles Elo without churning the order — looping
-        until the simulated token spend reaches CRITIQUE_HIT of the budget (the
-        stress-test stage then tops it up to BUDGET_HIT)."""
-        target = int(CRITIQUE_HIT * self.budget_tokens)
+        until the simulated token spend reaches util_target - CRITIQUE_GAP of the
+        budget (the stress-test stage then tops it up to util_target)."""
+        target = int((self.util_target - CRITIQUE_GAP) * self.budget_tokens)
         per_round = max(1, int(CRITIQUE_ROUND_FRACTION * self.budget_tokens))
         round_no = 0
         while self.tokens < target and round_no < MAX_CRITIQUE_ROUNDS:
@@ -280,7 +319,7 @@ class Sim:
                 if len(self.hyps) < 2 or not self._wait(conn, 0.8):
                     break
                 a, b = self.r.sample(self.hyps, 2)
-                winner = "a" if self.r.random() < 0.5 else "b"
+                winner = "a" if self.r.random() < self._p_win_a(a, b) else "b"
                 self._apply_match(conn, a, b, "pairwise", winner, k=6)
 
     def _stress_review(self, conn, h):
@@ -305,7 +344,8 @@ class Sim:
         so a short re-rank generally leaves it on top. Returns the hyp dict."""
         hid = "hyp_" + hashlib.sha256(f"{self.sid}|fix|{parent['id']}".encode()).hexdigest()[:18]
         now = _now()
-        start_elo = round(parent["elo"] + 8.0, 1)
+        # Inherit parent quality + a small boost so hardened ideas rank high.
+        start_elo = round(parent["elo"] + self.r.uniform(10, 30), 1)
         full_text = (
             f"## Hardening\n\n{fix['summary']}\n\nThis is a stress-hardened "
             f"revision of *{parent['title']}*, addressing the failure mode the "
@@ -333,8 +373,8 @@ class Sim:
                "strategy": "feedback_driven"}, now)
         self._bump(conn, cost)
         h = {"id": hid, "title": fix["title"], "summary": fix["summary"],
-             "elo": start_elo, "matches": 0, "strategy": "feedback_driven",
-             "citations": parent["citations"]}
+             "elo": start_elo, "elo0": start_elo, "matches": 0,
+             "strategy": "feedback_driven", "citations": parent["citations"]}
         self.hyps.append(h)
         return h
 
@@ -343,12 +383,12 @@ class Sim:
         demo shows the full workflow): take the top-3 leaders, write a meta-review
         stress report + review for each, breed a hardened fix child, then a short
         re-rank burst so the fixes generally overtake their parents, and finish
-        with a stress_ranking summary. Tops token spend from CRITIQUE_HIT up to
-        BUDGET_HIT."""
+        with a stress_ranking summary. Tops token spend from the critique level
+        up to the per-session util_target."""
         if self._status(conn) in ("aborted", "failed") or len(self.hyps) < 2:
             return
         top3 = sorted(self.hyps, key=lambda h: -h["elo"])[:3]
-        stress_target = int(BUDGET_HIT * self.budget_tokens)
+        stress_target = int(self.util_target * self.budget_tokens)
         per_hyp = max(1, int(STRESS_TEST_FRACTION * self.budget_tokens))
         idx0 = self.n_initial + 2  # after generation + the 2 evolution children
         pairs: list[tuple[dict, dict]] = []
@@ -387,7 +427,7 @@ class Sim:
             if len(self.hyps) < 2 or not self._wait(conn, 0.8):
                 break
             a, b = self.r.sample(self.hyps, 2)
-            winner = "a" if self.r.random() < 0.5 else "b"
+            winner = "a" if self.r.random() < self._p_win_a(a, b) else "b"
             self._apply_match(conn, a, b, "pairwise", winner, k=6)
         for parent, child in pairs:
             if not self._wait(conn, 0.8):
