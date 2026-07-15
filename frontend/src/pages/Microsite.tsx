@@ -3,7 +3,6 @@ import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Printer, Link2, Sun, Moon, Check, Sparkles } from "lucide-react";
 import { api } from "../api";
 import { Loader, Markdown, slugify } from "../components/ui";
-import { HeroArt } from "../components/report/HeroArt";
 import { useTheme } from "../lib/hooks";
 
 /** Parse the report markdown into a hero (title + goal) and its ## sections. */
@@ -103,8 +102,7 @@ export default function Microsite() {
       </div>
 
       {/* Hero */}
-      <header className="hero-band relative overflow-hidden px-6 py-16 sm:py-20">
-        <HeroArt className="pointer-events-none absolute right-[-40px] top-6 h-64 w-[520px] opacity-70 sm:opacity-90" />
+      <header className="hero-band relative px-6 py-16 sm:py-20">
         <div className="relative mx-auto max-w-4xl">
           {/* The hero band is always dark (ink in light, card in dark), so its
               text is fixed light in both themes; print overrides it to ink. */}
