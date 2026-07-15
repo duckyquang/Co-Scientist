@@ -189,6 +189,7 @@ function Thread({ id }: { id: string }) {
       hyps: data.hyps, matches: data.matches, eloHistory: data.eloHistory,
       feedback: data.feedback, reviewed: metrics.n_reviewed,
       overview, live, done, chat: data.chat,
+      simulated: !!session.config_snapshot?.simulated,
     });
   }, [data, session, metrics, overview, live, done]);
 
