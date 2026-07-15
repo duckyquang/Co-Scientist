@@ -470,7 +470,7 @@ function buildPlan(rec: SimRecord): Plan {
   transcript("metareview", "metareview.final", 0.05, 0.15);
   // Assemble deterministic figures from real session data (scores, strategy mix,
   // lineage, Elo trajectories) so the proposal's charts are always correct.
-  const proposals = finalRank.slice(0, 5).map((h) => ({
+  const proposals = finalRank.slice(0, 3).map((h) => ({
     id: h.id, title: h.title, summary: h.summary, strategy: h.strategy,
     elo: elo.get(h.id) ?? null, scores: h.review.scores,
     fullText: h.full_text, citations: h.citations,
@@ -481,14 +481,14 @@ function buildPlan(rec: SimRecord): Plan {
     id: h.id, label: h.title, parent: h.parents[0] ?? null,
     kind: (h.created_by === "evolution" ? "evo" : "gen") as "gen" | "evo",
   }));
-  const topIds = finalRank.slice(0, 5).map((h) => h.id);
+  const topIds = finalRank.slice(0, 3).map((h) => h.id);
   const eloSeries: Record<string, { i: number; elo: number }[]> = {};
   const eloLabels: Record<string, string> = {};
   matches.forEach((m, mi) => {
     if (topIds.includes(m.hyp_a)) (eloSeries[m.hyp_a] ||= []).push({ i: mi, elo: m.elo_a_after });
     if (topIds.includes(m.hyp_b)) (eloSeries[m.hyp_b] ||= []).push({ i: mi, elo: m.elo_b_after });
   });
-  for (const h of finalRank.slice(0, 5)) eloLabels[h.id] = h.title.slice(0, 24);
+  for (const h of finalRank.slice(0, 3)) eloLabels[h.id] = h.title.slice(0, 24);
   const figures = { strategyCounts, lineage, eloSeries, eloLabels };
 
   // Groq gives a prompt-specific prose overview with its own ## sections. Wrap it

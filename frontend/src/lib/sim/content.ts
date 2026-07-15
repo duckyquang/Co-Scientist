@@ -311,7 +311,16 @@ export interface OverviewFigures {
 }
 
 const mmId = (s: string) => "n" + s.replace(/[^a-zA-Z0-9]/g, "");
-const mmLabel = (s: string) => s.replace(/["\n]/g, " ").slice(0, 30);
+// Mermaid-safe node label: strip chars that break strict-mode parsing (a bare
+// '(' can drop the whole diagram to the raw-code fallback), collapse whitespace,
+// clip to 30 at a word boundary when there is one.
+const mmLabel = (s: string) => {
+  const c = (s || "").replace(/[[\]"#|<>{}()]/g, "").replace(/\s+/g, " ").trim();
+  if (c.length <= 30) return c;
+  const cut = c.slice(0, 30);
+  const sp = cut.lastIndexOf(" ");
+  return (sp > 0 ? cut.slice(0, sp) : cut).replace(/\s+$/, "");
+};
 // Escape GFM table-cell delimiters so a title containing '|' can't shift columns.
 const cell = (s: string) => s.replace(/\|/g, "\\|");
 
@@ -371,16 +380,40 @@ ${JSON.stringify(spec)}
 \`\`\``;
 }
 
-function lineageBody(figures?: OverviewFigures): string | null {
-  if (!figures?.lineage || !figures.lineage.length) return null;
-  const edges = figures.lineage
-    .filter((n) => n.parent)
-    .map((n) => `  ${mmId(n.parent!)} --> ${mmId(n.id)}`);
-  const nodes = figures.lineage.map((n) => `  ${mmId(n.id)}["${mmLabel(n.label)}"]`);
+/** Mermaid graph of the evolvement chains that lead into a top proposal. Build
+ *  parent→child edges among the lineage nodes, walking ancestors up from each
+ *  anchor (top proposal) so a root→child→top chain shows even when the ancestors
+ *  are not top-ranked. Emit ONLY nodes touched by an edge (orphan generation
+ *  nodes are dropped); null when there are no edges. Capped at ~`cap` nodes. */
+function lineageBody(figures?: OverviewFigures, anchorIds: string[] = [], cap = 12): string | null {
+  const list = figures?.lineage;
+  if (!list || !list.length) return null;
+  const byId = new Map(list.map((n) => [n.id, n]));
+  const order: string[] = [];
+  const seen = new Set<string>();
+  const edges: [string, string][] = [];
+  const seenEdges = new Set<string>();
+  const frontier = anchorIds.filter((a) => byId.has(a));
+  while (frontier.length && seen.size < cap) {
+    const nid = frontier.shift()!;
+    if (!seen.has(nid)) { seen.add(nid); order.push(nid); }
+    const par = byId.get(nid)!.parent;
+    if (par && byId.has(par) && par !== nid) {
+      const key = `${par}>${nid}`;
+      if (!seenEdges.has(key)) { seenEdges.add(key); edges.push([par, nid]); }
+      // enqueue each node once → always terminates even on cyclic parent data
+      if (!seen.has(par)) { seen.add(par); order.push(par); frontier.push(par); }
+    }
+  }
+  if (!edges.length) return null;
+  const touched = new Set(edges.flat());
+  const nodes = order.filter((n) => touched.has(n))
+    .map((n) => `  ${mmId(n)}["${mmLabel(byId.get(n)!.label)}"]`);
+  const edgeLines = edges.map(([p, c]) => `  ${mmId(p)} --> ${mmId(c)}`);
   return `\`\`\`mermaid
 graph LR
 ${nodes.join("\n")}
-${edges.join("\n")}
+${edgeLines.join("\n")}
 \`\`\``;
 }
 
@@ -394,11 +427,12 @@ export function figureSet(proposals: OverviewProposal[], figures?: OverviewFigur
   let n = 0;
   const cap = (body: string | null, text: string) =>
     body ? `${body}\n\n*Fig. ${++n} — ${text}*` : "";
+  const anchorIds = proposals.map((p) => p.id).filter((x): x is string => !!x);
   return {
     donut: cap(donutBody(figures), "share of the finalist hypotheses by generation strategy."),
     scores: cap(scoresBody(proposals), "reviewer scores across the four dimensions for each finalist."),
     elo: cap(eloBody(figures), "Elo trajectory of the finalists across tournament matches."),
-    lineage: cap(lineageBody(figures), "idea lineage — offspring the Evolution agent bred from top parents."),
+    lineage: cap(lineageBody(figures, anchorIds), "idea lineage — the evolvement chain bred into each top proposal."),
     ratingModel: RATING_MODEL_NOTE,
   };
 }
@@ -527,7 +561,7 @@ function proposalEloBody(id: string | undefined, title: string, n: number, figur
 /** Detailed research-proposal report. Mirrors the structure of the real
  *  metareview_final.md prompt so demo/sim output matches live output. */
 export function makeOverview(goal: string, proposals: OverviewProposal[], figures?: OverviewFigures): string {
-  const top = proposals.slice(0, 5);
+  const top = proposals.slice(0, 3);
   const lead = top[0];
   const { refs, markers } = overviewRefs(goal, top);
 

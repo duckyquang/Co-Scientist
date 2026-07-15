@@ -126,8 +126,19 @@ def _mm_id(s: str) -> str:
     return "n" + "".join(c for c in s if c.isalnum())
 
 
+_MM_STRIP = re.compile(r'[\[\]"#|<>{}()]')
+
+
 def _mm_label(s: str) -> str:
-    return s.replace('"', " ").replace("\n", " ")[:30]
+    """Mermaid-safe node label: strip the chars that break strict-mode parsing
+    (a bare '(' can drop the whole diagram to the raw-code fallback), collapse
+    whitespace, then clip to 30 — at a word boundary when there is one."""
+    s = re.sub(r"\s+", " ", _MM_STRIP.sub("", s or "")).strip()
+    if len(s) > 30:
+        cut = s[:30]
+        sp = cut.rfind(" ")
+        s = (cut[:sp] if sp > 0 else cut).rstrip()
+    return s
 
 
 def _cell(s: str) -> str:
@@ -175,7 +186,7 @@ def _scorecard_body(scored: list) -> str | None:
 
 def _donut_body(top: list) -> str | None:
     strat_counts: dict = {}
-    for h in top[:5]:
+    for h in top[:3]:
         strat_counts[h.strategy] = strat_counts.get(h.strategy, 0) + 1
     if not strat_counts:
         return None
@@ -224,16 +235,45 @@ def _assumptions_table(reviews: list, n: int) -> str | None:
     )
 
 
-def _lineage_body(top: list) -> str | None:
-    ids_shown = {h.id for h in top[:5]}
-    nodes = "\n".join(f'  {_mm_id(h.id)}["{_mm_label(h.title)}"]' for h in top[:5])
-    if not nodes:
+def _lineage_body(nodes: list, anchor_ids: set, cap: int = 12) -> str | None:
+    """Mermaid graph of the evolvement chains that lead into a top proposal.
+
+    Build parent→child edges among `nodes` (any hypothesis whose parent is also a
+    known node), walking ancestors up from each `anchor_id` so a chain like
+    root→child→top is visible even when the ancestors are not themselves top-ranked.
+    Emit ONLY nodes touched by ≥1 edge (orphan generation nodes are dropped) and
+    return None when there are no edges at all. Capped at ~`cap` nodes for
+    readability, prioritizing chains that end in an anchor."""
+    by_id = {h.id: h for h in nodes if getattr(h, "id", None)}
+    order: list[str] = []
+    seen: set[str] = set()
+    edges: list[tuple[str, str]] = []
+    seen_edges: set[tuple[str, str]] = set()
+    frontier = [a for a in anchor_ids if a in by_id]
+    while frontier and len(seen) < cap:
+        nid = frontier.pop(0)
+        if nid not in seen:
+            seen.add(nid)
+            order.append(nid)
+        for p in (by_id[nid].parent_ids or []):
+            if p not in by_id or p == nid:
+                continue
+            e = (p, nid)
+            if e not in seen_edges:
+                seen_edges.add(e)
+                edges.append(e)
+            if p not in seen:            # enqueue each node once → always terminates
+                seen.add(p)
+                order.append(p)
+                frontier.append(p)
+    if not edges:
         return None
-    edges = "\n".join(
-        f"  {_mm_id(p)} --> {_mm_id(h.id)}"
-        for h in top[:5] for p in (h.parent_ids or []) if p in ids_shown
+    touched = {n for e in edges for n in e}
+    node_lines = "\n".join(
+        f'  {_mm_id(n)}["{_mm_label(by_id[n].title)}"]' for n in order if n in touched
     )
-    return "```mermaid\ngraph LR\n" + nodes + ("\n" + edges if edges else "") + "\n```"
+    edge_lines = "\n".join(f"  {_mm_id(p)} --> {_mm_id(c)}" for p, c in edges)
+    return "```mermaid\ngraph LR\n" + node_lines + "\n" + edge_lines + "\n```"
 
 
 _RATING_MODEL_NOTE = (
@@ -286,15 +326,17 @@ def _match_proposal_hyp(text: str, n: int, top: list):
 
 
 def _weave_figures(
-    top: list, reviews_by_hyp: dict, elo_series: dict, elo_labels: dict, text: str
+    top: list, all_hyps: list, reviews_by_hyp: dict,
+    elo_series: dict, elo_labels: dict, text: str,
 ) -> str:
     """Splice content figures into their matching upper sections of the LLM prose;
     the rating-model note plus any figure whose section is absent land in a slim
     trailing '## Analysis'. Deterministic (real data), so the figures are correct
     regardless of the prose. Caller strips model References first; the
-    authoritative list is appended afterwards so it stays last."""
+    authoritative list is appended afterwards so it stays last. `all_hyps` is the
+    full session set, used only to resolve lineage ancestry beyond the top slice."""
     scored = []
-    for h in top[:5]:
+    for h in top[:3]:
         sc = next((r.scores for r in reviews_by_hyp.get(h.id, []) if r.scores), None)
         if sc is not None:
             scored.append((h, sc))
@@ -312,8 +354,9 @@ def _weave_figures(
         ("comparative assessment", [
             (_elo_body(elo_series, elo_labels),
              "Elo trajectory of the finalists across tournament matches."),
-            (_lineage_body(top),
-             "idea lineage — offspring the Evolution agent bred from top parents."),
+            (_lineage_body(all_hyps, {h.id for h in top[:3]}),
+             "idea lineage — the evolvement chain the Evolution agent bred into "
+             "each top proposal."),
         ]),
     ]
 
@@ -339,7 +382,7 @@ def _weave_figures(
     # hypothesis by the `[H-...]` id marker; fall back to ordinal order.
     for i in range(min(3, len(top))):
         n = i + 1
-        h = _match_proposal_hyp(text, n, top[:5]) or top[i]
+        h = _match_proposal_hyp(text, n, top[:3]) or top[i]
         per: list[str] = []
         series = elo_series.get(h.id)
         if series and len(series) > 1:
@@ -639,11 +682,11 @@ class MetaReviewAgent(BaseAgent):
         # slim rating-model note trailing. Strip any model-written References
         # first so the authoritative list stays last.
         elo_series = await tourney_repo.elo_series(
-            self.deps.db, session.id, [h.id for h in top[:5]]
+            self.deps.db, session.id, [h.id for h in top[:3]]
         )
-        elo_labels = {h.id: h.title[:24] for h in top[:5]}
+        elo_labels = {h.id: h.title[:24] for h in top[:3]}
         text = _weave_figures(
-            top, reviews_by_hyp, elo_series, elo_labels,
+            top, all_hyps, reviews_by_hyp, elo_series, elo_labels,
             _strip_references(text).rstrip(),
         )
 

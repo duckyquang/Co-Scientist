@@ -34,7 +34,7 @@ Open with the research goal restated in one line.
 Briefly characterize the space the agents explored and which generation strategies (literature, debate, combination, out-of-box) produced the strongest ideas. Note where independent strategies converged on the same mechanism — treat convergence as a robustness signal.
 
 ## Ranked proposals
-For each top proposal (use the tournament order; cover the top 3-5), write a subsection `### Proposal N. <short title>` containing:
+For each top proposal (use the tournament order; cover the top 3), write a subsection `### Proposal N. <short title>` containing:
 - **Tournament Elo and strategy.** The Elo and the generation strategy, and the hypothesis ID as `[H-...]`.
 - **The hypothesis.** One tight paragraph stating the claim and its mechanism.
 - **Why it's promising.** Reference 1-3 supporting hypotheses/reviews by ID and the strongest evidence each carries. Where a claim leans on a source, add its inline marker `[n]` (matching the numbered "Available references" list). Do not invent citations.

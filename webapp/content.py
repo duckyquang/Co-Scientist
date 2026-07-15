@@ -165,6 +165,20 @@ def _mm_id(s: str) -> str:
     return "n" + "".join(c for c in s if c.isalnum())
 
 
+_MM_STRIP = re.compile(r'[\[\]"#|<>{}()]')
+
+
+def _mm_label(s: str) -> str:
+    """Mermaid-safe node label: strip the chars that break strict-mode parsing,
+    collapse whitespace, clip to 30 at a word boundary when there is one."""
+    s = re.sub(r"\s+", " ", _MM_STRIP.sub("", s or "")).strip()
+    if len(s) > 30:
+        cut = s[:30]
+        sp = cut.rfind(" ")
+        s = (cut[:sp] if sp > 0 else cut).rstrip()
+    return s
+
+
 def _cell(s: str) -> str:
     """Escape GFM table-cell delimiters so a '|' in a title can't shift columns."""
     return s.replace("|", "\\|")
@@ -227,27 +241,53 @@ def _donut_body(top: list[dict]) -> str | None:
     )
 
 
-def _lineage_body(top: list[dict]) -> str | None:
-    # Only when the proposals carry parent ids (e.g. the seeded demo).
-    if not any(p.get("parent_ids") for p in top):
+def _lineage_body(nodes: list[dict], anchor_ids: set, cap: int = 12) -> str | None:
+    """Mermaid graph of the evolvement chains that lead into a top proposal.
+
+    Build parent→child edges among `nodes` (any hypothesis whose parent is also a
+    known node), walking ancestors up from each `anchor_id` so a chain like
+    root→child→top stays visible even when the ancestors are not top-ranked. Emit
+    ONLY nodes touched by ≥1 edge (orphans dropped); return None when there are no
+    edges. `nodes` need parent_ids (the seeded demo / live-sim supply them);
+    without any there are no edges and the figure is omitted."""
+    by_id = {p["id"]: p for p in nodes if p.get("id")}
+    order: list[str] = []
+    seen: set = set()
+    edges: list[tuple[str, str]] = []
+    seen_edges: set = set()
+    frontier = [a for a in anchor_ids if a in by_id]
+    while frontier and len(seen) < cap:
+        nid = frontier.pop(0)
+        if nid not in seen:
+            seen.add(nid)
+            order.append(nid)
+        for par in (by_id[nid].get("parent_ids") or []):
+            if par not in by_id or par == nid:
+                continue
+            e = (par, nid)
+            if e not in seen_edges:
+                seen_edges.add(e)
+                edges.append(e)
+            if par not in seen:          # enqueue each node once → always terminates
+                seen.add(par)
+                order.append(par)
+                frontier.append(par)
+    if not edges:
         return None
-    ids_shown = {p.get("id") for p in top}
-    nodes = "\n".join(
-        f'  {_mm_id(p["id"])}["{p["title"].replace(chr(34), " ")[:30]}"]'
-        for p in top if p.get("id")
+    touched = {n for e in edges for n in e}
+    node_lines = "\n".join(
+        f'  {_mm_id(n)}["{_mm_label(by_id[n]["title"])}"]' for n in order if n in touched
     )
-    if not nodes:
-        return None
-    edges = "\n".join(
-        f'  {_mm_id(par)} --> {_mm_id(p["id"])}'
-        for p in top for par in (p.get("parent_ids") or []) if par in ids_shown
-    )
-    return "```mermaid\ngraph LR\n" + nodes + ("\n" + edges if edges else "") + "\n```"
+    edge_lines = "\n".join(f"  {_mm_id(p)} --> {_mm_id(c)}" for p, c in edges)
+    return "```mermaid\ngraph LR\n" + node_lines + "\n" + edge_lines + "\n```"
 
 
-def _figure_set(goal: str, top: list[dict]) -> dict[str, str]:
+def _figure_set(goal: str, top: list[dict], lineage_nodes: list[dict]) -> dict[str, str]:
     """Numbered, captioned figure blocks keyed by placement. Empty string when a
-    figure has no data (splices in cleanly). Numbered in document order."""
+    figure has no data (splices in cleanly). Numbered in document order. The donut
+    and scorecard describe the top proposals; lineage resolves ancestry over the
+    fuller `lineage_nodes` set (so an evolvement chain into a top proposal shows
+    even when its ancestors are not top-ranked)."""
     n = 0
 
     def cap(body: str | None, text: str) -> str:
@@ -257,13 +297,14 @@ def _figure_set(goal: str, top: list[dict]) -> dict[str, str]:
         n += 1
         return f"{body}\n\n*Fig. {n} — {text}*"
 
+    anchors = {p["id"] for p in top if p.get("id")}
     return {
         "donut": cap(_donut_body(top),
                      "share of the finalist hypotheses by generation strategy."),
         "scores": cap(_scorecard_body(goal, top),
                       "reviewer scores across the four dimensions for each finalist."),
-        "lineage": cap(_lineage_body(top),
-                       "idea lineage — offspring bred from top parents by the Evolution agent."),
+        "lineage": cap(_lineage_body(lineage_nodes, anchors),
+                       "idea lineage — the evolvement chain bred into each top proposal."),
     }
 
 
@@ -361,7 +402,7 @@ def make_overview(goal: str, proposals: list[dict]) -> str:
     """Detailed research-proposal report. Mirrors the structure of the real
     metareview_final.md prompt (and frontend sim/content.ts makeOverview) so
     demo/sim output matches live output."""
-    top = proposals[:5]
+    top = proposals[:3]
     lead = top[0] if top else None
     lead_title = lead["title"] if lead else "the top-ranked hypothesis"
     refs, markers = _overview_refs(top)
@@ -415,7 +456,7 @@ clinically achievable exposure, or rescue by the mechanism-dead control.{tail}""
 
     # Content figures woven into the relevant upper sections (empty strings when
     # a figure has no data). A slim rating-model note trails under "## Analysis".
-    figs = _figure_set(goal, top)
+    figs = _figure_set(goal, top, proposals)
     donut = f"\n\n{figs['donut']}" if figs["donut"] else ""
     scores = f"{figs['scores']}\n\n" if figs["scores"] else ""
     lineage = f"\n\n{figs['lineage']}" if figs["lineage"] else ""
