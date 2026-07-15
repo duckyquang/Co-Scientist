@@ -73,6 +73,7 @@ async def hydrate_citations(cfg: Config, hyps) -> list[dict]:
                 "doi": doi or None,
                 "year": c.get("year"),
                 "excerpt": c.get("excerpt"),
+                "verified": c.get("verified"),   # stored by the citation verifier
             })
     return out
 
@@ -691,10 +692,9 @@ class MetaReviewAgent(BaseAgent):
         )
 
         # Guarantee a numbered References section built from real citation data,
-        # flagging any source the citation verifier could not confirm. Skip the
-        # (network) verifier pass entirely when there are no citations to mark.
-        unverified = await self._unverified_urls(session, top, reviews_by_hyp) if cites else frozenset()
-        text = text.rstrip() + "\n\n" + references_section(cites, unverified) + "\n"
+        # flagging any source the citation verifier could not confirm (reads the
+        # per-citation flag stored at generation/evolution time — no re-fetching).
+        text = text.rstrip() + "\n\n" + references_section(cites, self._unverified_urls(cites)) + "\n"
 
         overview_path = await write_text(
             self.deps.cfg, session.id, "final", "overview", ".md", text
@@ -729,29 +729,22 @@ class MetaReviewAgent(BaseAgent):
                 parts.append(f"### Stress test{tgt}\n{r['text']}")
         return "\n\n---\n\n".join(parts)
 
-    async def _unverified_urls(self, session, top, reviews_by_hyp) -> frozenset[str]:
-        """URLs the citation verifier could not confirm (status != 'ok').
+    def _unverified_urls(self, cites: list[dict]) -> frozenset[str]:
+        """URLs/DOIs whose stored `verified` flag is not True.
 
-        The verifier persists nothing, so there are no stored flags to read; we
-        recompute over the top hypotheses' reviews. Fetches are disk-cached (the
-        pages were already fetched during reflection), and the whole thing is
-        gated by `[safety] enable_citation_verifier` and best-effort — a verifier
-        failure never blocks the overview.
-        # ponytail: O(reviews×evidence) cached fetches on the final path; if this
-        # ever dominates latency, persist verifier output at reflection time.
+        Reads the per-citation flag the citation verifier persisted at
+        generation/evolution time (see `CitationVerifier.verify_citations`) — no
+        re-fetching. Gated by `[safety] enable_citation_verifier`: when the
+        verifier is off nothing is flagged (nothing was checked).
         """
         if not self.deps.cfg.safety.enable_citation_verifier:
             return frozenset()
-        from ..safety.citation_verifier import CitationVerifier
-
-        verifier = CitationVerifier(self.deps.cfg)
         bad: set[str] = set()
-        for h in top:
-            for rv in reviews_by_hyp.get(h.id, []):
-                try:
-                    status = await verifier.verify_review(session.id, rv, self.deps.db)
-                except Exception as e:
-                    log.warning("citation_verify_failed", review_id=rv.id, err=str(e))
-                    continue
-                bad.update(url for url, info in status.items() if info.get("status") != "ok")
+        for c in cites:
+            if c.get("verified") is True:
+                continue
+            if c.get("url"):
+                bad.add(c["url"])
+            if c.get("doi"):
+                bad.add(c["doi"])
         return frozenset(bad)

@@ -23,6 +23,11 @@ class CitedPaper(BaseModel):
     excerpt: str | None = None
     doi: str | None = None
     year: int | None = None
+    # Set by the citation verifier at generation/evolution time:
+    #   True  — excerpt confirmed on the fetched page
+    #   False — page readable but excerpt absent (fabricated quote)
+    #   None  — not checked (verifier disabled / fetch failed / budget spent)
+    verified: bool | None = None
 
 
 class Hypothesis(BaseModel):

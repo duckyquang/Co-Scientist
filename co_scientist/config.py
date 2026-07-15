@@ -175,6 +175,7 @@ class CodeExecCfg(BaseModel):
 class SafetyCfg(BaseModel):
     enable_classifier: bool = True
     enable_citation_verifier: bool = True
+    citation_verify_max_fetches: int = 8   # per-hypothesis fetch cap for the verifier
     classifier_block_categories: list[str] = Field(
         default_factory=lambda: ["cbrn", "csam", "weapons", "illicit_synthesis"]
     )
