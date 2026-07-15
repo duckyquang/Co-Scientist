@@ -24,6 +24,7 @@ from ..llm.routing import route
 from ..llm.tool_loop import ToolLoopExhausted, run_tool_loop
 from ..logging import get_logger
 from ..models import CitedPaper, Hypothesis, Task, TaskResult
+from ..safety.citation_verifier import CitationVerifier
 from ..safety.quoting import quote_hypothesis
 from ..storage.artifacts import write_json
 from ..storage.repos import embeddings as emb_repo
@@ -195,11 +196,15 @@ class EvolutionAgent(BaseAgent):
             log.warning("evolution_no_record")
             return None
 
-        # Citation URL filter (same as Generation).
+        # Citation URL filter + source-side verification (same as Generation):
+        # drop URLs never seen, then drop fabricated quotes / blank bad DOIs.
         record["citations"] = [
             c for c in record.get("citations", [])
             if isinstance(c, dict) and c.get("url") in result.seen_urls
         ]
+        record["citations"] = await CitationVerifier(self.deps.cfg).verify_citations(
+            session.id, record["citations"]
+        )
         record["strategy"] = strategy
         record["parent_ids"] = parent_ids
 
@@ -225,6 +230,7 @@ class EvolutionAgent(BaseAgent):
             CitedPaper(
                 title=c.get("title", ""), url=c.get("url", ""),
                 excerpt=c.get("excerpt"), doi=c.get("doi"), year=c.get("year"),
+                verified=c.get("verified"),
             )
             for c in record.get("citations", [])
             if isinstance(c, dict) and c.get("url")

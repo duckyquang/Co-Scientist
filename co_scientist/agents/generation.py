@@ -19,6 +19,7 @@ from ..llm.routing import route
 from ..llm.tool_loop import ToolLoopExhausted, run_tool_loop
 from ..logging import get_logger
 from ..models import CitedPaper, Hypothesis, ResearchPlan, Task, TaskResult
+from ..safety.citation_verifier import CitationVerifier
 from ..safety.quoting import quote_untrusted
 from ..storage.artifacts import write_json
 from ..storage.repos import embeddings as emb_repo
@@ -131,8 +132,13 @@ class GenerationAgent(BaseAgent):
         if record is None:
             raise RuntimeError("Generation did not call record_hypothesis")
 
-        # 3. Validate every citation URL is in the union of URLs seen during the loop.
+        # 3. Validate every citation URL is in the union of URLs seen during the
+        #    loop, then verify each surviving citation (excerpt + doi) at the
+        #    source — dropping fabricated quotes and blanking uncorroborated DOIs.
         record["citations"] = _filter_to_seen_urls(record.get("citations", []), loop_result.seen_urls)
+        record["citations"] = await CitationVerifier(self.deps.cfg).verify_citations(
+            session.id, record["citations"], run_id=task.id
+        )
 
         # 4. Persist + embed + dedup-check.
         hid, was_new = await self._persist(session.id, record, strategy="literature")
@@ -169,6 +175,7 @@ class GenerationAgent(BaseAgent):
                 excerpt=c.get("excerpt"),
                 doi=c.get("doi"),
                 year=c.get("year"),
+                verified=c.get("verified"),
             )
             for c in record.get("citations", [])
             if isinstance(c, dict) and c.get("url")

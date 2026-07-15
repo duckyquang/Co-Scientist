@@ -143,6 +143,7 @@ local_mem_mb = 512
 [safety]
 enable_classifier = true
 enable_citation_verifier = true
+citation_verify_max_fetches = 8      # per-hypothesis fetch cap for the citation verifier
 classifier_block_categories = ["cbrn", "csam", "weapons", "illicit_synthesis"]
 classifier_warn_categories = ["dual_use_bio"]
 
