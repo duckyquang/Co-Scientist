@@ -307,17 +307,24 @@ function buildPlan(rec: SimRecord): Plan {
   // ── Phase 2: ranking (2 rounds) ──
   ranking(initial, 2);
 
-  // ── Phase 3: evolution ──
-  t += 1.0;
-  emit("evolution", "task_started", { agent: "evolution", action: "EvolveTopHypotheses" });
-  const top3 = [...hyps].sort((x, y) => elo.get(y.id)! - elo.get(x.id)!).slice(0, 3);
-  ["combine", "out_of_box"].forEach((strat, j) => {
-    t += 2.0;
-    const parents = strat === "combine" && top3.length > 1 ? [top3[0].id, top3[1].id] : [top3[0].id];
-    const h = addHyp(n + j, strat, "evolution", parents);
-    h.tReview = t;
-    review(h);
-  });
+  // ── Phase 3: evolution (2 rounds, interleaved with ranking) ──
+  // Each round breeds 2 offspring from the CURRENT top-ranked parents; the
+  // ranking round in between re-orders the field, so round 2's parents reflect
+  // the new standings. The 3.0 pre-round gap keeps each round's tCreate cluster
+  // clearly separated — the chat groups offspring into rounds by these gaps.
+  for (let evRound = 0; evRound < 2; evRound++) {
+    t += 3.0;
+    emit("evolution", "task_started", { agent: "evolution", action: "EvolveTopHypotheses" });
+    const top3 = [...hyps].sort((x, y) => elo.get(y.id)! - elo.get(x.id)!).slice(0, 3);
+    ["combine", "out_of_box"].forEach((strat, j) => {
+      t += 2.0;
+      const parents = strat === "combine" && top3.length > 1 ? [top3[0].id, top3[1].id] : [top3[0].id];
+      const h = addHyp(n + evRound * 2 + j, strat, "evolution", parents);
+      h.tReview = t;
+      review(h);
+    });
+    if (evRound === 0) ranking(hyps, 1);
+  }
 
   // ── Phase 4: ranking again (all hyps, 2 rounds) ──
   ranking(hyps, 2);
@@ -402,7 +409,7 @@ function buildPlan(rec: SimRecord): Plan {
       // parent = the tested hyp, seeded just above the parent's current Elo.
       t += 1.5;
       const fix = makeStressFix({ id: h.id, title: h.title });
-      const cidx = n + 2 + k;
+      const cidx = hyps.length; // next free hyp-id index (after all evolution rounds)
       const rv = makeReview(goal, fix.title, "full");
       // Inherit parent quality + a small boost so hardened ideas rank high.
       const childElo = round1(elo.get(h.id)! + r.uniform(10, 30));

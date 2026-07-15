@@ -19,7 +19,7 @@ export type ChatMsg =
   | { id: string; role: "assistant"; kind: "understanding"; plan: ResearchPlan }
   | { id: string; role: "assistant"; kind: "generating"; hyps: Hypothesis[]; reviewed: number; active: boolean }
   | { id: string; role: "assistant"; kind: "ranking"; top: Hypothesis[]; series: Record<string, { i: number; elo: number }[]>; matches: number; active: boolean }
-  | { id: string; role: "assistant"; kind: "evolving"; offspring: Hypothesis[] }
+  | { id: string; role: "assistant"; kind: "evolving"; round: number; offspring: Hypothesis[] }
   | { id: string; role: "assistant"; kind: "feedback"; text: string }
   // Self-critique ("requestioning") round — optional Thinking section + narrative.
   | { id: string; role: "assistant"; kind: "critique"; round: number; thinking: string | null; body: string }
@@ -68,8 +68,14 @@ export function deriveMessages(input: {
     });
   }
 
-  const offspring = hyps.filter((h) => h.created_by === "evolution");
-  if (offspring.length) msgs.push({ id: "evolving", role: "assistant", kind: "evolving", offspring });
+  // Evolution offspring, one message per round. Stress-fix children are also
+  // created_by "evolution" but belong to the stress-testing stage, not here.
+  const offspring = hyps
+    .filter((h) => h.created_by === "evolution" && h.strategy !== "feedback_driven")
+    .sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at));
+  clusterRounds(offspring).forEach((round, i) => {
+    msgs.push({ id: `evolving-${i + 1}`, role: "assistant", kind: "evolving", round: i + 1, offspring: round });
+  });
 
   // Feedback endpoints return newest-first (correct for the Explore feed), but a
   // top-to-bottom chat thread must read oldest-first like the rest of the thread.
@@ -133,6 +139,24 @@ export function deriveMessages(input: {
   return msgs;
 }
 
+/** Cluster evolution offspring (pre-sorted by created_at) into rounds: a new
+ *  round starts at any timestamp gap > max(2× the smallest gap, 1s). Within a
+ *  round offspring land in quick succession; between rounds a ranking phase
+ *  runs, so the gap is reliably larger — for both sim timelines and real runs.
+ *  A pure function of the timestamps, so live re-derivations stay stable. */
+function clusterRounds(offspring: Hypothesis[]): Hypothesis[][] {
+  if (!offspring.length) return [];
+  const ts = offspring.map((h) => +new Date(h.created_at));
+  const gaps = ts.slice(1).map((t, i) => t - ts[i]);
+  const threshold = Math.max(2 * Math.min(...gaps), 1000);
+  const rounds: Hypothesis[][] = [[offspring[0]]];
+  gaps.forEach((g, i) => {
+    if (g > threshold) rounds.push([]);
+    rounds[rounds.length - 1].push(offspring[i + 1]);
+  });
+  return rounds;
+}
+
 /** Split a feedback text into its `## Thinking` (optional) and `## <section>`
  *  sections. Unparseable text → whole thing as the body. */
 function parseSections(text: string, section: string): { thinking: string | null; body: string } {
@@ -153,7 +177,7 @@ const PHASE_META: Record<string, { icon: any; label: string }> = {
   proposal: { icon: FileText, label: "Research proposal" },
 };
 
-function PhaseHeader({ kind, active }: { kind: string; active?: boolean }) {
+function PhaseHeader({ kind, active, label }: { kind: string; active?: boolean; label?: string }) {
   const m = PHASE_META[kind];
   const Icon = m.icon;
   return (
@@ -161,7 +185,7 @@ function PhaseHeader({ kind, active }: { kind: string; active?: boolean }) {
       <span className="grid h-6 w-6 place-items-center border border-rule bg-blue-soft text-blue">
         <Icon className="h-3.5 w-3.5" />
       </span>
-      <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-ink">{m.label}</span>
+      <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-ink">{label ?? m.label}</span>
       {active
         ? <Loader2 className="h-3.5 w-3.5 animate-spin text-ink-soft" />
         : <Check className="h-3.5 w-3.5 text-green" />}
@@ -272,10 +296,10 @@ export function ChatMessage({ msg, onSelect }: { msg: ChatMsg; onSelect: (id: st
   if (msg.kind === "evolving") {
     return (
       <Assistant>
-        <PhaseHeader kind="evolving" />
+        <PhaseHeader kind="evolving" label={`Evolution · Round ${msg.round}`} />
         <p className="mb-2.5 text-[13px] text-ink-soft">
           Bred <span className="num font-semibold text-ink">{msg.offspring.length}</span> offspring by
-          combining and mutating the top-ranked parents.
+          combining and mutating the top-ranked parents{msg.round > 1 ? " after re-ranking" : ""}.
         </p>
         <div className="space-y-1.5">
           {msg.offspring.map((h) => <HypRow key={h.id} h={h} onSelect={onSelect} />)}
