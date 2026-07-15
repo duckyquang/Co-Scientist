@@ -289,6 +289,71 @@ def _overview_refs(top: list[dict]) -> tuple[list[dict], list[str]]:
     return refs, markers
 
 
+# ------------------ per-proposal (unnumbered) figure helpers ---------------- #
+# These sit at the END of each top-3 `### Proposal N` block. They are deliberately
+# UNNUMBERED (no Fig.N caption) so the document-level Fig.N numbering in
+# `_figure_set` stays monotonic. Each carries a chart/mermaid title instead.
+
+_PIPELINE_FIELDS = (
+    ("Model", re.compile(r"\*\*(?:Model|Method):\*\*\s*([^\n]+)", re.I)),
+    ("Intervention", re.compile(r"\*\*Intervention:\*\*\s*([^\n]+)", re.I)),
+    ("Readout", re.compile(r"\*\*Primary readout:\*\*\s*([^\n]+)", re.I)),
+    ("Success", re.compile(r"\*\*Success criterion:\*\*\s*([^\n]+)", re.I)),
+)
+
+
+def _mm_node_text(s: str) -> str:
+    """Strip chars that break a quoted mermaid node label, collapse whitespace,
+    and clip. Keeps unicode (±, –) which mermaid renders fine inside quotes."""
+    s = re.sub(r'[\[\]"#|<>{}()]', "", s or "")
+    s = re.sub(r"\s+", " ", s).strip()
+    return s[:38].rstrip(" .,;:-")
+
+
+def _proposal_pipeline_body(full_text: str, summary: str, n: int) -> str:
+    """Model→Intervention→Readout→Success pipeline mermaid, parsed from the
+    fixed-template proposal body. Per-field fallbacks keep it robust when the
+    body is missing (e.g. the live simulator's hyps carry no full_text)."""
+    fallbacks = {
+        "Model": "Model system",
+        "Intervention": _mm_node_text(summary) or "Intervention",
+        "Readout": "Primary readout",
+        "Success": "Success threshold",
+    }
+    nodes = []
+    for label, rx in _PIPELINE_FIELDS:
+        m = rx.search(full_text or "")
+        val = (_mm_node_text(m.group(1)) if m else "") or fallbacks[label]
+        nodes.append((label, val))
+    lines = [f'  n{i}["{lbl}: {val}"]' for i, (lbl, val) in enumerate(nodes)]
+    edges = [f"  n{i} --> n{i + 1}" for i in range(len(nodes) - 1)]
+    return (
+        "```mermaid\n---\n"
+        f"title: Prototype experiment pipeline — proposal {n}\n---\n"
+        "graph LR\n" + "\n".join(lines + edges) + "\n```"
+    )
+
+
+def _proposal_citation_donut_body(citations: list | None, n: int) -> str | None:
+    """Mini-donut of the proposal's own cited sources grouped by year. None when
+    the proposal carries no citations (the figure then splices in cleanly)."""
+    cites = citations or []
+    if not cites:
+        return None
+    counts: dict[str, int] = {}
+    for c in cites:
+        yr = str(c.get("year") or "n.d.")
+        counts[yr] = counts.get(yr, 0) + 1
+    entries = sorted(counts.items(), key=lambda kv: (kv[0] == "n.d.", kv[0]))
+    rows = "\n".join(f"| {_cell(k)} | {v} |" for k, v in entries)
+    spec = {"type": "donut", "title": f"Cited sources by year — proposal {n}",
+            "segments": [{"label": k, "value": v} for k, v in entries]}
+    return (
+        "| Publication year | Sources |\n|---|---|\n" + rows + "\n\n"
+        "```chart\n" + json.dumps(spec) + "\n```"
+    )
+
+
 def make_overview(goal: str, proposals: list[dict]) -> str:
     """Detailed research-proposal report. Mirrors the structure of the real
     metareview_final.md prompt (and frontend sim/content.ts makeOverview) so
@@ -307,13 +372,21 @@ def make_overview(goal: str, proposals: list[dict]) -> str:
     for i, p in enumerate(top):
         elo = round(p["elo"]) if p.get("elo") is not None else "—"
         mk = f" {markers[i]}" if markers[i] else ""
-        # A compact score radar for each of the top-3 proposals — a per-proposal
-        # illustration inside this upper section (self-labelled by its title).
+        # Per-proposal illustrations for the top-3: a compact score radar on the
+        # Elo line, plus an experiment-pipeline mermaid and a citations mini-donut
+        # at the END of the block. All UNNUMBERED (chart title only) so the
+        # section-level Fig.N numbering stays monotonic.
         radar = ""
+        end_figs: list[str] = []
         if i < 3:
             sc = make_review(goal, p["title"], "full")["scores"]
             rspec = {"type": "radar", "title": f"Score profile — proposal {i+1}", "scores": sc}
             radar = "\n\n```chart\n" + json.dumps(rspec) + "\n```"
+            end_figs.append(_proposal_pipeline_body(p.get("full_text", ""), p.get("summary", ""), i + 1))
+            donut = _proposal_citation_donut_body(p.get("citations"), i + 1)
+            if donut:
+                end_figs.append(donut)
+        tail = ("\n\n" + "\n\n".join(end_figs)) if end_figs else ""
         sections.append(f"""### Proposal {i+1}. {p['title']}
 
 **Tournament Elo:** {elo} · **Generation strategy:** `{p.get('strategy', 'literature')}`{radar}
@@ -334,7 +407,7 @@ single quarter. The main risk is that the intervention does not reach an active
 concentration in the relevant compartment — worth a pilot exposure check first.
 
 **What would falsify it.** No dose-dependent shift in the primary readout at a
-clinically achievable exposure, or rescue by the mechanism-dead control.""")
+clinically achievable exposure, or rescue by the mechanism-dead control.{tail}""")
     body = "\n\n---\n\n".join(sections)
 
     # Content figures woven into the relevant upper sections (empty strings when

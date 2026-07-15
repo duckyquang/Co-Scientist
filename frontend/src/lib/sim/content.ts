@@ -293,6 +293,12 @@ export interface OverviewProposal {
   strategy: string;
   elo: number | null;
   scores?: OverviewScores;
+  // Widened so the top-3 proposal blocks can carry per-proposal figures: a
+  // mechanism pipeline (from fullText), a cited-sources donut (from citations),
+  // and a per-id Elo sparkline (looked up in figures.eloSeries by id).
+  id?: string;
+  fullText?: string;
+  citations?: SimCitation[];
 }
 export interface OverviewFigures {
   /** hypothesis count per generation strategy → theme donut */
@@ -451,6 +457,73 @@ export function referencesSection(refs: { n: number; title: string; year: number
   return ["## References", "", ...refs.map((c) => `[${c.n}] ${c.title} (${c.year ?? "n.d."}). ${c.url}`.trim())].join("\n");
 }
 
+/* ── Per-proposal (unnumbered) figure helpers ───────────────────
+ * These sit at the END of each top-3 `### Proposal N` block, carrying a
+ * chart/mermaid title instead of a Fig.N caption so the document-level Fig.N
+ * numbering (figureSet) stays monotonic. Mirrors webapp/content.py. */
+
+// Strip chars that break a quoted mermaid node label; keep unicode (±, –).
+const mmNode = (s: string) =>
+  (s || "").replace(/[[\]"#|<>{}()]/g, "").replace(/\s+/g, " ").trim().slice(0, 38).replace(/[ .,;:–-]+$/, "");
+
+const PIPELINE_FIELDS: [string, RegExp][] = [
+  ["Model", /\*\*(?:Model|Method):\*\*\s*([^\n]+)/i],
+  ["Intervention", /\*\*Intervention:\*\*\s*([^\n]+)/i],
+  ["Readout", /\*\*Primary readout:\*\*\s*([^\n]+)/i],
+  ["Success", /\*\*Success criterion:\*\*\s*([^\n]+)/i],
+];
+
+/** Model→Intervention→Readout→Success pipeline mermaid parsed from the
+ *  fixed-template proposal body; per-field fallbacks keep it robust. */
+function proposalPipelineBody(fullText: string, summary: string, n: number): string {
+  const fallbacks: Record<string, string> = {
+    Model: "Model system",
+    Intervention: mmNode(summary) || "Intervention",
+    Readout: "Primary readout",
+    Success: "Success threshold",
+  };
+  const nodes = PIPELINE_FIELDS.map(([label, rx]) => {
+    const m = (fullText || "").match(rx);
+    return [label, (m ? mmNode(m[1]) : "") || fallbacks[label]] as [string, string];
+  });
+  const lines = nodes.map(([lbl, val], i) => `  n${i}["${lbl}: ${val}"]`);
+  const edges = nodes.slice(1).map((_, i) => `  n${i} --> n${i + 1}`);
+  return "```mermaid\n---\n" +
+    `title: Prototype experiment pipeline — proposal ${n}\n---\n` +
+    "graph LR\n" + [...lines, ...edges].join("\n") + "\n```";
+}
+
+/** Mini-donut of the proposal's own cited sources grouped by year, or null. */
+function proposalCitationDonutBody(citations: SimCitation[] | undefined, n: number): string | null {
+  const cites = citations || [];
+  if (!cites.length) return null;
+  const counts = new Map<string, number>();
+  for (const c of cites) {
+    const yr = String(c.year ?? "n.d.");
+    counts.set(yr, (counts.get(yr) || 0) + 1);
+  }
+  const entries = [...counts.entries()].sort((a, b) =>
+    a[0] === "n.d." ? 1 : b[0] === "n.d." ? -1 : a[0] < b[0] ? -1 : 1);
+  const rows = entries.map(([k, v]) => `| ${cell(k)} | ${v} |`).join("\n");
+  const spec = { type: "donut", title: `Cited sources by year — proposal ${n}`, segments: entries.map(([label, value]) => ({ label, value })) };
+  return `| Publication year | Sources |
+|---|---|
+${rows}
+
+\`\`\`chart
+${JSON.stringify(spec)}
+\`\`\``;
+}
+
+/** Single-series Elo sparkline for one proposal, or null when <2 points. */
+function proposalEloBody(id: string | undefined, title: string, n: number, figures?: OverviewFigures): string | null {
+  if (!id) return null;
+  const series = figures?.eloSeries?.[id];
+  if (!series || series.length <= 1) return null;
+  const spec = { type: "elo", title: `Elo trajectory — proposal ${n}`, series: { [id]: series }, labels: { [id]: title.slice(0, 24) } };
+  return `\`\`\`chart\n${JSON.stringify(spec)}\n\`\`\``;
+}
+
 /** Detailed research-proposal report. Mirrors the structure of the real
  *  metareview_final.md prompt so demo/sim output matches live output. */
 export function makeOverview(goal: string, proposals: OverviewProposal[], figures?: OverviewFigures): string {
@@ -460,11 +533,22 @@ export function makeOverview(goal: string, proposals: OverviewProposal[], figure
 
   const sections = top.map((p, i) => {
     const elo = p.elo != null ? Math.round(p.elo) : "—";
-    // A compact score radar for each of the top-3 proposals — a per-proposal
-    // illustration inside this upper section (self-labelled by its chart title).
+    // Per-proposal illustrations for the top-3: a compact score radar on the Elo
+    // line, plus an experiment-pipeline mermaid, a cited-sources donut, and an
+    // Elo sparkline at the END of the block. All UNNUMBERED (chart title only)
+    // so the section-level Fig.N numbering stays monotonic.
     const radar = i < 3 && p.scores
       ? `\n\n\`\`\`chart\n${JSON.stringify({ type: "radar", title: `Score profile — proposal ${i + 1}`, scores: p.scores })}\n\`\`\``
       : "";
+    const endFigs: string[] = [];
+    if (i < 3) {
+      endFigs.push(proposalPipelineBody(p.fullText ?? "", p.summary, i + 1));
+      const donut = proposalCitationDonutBody(p.citations, i + 1);
+      if (donut) endFigs.push(donut);
+      const eloFig = proposalEloBody(p.id, p.title, i + 1, figures);
+      if (eloFig) endFigs.push(eloFig);
+    }
+    const tail = endFigs.length ? `\n\n${endFigs.join("\n\n")}` : "";
     return `### Proposal ${i + 1}. ${p.title}
 
 **Tournament Elo:** ${elo} · **Generation strategy:** \`${p.strategy}\`${radar}
@@ -485,7 +569,7 @@ single quarter. The main risk is that the intervention does not reach an active
 concentration in the relevant compartment — worth a pilot exposure check first.
 
 **What would falsify it.** No dose-dependent shift in the primary readout at a
-clinically achievable exposure, or rescue by the mechanism-dead control.`;
+clinically achievable exposure, or rescue by the mechanism-dead control.${tail}`;
   }).join("\n\n---\n\n");
 
   // Content figures woven into the relevant upper sections (empty strings when
