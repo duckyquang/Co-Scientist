@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 from co_scientist.agents.generation import _filter_to_seen_urls, _render_hypothesis_md
 from co_scientist.agents.metareview import (
+    _lineage_body,
     _weave_figures,
     ensure_references,
     references_section,
@@ -118,7 +119,7 @@ def test_weave_figures_places_figures_in_upper_sections() -> None:
     elo_series = {"H-a": [{"i": 0, "elo": 1216.0}], "H-b": [{"i": 0, "elo": 1184.0}]}
     labels = {"H-a": "Alpha idea", "H-b": "Beta idea"}
 
-    out = _weave_figures(top, reviews, elo_series, labels, _PROSE)
+    out = _weave_figures(top, top, reviews, elo_series, labels, _PROSE)
 
     # Section anchors.
     i_landscape = out.index("## The approach landscape")
@@ -154,11 +155,62 @@ def test_weave_figures_unmatched_headings_go_to_analysis() -> None:
     # Prose missing the target headings → figures fall back to the trailing block.
     top = [_hyp("H-a", "Alpha", "literature")]
     reviews = {"H-a": [SimpleNamespace(scores=_scores(0.9, 0.8, 0.7, 0.6))]}
-    out = _weave_figures(top, reviews, {}, {}, "# Overview\n\nJust prose, no sections.")
+    out = _weave_figures(top, top, reviews, {}, {}, "# Overview\n\nJust prose, no sections.")
     i_analysis = out.index("## Analysis")
     # The donut/scorecard couldn't be placed, so they trail under Analysis.
     assert '"type": "donut"' in out[i_analysis:]
     assert '"type": "scores"' in out[i_analysis:]
+
+
+def test_lineage_keeps_only_edge_connected_nodes() -> None:
+    # root → child(anchor); an unrelated orphan must be dropped, and the ancestor
+    # is kept even though it is not itself an anchor.
+    nodes = [
+        _hyp("H-root", "Root idea", "literature"),
+        _hyp("H-child", "Child idea", "combine", parents=["H-root"]),
+        _hyp("H-orphan", "Orphan idea", "literature"),
+    ]
+    out = _lineage_body(nodes, {"H-child"})
+    assert out is not None
+    assert "Root idea" in out and "Child idea" in out
+    assert "Orphan idea" not in out           # orphan node dropped
+    assert "nHroot --> nHchild" in out
+
+
+def test_lineage_terminates_on_cyclic_parents() -> None:
+    # Malformed cyclic parent data (A→B→A) must not hang the ancestry walk.
+    nodes = [
+        _hyp("H-a", "A", "combine", parents=["H-b"]),
+        _hyp("H-b", "B", "combine", parents=["H-a"]),
+    ]
+    out = _lineage_body(nodes, {"H-a"})
+    assert out is not None                    # both edges captured, no infinite loop
+    assert "nHa --> nHb" in out and "nHb --> nHa" in out
+
+
+def test_lineage_omits_figure_when_no_edges() -> None:
+    # Anchor with no known parent → zero edges → figure omitted entirely.
+    assert _lineage_body([_hyp("H-a", "A", "literature")], {"H-a"}) is None
+    # Parent id that isn't a known node is not an edge either.
+    assert _lineage_body(
+        [_hyp("H-b", "B", "combine", parents=["missing"])], {"H-b"}
+    ) is None
+
+
+def test_lineage_label_sanitizes_strict_charset() -> None:
+    nodes = [
+        _hyp("H-p", "Parent (v2) [x]", "literature"),
+        _hyp("H-c", "Child #1 | <y>", "combine", parents=["H-p"]),
+    ]
+    out = _lineage_body(nodes, {"H-c"})
+    assert out is not None
+    # Check the quoted label text only (mermaid's own node syntax uses [ ] " ).
+    import re as _re
+    labels = _re.findall(r'\["([^"]*)"\]', out)
+    assert labels
+    for lbl in labels:
+        for bad in "()[]{}#|<>\"":
+            assert bad not in lbl
 
 
 def test_insert_after_proposal_heading_splices_at_block_end() -> None:
@@ -195,7 +247,7 @@ def test_weave_figures_adds_per_proposal_elo_and_assumptions() -> None:
     }
     # >1 Elo point so the per-proposal sparkline is emitted (single point → skip).
     elo_series = {"H-a": [{"i": 0, "elo": 1208.0}, {"i": 3, "elo": 1232.0}]}
-    out = _weave_figures(top, reviews, elo_series, {"H-a": "Alpha idea"}, _PROSE)
+    out = _weave_figures(top, top, reviews, elo_series, {"H-a": "Alpha idea"}, _PROSE)
 
     i_p1 = out.index("### Proposal 1")
     i_comp = out.index("## Comparative assessment")

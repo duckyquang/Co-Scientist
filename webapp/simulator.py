@@ -471,7 +471,7 @@ class Sim:
              _ts(_now()), "meta_review", "system_feedback", None,
              "Top candidates converge on a shared pathway — a robust signal. Consider "
              "one more out-of-box round to stress-test the consensus."))
-        ov_md = content.make_overview(self.goal, top[:5])
+        ov_md = content.make_overview(self.goal, top[:3])
         ov_dir = REPO_ROOT / "data" / "artifacts" / self.sid / "final"
         ov_dir.mkdir(parents=True, exist_ok=True)
         (ov_dir / "overview.md").write_text(ov_md)
