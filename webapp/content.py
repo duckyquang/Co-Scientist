@@ -113,11 +113,18 @@ upstream stimulus to **{fill['phenotype']}** observed in {fill['context']}.
 A dose-dependent collapse of the {fill['phenotype']} program with an
 EC50 within the approved therapeutic window of {fill['drug']}.
 """
+    ctx = fill["context"].split()[0]
+    cite_titles = [
+        f"{fill['pathway']} regulates {fill['phenotype']} in {ctx} models",
+        f"A systematic review of {fill['drug']} targeting {fill['pathway']}",
+        f"{fill['gene']} loss shifts the {fill['phenotype']} program in {ctx}",
+        f"Druggability of {fill['pathway']}: tool compounds and {fill['phenotype']} readouts",
+    ]
     citations = []
-    for _ in range(r.randint(2, 4)):
+    for i in range(r.randint(2, 4)):
         yr = r.randint(2018, 2025)
         citations.append({
-            "title": f"{fill['pathway']} regulates {fill['phenotype']} in {fill['context'].split()[0]} models",
+            "title": cite_titles[i % len(cite_titles)],
             "url": f"https://doi.org/10.1038/s{r.randint(40000,49999)}-0{yr-2000}-{r.randint(1000,9999)}-x",
             "excerpt": f"...inhibition of {fill['pathway']} reduced {fill['phenotype']} markers by {r.randint(40,80)}%...",
             "doi": f"10.1038/s{r.randint(40000,49999)}",
