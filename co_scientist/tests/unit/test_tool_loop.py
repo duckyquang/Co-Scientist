@@ -35,6 +35,7 @@ def _fake_response(*, stop_reason: str, blocks: list[dict]) -> AnthropicResponse
             name=b.get("name", ""),
             input=b.get("input", {}),
             text=b.get("text", ""),
+            thinking=b.get("thinking", ""),
             id=b.get("id", ""),
         ))
     raw = SimpleNamespace(stop_reason=stop_reason, content=content)
@@ -174,6 +175,78 @@ async def test_loop_terminates_on_custom_terminal_tool() -> None:
         terminal_tool_names=("my_done_signal",),
     )
     assert result.iterations == 1
+
+
+@pytest.mark.asyncio
+async def test_thinking_accumulates_across_turns() -> None:
+    """Extended-thinking from every assistant turn is joined onto the result —
+    including the turn that ends the loop with a terminal record tool."""
+    from co_scientist.tools.base import ToolResult
+
+    client = MagicMock()
+    client.call = AsyncMock(side_effect=[
+        _fake_response(
+            stop_reason="tool_use",
+            blocks=[
+                {"type": "thinking", "thinking": "First I should search the literature."},
+                {"type": "tool_use", "id": "s", "name": "search", "input": {"q": "x"}},
+            ],
+        ),
+        _fake_response(
+            stop_reason="tool_use",
+            blocks=[
+                {"type": "thinking", "thinking": "The evidence supports the claim."},
+                {"type": "tool_use", "id": "r", "name": "record_hypothesis",
+                 "input": {"title": "t", "statement": "s"}},
+            ],
+        ),
+    ])
+    registry = MagicMock()
+    registry._cfg = SimpleNamespace()
+    registry.call = AsyncMock(return_value=ToolResult(
+        is_error=False, content={"ok": True}, duration_ms=1,
+    ))
+
+    result = await run_tool_loop(
+        client, spec=_spec(), ctx=_ctx(), registry=registry,
+        max_iters=8, parallel_cap=4, tool_timeout_s=1.0,
+    )
+    assert "First I should search the literature." in result.thinking
+    assert "The evidence supports the claim." in result.thinking
+
+
+@pytest.mark.asyncio
+async def test_thinking_empty_when_none_produced() -> None:
+    """No thinking blocks → empty string (never fabricated)."""
+    client = MagicMock()
+    client.call = AsyncMock(return_value=_fake_response(
+        stop_reason="tool_use",
+        blocks=[{"type": "tool_use", "id": "c", "name": "record_hypothesis",
+                 "input": {"title": "t", "statement": "s"}}],
+    ))
+    result = await run_tool_loop(
+        client, spec=_spec(), ctx=_ctx(), registry=MagicMock(),
+        max_iters=8, parallel_cap=4, tool_timeout_s=1.0,
+    )
+    assert result.thinking == ""
+
+
+@pytest.mark.asyncio
+async def test_thinking_capped_at_limit() -> None:
+    """Accumulated thinking is capped so a runaway reasoning trace can't bloat
+    the row."""
+    from co_scientist.llm.tool_loop import THINKING_CAP
+
+    client = MagicMock()
+    client.call = AsyncMock(return_value=_fake_response(
+        stop_reason="end_turn",
+        blocks=[{"type": "thinking", "thinking": "z" * (THINKING_CAP + 5000)}],
+    ))
+    result = await run_tool_loop(
+        client, spec=_spec(), ctx=_ctx(), registry=MagicMock(),
+        max_iters=8, parallel_cap=4, tool_timeout_s=1.0,
+    )
+    assert len(result.thinking) == THINKING_CAP
 
 
 @pytest.mark.asyncio

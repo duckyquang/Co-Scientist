@@ -30,6 +30,9 @@ class ToolLoopExhausted(RuntimeError):
         self.iters = iters
 
 
+THINKING_CAP = 4000  # max chars of accumulated extended-thinking to keep
+
+
 @dataclass
 class ToolLoopResult:
     response: AnthropicResponse                  # final assistant message
@@ -41,6 +44,11 @@ class ToolLoopResult:
     Used by structured-output validation to reject hallucinated citations:
     Generation's record_hypothesis.citations[].url must be in this set.
     """
+    thinking: str = ""
+    """Extended-thinking text accumulated across every assistant turn (capped at
+    THINKING_CAP chars). The final forced-record turn suppresses thinking, but
+    earlier turns' reasoning is captured here so agents can surface it. Empty
+    when the model produced no thinking (never fabricated)."""
 
 
 async def run_tool_loop(
@@ -86,6 +94,7 @@ async def run_tool_loop(
     """
     seen_urls: set[str] = set()
     tool_calls_log: list[dict[str, Any]] = []
+    thinking_parts: list[str] = []
     iterations = 0
     current_spec = spec
     terminal_set = set(terminal_tool_names)
@@ -110,6 +119,11 @@ async def run_tool_loop(
             )
         resp = await client.call(call_spec, ctx)
         last = resp
+        # Capture this turn's extended thinking before branching, so every
+        # return path below carries the accumulated reasoning.
+        turn_thinking = _thinking_text(resp)
+        if turn_thinking:
+            thinking_parts.append(turn_thinking)
         stop = getattr(resp.raw, "stop_reason", None)
 
         if stop != "tool_use":
@@ -118,6 +132,7 @@ async def run_tool_loop(
                 iterations=iterations,
                 tool_calls=tool_calls_log,
                 seen_urls=seen_urls,
+                thinking=_join_thinking(thinking_parts),
             )
 
         # Extract tool_use blocks from the assistant response
@@ -130,6 +145,7 @@ async def run_tool_loop(
                 iterations=iterations,
                 tool_calls=tool_calls_log,
                 seen_urls=seen_urls,
+                thinking=_join_thinking(thinking_parts),
             )
 
         # Early termination: if any tool_use is a terminal recording tool,
@@ -149,6 +165,7 @@ async def run_tool_loop(
                 iterations=iterations,
                 tool_calls=tool_calls_log,
                 seen_urls=seen_urls,
+                thinking=_join_thinking(thinking_parts),
             )
 
         tool_uses = tool_uses[:parallel_cap]
@@ -211,6 +228,21 @@ async def run_tool_loop(
 
 # --------------------------------------------------------------------------- #
 # helpers
+
+
+def _thinking_text(resp: AnthropicResponse) -> str:
+    """Join extended-thinking blocks from one response ('' when absent)."""
+    parts = [
+        getattr(b, "thinking", "")
+        for b in getattr(resp.raw, "content", None) or []
+        if getattr(b, "type", None) == "thinking"
+    ]
+    return "\n\n".join(p for p in parts if p).strip()
+
+
+def _join_thinking(parts: list[str]) -> str:
+    """Join accumulated per-turn thinking, capped at THINKING_CAP chars."""
+    return "\n\n".join(parts).strip()[:THINKING_CAP]
 
 
 async def _dispatch(

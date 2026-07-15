@@ -44,6 +44,12 @@ def connect(db_path: Path | str = DEFAULT_DB) -> sqlite3.Connection:
                 cols = {r[1] for r in conn.execute("PRAGMA table_info(sessions)")}
                 if "origin_session_id" not in cols:
                     conn.execute("ALTER TABLE sessions ADD COLUMN origin_session_id TEXT")
+                hcols = {r[1] for r in conn.execute("PRAGMA table_info(hypotheses)")}
+                if "thinking" not in hcols:
+                    conn.execute("ALTER TABLE hypotheses ADD COLUMN thinking TEXT")
+                rcols = {r[1] for r in conn.execute("PRAGMA table_info(reviews)")}
+                if "thinking" not in rcols:
+                    conn.execute("ALTER TABLE reviews ADD COLUMN thinking TEXT")
                 conn.commit()
                 _INITED.add(str(db_path))
     return conn

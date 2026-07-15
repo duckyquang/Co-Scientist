@@ -80,6 +80,8 @@ export interface Hypothesis {
   title: string;
   summary: string;
   full_text: string;
+  /** Real extended-thinking captured during generation/evolution (empty/absent = none produced). */
+  thinking?: string | null;
   elo: number | null;
   matches_played: number;
   state: HypState;
@@ -108,6 +110,8 @@ export interface Review {
   testability: number | null;
   feasibility: number | null;
   body: string;
+  /** Real extended-thinking captured during reflection (empty/absent = none produced). */
+  thinking?: string | null;
   created_at: string;
 }
 

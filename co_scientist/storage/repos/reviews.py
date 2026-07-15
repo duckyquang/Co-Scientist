@@ -13,8 +13,9 @@ async def insert(conn: aiosqlite.Connection, r: Review) -> bool:
     cur = await conn.execute(
         """INSERT OR IGNORE INTO reviews(
                id, hypothesis_id, session_id, created_at, kind, verdict,
-               novelty, correctness, testability, feasibility, body, artifact_path)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+               novelty, correctness, testability, feasibility, body, thinking,
+               artifact_path)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (
             r.id,
             r.hypothesis_id,
@@ -27,6 +28,7 @@ async def insert(conn: aiosqlite.Connection, r: Review) -> bool:
             r.scores.testability,
             r.scores.feasibility,
             r.body,
+            r.thinking,
             r.artifact_path,
         ),
     )
@@ -76,5 +78,6 @@ def _row_to_review(row: aiosqlite.Row) -> Review:
         assumptions=[],   # in JSON artifact
         evidence=[],      # in JSON artifact
         body=row["body"],
+        thinking=row["thinking"],
         artifact_path=row["artifact_path"],
     )

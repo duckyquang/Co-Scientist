@@ -81,6 +81,54 @@ async def test_hypothesis_insert_or_ignore_dedupes_on_deterministic_id(conn) -> 
 
 
 @pytest.mark.asyncio
+async def test_hypothesis_thinking_roundtrips(conn) -> None:
+    """Captured extended-thinking persists to the row and reads back."""
+    s = await _make_session(conn)
+    hid = ids.hypothesis_id(s.id, "generation/literature", "h-think")
+    thinking = "I weighed pathway A vs B and chose A because it is more testable."
+    await hyp_repo.insert(conn, Hypothesis(
+        id=hid, session_id=s.id, created_at=_now(),
+        created_by="generation", strategy="literature",
+        title="t", summary="s", full_text="f", thinking=thinking,
+        artifact_path=f"artifacts/{s.id}/hypotheses/{hid}.json", state="draft",
+    ))
+    fetched = await hyp_repo.fetch(conn, hid)
+    assert fetched is not None and fetched.thinking == thinking
+
+    # No thinking → None (never fabricated).
+    hid2 = ids.hypothesis_id(s.id, "generation/literature", "h-nothink")
+    await hyp_repo.insert(conn, Hypothesis(
+        id=hid2, session_id=s.id, created_at=_now(),
+        created_by="generation", strategy="literature",
+        title="t", summary="s", full_text="f",
+        artifact_path=f"artifacts/{s.id}/hypotheses/{hid2}.json", state="draft",
+    ))
+    fetched2 = await hyp_repo.fetch(conn, hid2)
+    assert fetched2 is not None and fetched2.thinking is None
+
+
+@pytest.mark.asyncio
+async def test_review_thinking_roundtrips(conn) -> None:
+    s = await _make_session(conn)
+    hid = ids.hypothesis_id(s.id, "generation/literature", "h-rev-think")
+    await hyp_repo.insert(conn, Hypothesis(
+        id=hid, session_id=s.id, created_at=_now(),
+        created_by="generation", strategy="literature",
+        title="t", summary="s", full_text="f",
+        artifact_path=f"artifacts/{s.id}/hypotheses/{hid}.json", state="draft",
+    ))
+    rid = ids.review_id(hid, "full", iteration=0)
+    thinking = "The novelty claim holds; the correctness argument has a gap."
+    await rev_repo.insert(conn, Review(
+        id=rid, hypothesis_id=hid, session_id=s.id, created_at=_now(),
+        kind="full", verdict="neutral", body="ok", thinking=thinking,
+        artifact_path=f"artifacts/{s.id}/reviews/{rid}.json",
+    ))
+    fetched = await rev_repo.fetch(conn, rid)
+    assert fetched is not None and fetched.thinking == thinking
+
+
+@pytest.mark.asyncio
 async def test_init_tournament_only_runs_once(conn) -> None:
     s = await _make_session(conn)
     hid = ids.hypothesis_id(s.id, "generation/literature", "h")

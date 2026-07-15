@@ -141,7 +141,10 @@ class GenerationAgent(BaseAgent):
         )
 
         # 4. Persist + embed + dedup-check.
-        hid, was_new = await self._persist(session.id, record, strategy="literature")
+        hid, was_new = await self._persist(
+            session.id, record, strategy="literature",
+            thinking=loop_result.thinking or None,
+        )
         return TaskResult(
             kind="hypothesis_created",
             hypothesis_ids=[hid] if was_new else [],
@@ -151,7 +154,8 @@ class GenerationAgent(BaseAgent):
     # ---------------------------------------------------------------- #
 
     async def _persist(
-        self, session_id: str, record: dict[str, Any], *, strategy: str
+        self, session_id: str, record: dict[str, Any], *, strategy: str,
+        thinking: str | None = None,
     ) -> tuple[str, bool]:
         statement = record.get("statement") or record.get("title") or ""
         if not statement:
@@ -203,6 +207,7 @@ class GenerationAgent(BaseAgent):
             title=record.get("title", "")[:300],
             summary=(record.get("statement") or "")[:1000],
             full_text=full_text,
+            thinking=thinking,
             citations=citations,
             artifact_path=artifact_path,
             state="draft",
