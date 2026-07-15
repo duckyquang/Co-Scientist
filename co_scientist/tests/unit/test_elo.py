@@ -24,10 +24,10 @@ def test_higher_rating_favored() -> None:
 
 
 def test_k_factor_decays() -> None:
-    assert k_factor(0) == 32
-    assert k_factor(4) == 32
-    assert k_factor(5) == 16
-    assert k_factor(100) == 16
+    assert k_factor(0) == 48
+    assert k_factor(4) == 48
+    assert k_factor(5) == 32
+    assert k_factor(100) == 32
 
 
 def test_update_zero_sum() -> None:
@@ -41,8 +41,8 @@ def test_update_zero_sum() -> None:
 
 def test_underdog_win_is_high_payoff() -> None:
     u = update_elo(1100, 1500, "a", matches_played_min=10)
-    # K=16, expected_a ~0.09, delta = 16*(1 - 0.09) = ~14.5
-    assert 13 < u.elo_a_after - 1100 < 16
+    # K=32, expected_a ~0.09, delta = 32*(1 - 0.09) = ~29
+    assert 26 < u.elo_a_after - 1100 < 32
 
 
 @pytest.mark.asyncio

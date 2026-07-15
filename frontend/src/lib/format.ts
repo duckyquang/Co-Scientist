@@ -121,11 +121,11 @@ export const EVENT_ICON: Record<string, LucideIcon> = {
   session_aborted: Ban,
 };
 
-// ── Elo color ──────────────────────────────────────────────
+// ── Elo color — scaled to the 1000-2000 tournament band ────
 export const eloColor = (elo: number | null | undefined) => {
   if (elo == null)   return "text-ink-soft";
-  if (elo >= 1260)   return "text-green";
-  if (elo >= 1220)   return "text-blue";
-  if (elo >= 1180)   return "text-ink";
+  if (elo >= 1700)   return "text-green";
+  if (elo >= 1450)   return "text-blue";
+  if (elo >= 1200)   return "text-ink";
   return "text-ink-soft";
 };

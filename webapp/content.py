@@ -181,7 +181,10 @@ _RATING_MODEL_NOTE = (
     "Each match updates a hypothesis's Elo rating $R$ by\n\n"
     r"$$R'_a = R_a + K\,(S_a - E_a), \qquad "
     r"E_a = \frac{1}{1 + 10^{(R_b - R_a)/400}}$$"
-    "\n\nwhere $S_a \\in \\{0, 1\\}$ is the match outcome and $K$ is the update rate."
+    "\n\nwhere $S_a \\in \\{0, 1\\}$ is the match outcome and $K$ is the update "
+    "rate. Each idea enters the tournament seeded between 1000 and 1800 by "
+    "review quality, so ratings spread toward the 1000-2000 band as matches "
+    "accumulate."
 )
 
 

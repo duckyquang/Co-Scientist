@@ -13,7 +13,7 @@ class EloUpdate:
     k: int
 
 
-def k_factor(matches_played: int, *, new_threshold: int = 5, k_new: int = 32, k_warm: int = 16) -> int:
+def k_factor(matches_played: int, *, new_threshold: int = 5, k_new: int = 48, k_warm: int = 32) -> int:
     """Higher K for new entrants → faster convergence; lower K once seasoned."""
     return k_new if matches_played < new_threshold else k_warm
 
@@ -28,8 +28,8 @@ def update_elo(
     winner: str,           # "a" | "b"
     matches_played_min: int,
     *,
-    k_new: int = 32,
-    k_warm: int = 16,
+    k_new: int = 48,
+    k_warm: int = 32,
 ) -> EloUpdate:
     """Standard Elo update. K is decided by the *less experienced* player's count."""
     if winner not in ("a", "b"):

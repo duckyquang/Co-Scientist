@@ -328,7 +328,7 @@ Each match updates a hypothesis's Elo rating $R$ by
 
 $$R'_a = R_a + K\\,(S_a - E_a), \\qquad E_a = \\frac{1}{1 + 10^{(R_b - R_a)/400}}$$
 
-where $S_a \\in \\{0, 1\\}$ is the match outcome for idea $a$ against idea $b$, and $K$ is the update rate (larger for newer ideas).`;
+where $S_a \\in \\{0, 1\\}$ is the match outcome for idea $a$ against idea $b$, and $K$ is the update rate (larger for newer ideas). Each idea enters the tournament seeded between 1000 and 1800 by review quality, so ratings spread toward the 1000-2000 band as matches accumulate.`;
 
 function scoresBody(proposals: OverviewProposal[]): string | null {
   const scored = proposals.filter((p) => p.scores);
@@ -668,7 +668,7 @@ export function makePlan(goal: string): SimPlan {
 }
 
 /** Elo update — identical math to webapp/seed.py `_elo_update`. */
-export function eloUpdate(ra: number, rb: number, winner: "a" | "b", k = 32): [number, number] {
+export function eloUpdate(ra: number, rb: number, winner: "a" | "b", k = 48): [number, number] {
   const ea = 1 / (1 + Math.pow(10, (rb - ra) / 400));
   const sa = winner === "a" ? 1.0 : 0.0;
   const ra2 = ra + k * (sa - ea);

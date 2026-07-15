@@ -12,7 +12,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import math
 import random
 import sqlite3
 from datetime import UTC, datetime, timedelta
@@ -55,7 +54,7 @@ def _hid(sid: str, n: int) -> str:
     return "hyp_" + hashlib.sha256(f"{sid}|{n}".encode()).hexdigest()[:18]
 
 
-def _elo_update(ra: float, rb: float, winner: str, k: int = 32) -> tuple[float, float]:
+def _elo_update(ra: float, rb: float, winner: str, k: int = 48) -> tuple[float, float]:
     ea = 1 / (1 + 10 ** ((rb - ra) / 400))
     sa = 1.0 if winner == "a" else 0.0
     ra2 = ra + k * (sa - ea)
@@ -120,12 +119,22 @@ def build_session(conn: sqlite3.Connection, *, goal: str, status: str,
             parent_ids = [r.choice(hyps[: max(1, i)])["id"]]
             if strat == "combine" and i > 2:
                 parent_ids.append(r.choice(hyps[: i])["id"])
+        # Hidden per-hyp quality seeds the initial Elo (1000..1800 + noise),
+        # mirroring the real engine's review-composite seeding; Elo-expectation
+        # match outcomes below then spread the leaderboard toward 1000-2000.
+        # Quality stratified across the batch by index (with per-id jitter) so
+        # seeds reliably span the range; small independent draws can cluster.
+        rq = random.Random(f"{hid}|q")
+        frac = min(1.0, max(0.0, (i + rq.uniform(-0.4, 0.4)) / max(1, n_hyps - 1)))
+        q = 0.05 + 0.90 * frac
+        seed_elo = round(1000 + 800 * q + rq.uniform(-15, 15), 1)
         hyps.append({
             "id": hid, "created_by": created_by, "strategy": strat,
             "parent_ids": list({p for p in parent_ids}),
             "title": c["title"], "summary": c["summary"], "full_text": c["full_text"],
             "citations": c["citations"], "cluster": f"clu_{i % n_clusters}",
-            "elo": 1200.0, "matches": 0, "created_at": start + timedelta(minutes=2 + i * 3),
+            "elo": seed_elo, "elo0": seed_elo,  # elo0 = fixed quality anchor
+            "matches": 0, "created_at": start + timedelta(minutes=2 + i * 3),
         })
 
     # ----- run an Elo tournament -----
@@ -139,8 +148,10 @@ def build_session(conn: sqlite3.Connection, *, goal: str, status: str,
             if a is b:
                 continue
             mode = "debate" if r.random() < 0.3 else "pairwise"
-            # higher-quality (later-mechanism) ideas win a bit more often
-            pa = 0.5 + 0.18 * math.tanh((hash(a["title"]) % 7 - hash(b["title"]) % 7) / 4)
+            # Win probability from each idea's fixed quality anchor (seed Elo), so
+            # consistent winners climb toward 2000 and losers fall toward 1000
+            # instead of mean-reverting — spreading the leaderboard 1000-2000.
+            pa = 1 / (1 + 10 ** ((b["elo0"] - a["elo0"]) / 400))
             winner = "a" if r.random() < pa else "b"
             ra, rb = _elo_update(a["elo"], b["elo"], winner)
             mid = "mat_" + hashlib.sha256(
