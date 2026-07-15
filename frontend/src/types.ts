@@ -91,6 +91,8 @@ export interface Hypothesis {
   citations?: Citation[];
   reviews?: Review[];
   elo_history?: { t: string; elo: number }[];
+  /** Captured (real) or simulated reasoning behind this hypothesis; shown as a disclosure. */
+  thinking?: string | null;
 }
 
 export interface Citation {
