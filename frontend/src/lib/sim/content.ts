@@ -205,6 +205,38 @@ function goalAim(goal: string): string {
   return clip(clause.replace(/[.?!]+$/g, "").trim().toLowerCase(), 90);
 }
 
+/* Rotating title/excerpt scaffolds so a hypothesis's 2–4 fabricated citations
+ * read as distinct sources rather than one paper repeated. */
+const CITE_SCAFFOLDS: ((l: string, m: string, t: string) => string)[] = [
+  (l, m, t) => `${cap(l)} and its effect on ${m} in ${t}`,
+  (l, _m, t) => `A systematic review of ${l} for ${t}`,
+  (l, m, _t) => `Field evidence that ${l} shifts ${m}`,
+  (l, m, t) => `${cap(t)}: measuring ${m} under ${l}`,
+];
+
+/** Fabricate 2–4 well-formed placeholder citations for a TEMPLATE hypothesis
+ *  (deterministic — the caller's seeded rng). Like the rest of the simulated
+ *  fallback these are clearly demo data, mirroring webapp/content.py's
+ *  fabrications and overviewRefs below so the drawer's Citations section and
+ *  the per-proposal cited-sources donut render in sim mode. Groq/BYOK-generated
+ *  hypotheses must NOT get these — engine.ts keeps them at citations: []. */
+function makeCitations(r: Rng, topic: string, lever: string, metric: string): SimCitation[] {
+  const n = r.randint(2, 4);
+  const out: SimCitation[] = [];
+  for (let i = 0; i < n; i++) {
+    const yr = r.randint(2018, 2025);
+    const doi = `10.1038/s${r.randint(40000, 49999)}-${String(yr % 100).padStart(2, "0")}-${r.randint(1000, 9999)}-x`;
+    out.push({
+      title: CITE_SCAFFOLDS[i % CITE_SCAFFOLDS.length](lever, metric, topic),
+      url: `https://doi.org/${doi}`,
+      excerpt: `…${lever} shifted ${metric} by ${r.randint(15, 60)}% relative to matched controls…`,
+      doi,
+      year: yr,
+    });
+  }
+  return out;
+}
+
 const TITLE_SCAFFOLDS = [
   (t: string, l: string, _l2: string, m: string, _me: string) => `${cap(l)} improves ${m} in ${t}`,
   (t: string, l: string, _l2: string, _m: string, _me: string) => `${cap(l)} as a lever for ${t}`,
@@ -257,7 +289,7 @@ outcome is unchanged, giving a clean falsification.
 A dose- or intensity-dependent change in ${dom.metric}, concentrated where
 ${topic} is most acute — with no effect in the inert control arm.
 `;
-  return { title, summary, full_text, citations: [], strategy };
+  return { title, summary, full_text, citations: makeCitations(r, topic, lever, dom.metric), strategy };
 }
 
 export function makeReview(goal: string, hypTitle: string, kind: string): SimReviewContent {
