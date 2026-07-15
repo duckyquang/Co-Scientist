@@ -601,27 +601,139 @@ def make_chat_answer(goal: str, hyps: list[dict], overview: str = "") -> str:
 # --------------------------------------------------------------------------- #
 
 # Concrete angles a meta-review round attacks the current leaders from. Each
-# round rotates through these so the fabricated critique doesn't repeat.
+# round rotates through these (and targets a DIFFERENT hypothesis) so no two
+# rounds read alike. Fields: name, body, threat (why this axis, tied to a soft
+# review score, threatens the idea), probes (angle-specific thinking steps).
 _CRITIQUE_ANGLES = [
-    ("citation integrity",
-     "at least one supporting citation looks like a plausibility match rather "
-     "than direct evidence — the cited result is adjacent, not confirmatory"),
-    ("mechanistic gap",
-     "the causal chain skips a step: the proposed lever and the measured "
-     "outcome are linked by an intermediate that was never actually established"),
-    ("confounding",
-     "the predicted effect could be produced by an uncontrolled confounder, so "
-     "a positive readout would not cleanly implicate the stated mechanism"),
-    ("tournament overfitting",
-     "this idea may be winning debates on rhetorical crispness rather than "
-     "truth — its Elo reflects how it argues, not whether it is right"),
-    ("external validity",
-     "the effect is asserted for the model system but the leap to the real "
-     "target population is doing a lot of unexamined work"),
-    ("measurement validity",
-     "the primary readout may be a proxy that moves for reasons unrelated to "
-     "the phenomenon we actually care about"),
+    {
+        "name": "citation integrity",
+        "body": "at least one supporting citation looks like a plausibility match "
+                "rather than direct evidence — the cited result is adjacent, not "
+                "confirmatory",
+        "threat": "a ranking that leans on those citations is leaning on the "
+                  "weakest part of the file",
+        "probes": [
+            "Sort every citation behind it into *direct evidence* vs "
+            "*plausible-adjacent* — a claim resting on the second pile is "
+            "resting on vibes.",
+            "For the single load-bearing reference, check whether it measured "
+            "*this* effect or a cousin of it.",
+            "Ask whether the summary's confidence was inherited from the cited "
+            "papers or quietly added in the retelling.",
+        ],
+    },
+    {
+        "name": "mechanistic gap",
+        "body": "the causal chain skips a step: the proposed lever and the "
+                "measured outcome are linked by an intermediate that was never "
+                "actually established",
+        "threat": "a mechanism with an undemonstrated step cannot honestly be "
+                  "scored as settled",
+        "probes": [
+            "Draw its causal chain as arrows and mark the one arrow nobody has "
+            "actually demonstrated.",
+            "Ask whether the lever and the outcome are separated by an "
+            "intermediate that is assumed, not shown.",
+            "Check whether a positive result would confirm *this* mechanism or "
+            "merely be consistent with three others.",
+        ],
+    },
+    {
+        "name": "confounding",
+        "body": "the predicted effect could be produced by an uncontrolled "
+                "confounder, so a positive readout would not cleanly implicate "
+                "the stated mechanism",
+        "threat": "an uncontrolled confounder means a positive result would not "
+                  "cleanly earn that score",
+        "probes": [
+            "List every variable that moves alongside the intervention and could "
+            "produce the same readout.",
+            "Ask which of those the proposed control actually neutralises — and "
+            "which it quietly leaves open.",
+            "Decide whether a clean positive still implicates the stated "
+            "mechanism, or just correlates with it.",
+        ],
+    },
+    {
+        "name": "tournament overfitting",
+        "body": "this idea may be winning debates on rhetorical crispness rather "
+                "than truth — its Elo reflects how it argues, not whether it is "
+                "right",
+        "threat": "a rating built on debate wins is not the same thing as being "
+                  "correct",
+        "probes": [
+            "Separate *how well it argues* from *whether it is right* — the Elo "
+            "only ever sees the first.",
+            "Re-read its winning matches: did it beat rivals on evidence or on "
+            "rhetorical crispness?",
+            "Ask whether a skeptical domain expert, not a debate judge, would "
+            "still rank it first.",
+        ],
+    },
+    {
+        "name": "external validity",
+        "body": "the effect is asserted for the model system but the leap to the "
+                "real target population is doing a lot of unexamined work",
+        "threat": "an effect that only holds in the toy setting does not deserve "
+                  "a top rank for the real goal",
+        "probes": [
+            "Trace the leap from the model system to the real target population "
+            "and name what changes across that gap.",
+            "Ask which assumptions hold in the toy setting but quietly break at "
+            "scale.",
+            "Decide whether the effect size would survive the messiness the "
+            "model omits.",
+        ],
+    },
+    {
+        "name": "measurement validity",
+        "body": "the primary readout may be a proxy that moves for reasons "
+                "unrelated to the phenomenon we actually care about",
+        "threat": "a proxy readout can inflate every downstream number, "
+                  "including this one",
+        "probes": [
+            "Ask whether the primary readout *is* the phenomenon or a proxy "
+            "standing in for it.",
+            "List the unrelated reasons that proxy could move, and whether any "
+            "is likelier than the claimed cause.",
+            "Check whether an orthogonal readout would agree — or expose the "
+            "proxy.",
+        ],
+    },
 ]
+
+# Rotating opener/closer sets so the critique's framing differs every round.
+_CRITIQUE_OPENERS = [
+    "Are these the best hypotheses, or merely the best-defended?",
+    "Before I trust this leaderboard, I want to try to knock the top idea off it.",
+    "A high Elo is a strong prior, not a proof — so I am reading against the "
+    "ranking, not with it.",
+    "The tournament rewards survivability, not truth; this round I press on the "
+    "difference.",
+    "If the ordering is right, it should survive me actively trying to break it.",
+    "I keep asking the same uncomfortable question: what would make the current "
+    "leader wrong?",
+]
+_CRITIQUE_CLOSERS = [
+    "Next round I hand these doubts to the re-rank and let fresh matches decide "
+    "whether the ordering holds.",
+    "I will turn this into a sharper falsification and see if the Elo gap "
+    "survives it.",
+    "The stress-test stage should target exactly this weak axis before anyone "
+    "commits resources.",
+    "If the concern is real, a low-K re-rank will start eroding the gap; if not, "
+    "the idea earns its place.",
+    "I am logging this as the specific thing the next round must probe, not a "
+    "vague unease.",
+    "Either the idea absorbs this critique or it drops — the re-rank will tell "
+    "us which.",
+]
+
+_REVIEW_DIMS = ("novelty", "correctness", "testability", "feasibility")
+
+
+def _elo_txt(elo) -> str:
+    return "unranked" if elo is None else f"Elo {round(elo)}"
 
 
 def make_self_critique(goal: str, round_no: int, top: list[dict]) -> str:
@@ -632,42 +744,57 @@ def make_self_critique(goal: str, round_no: int, top: list[dict]) -> str:
 
         ## Thinking\n\n<reasoning>\n\n## Self-critique\n\n<critique>
 
-    referencing the session's current top hypotheses. Deterministic (seeded by
-    goal + round) so re-reads are stable; varies per round and per top set.
+    Each round attacks a DIFFERENT top hypothesis on a DIFFERENT angle, weaving
+    in that idea's live Elo + review scores/verdict, so no two rounds read
+    alike. Deterministic (seeded by goal + round).
     """
-    r = _rng(f"{goal}|self_critique|{round_no}")
-    names = [(h.get("title") or "an untitled idea").strip() for h in top[:3]]
-    lead = names[0] if names else "the current leader"
-    runner = names[1] if len(names) > 1 else lead
-    angle_name, angle_body = _CRITIQUE_ANGLES[(round_no - 1) % len(_CRITIQUE_ANGLES)]
-    _alt_name, alt_body = r.choice(
-        [a for a in _CRITIQUE_ANGLES if a[0] != angle_name] or _CRITIQUE_ANGLES
-    )
+    lst = top or [{"title": "the current leader", "elo": None}]
+    target = lst[(round_no - 1) % len(lst)]
+    title = (target.get("title") or "an untitled idea").strip()
+    angle = _CRITIQUE_ANGLES[(round_no - 1) % len(_CRITIQUE_ANGLES)]
 
+    # Recompute the target's review the same way the scorecard does — keeps the
+    # scores/verdict consistent with the rest of the session, deterministically.
+    rv = make_review(goal, title, "full")
+    sc = rv["scores"]
+    low_dim = min(_REVIEW_DIMS, key=lambda d: sc[d])
+    score_line = ", ".join(f"{d} {sc[d]:.2f}" for d in _REVIEW_DIMS)
+
+    opener = _CRITIQUE_OPENERS[(round_no - 1) % len(_CRITIQUE_OPENERS)]
+    closer = _CRITIQUE_CLOSERS[(round_no - 1) % len(_CRITIQUE_CLOSERS)]
+
+    if round_no > 1:
+        prev = lst[(round_no - 2) % len(lst)]
+        prev_angle = _CRITIQUE_ANGLES[(round_no - 2) % len(_CRITIQUE_ANGLES)]
+        prev_title = (prev.get("title") or "an untitled idea").strip()
+        prior_ref = (
+            f"Round {round_no - 1} probed the {prev_angle['name']} in "
+            f"**{prev_title}**; this round I turn to the {angle['name']} in "
+            f"**{title}**."
+        )
+    else:
+        prior_ref = (
+            f"This is the first critique pass, so I start by attacking the "
+            f"current leader's {angle['name']}."
+        )
+
+    probe_lines = "\n".join(f"{i + 1}. {p}" for i, p in enumerate(angle["probes"]))
     thinking = (
-        f"Round {round_no}. I am re-reading the current leaderboard before trusting it.\n\n"
-        f"1. The top-ranked idea is **{lead}**. I re-derive its claim from first "
-        f"principles and ask whether the tournament rewarded it for being correct "
-        f"or merely for being well-argued.\n"
-        f"2. Its closest challenger is **{runner}**. I check whether the gap "
-        f"between them is real signal or just noise from a handful of matches.\n"
-        f"3. I walk each finalist's evidence back to its citations and ask, for "
-        f"every link in the chain, *would this survive a domain expert?*\n"
-        f"4. I list what a fresh round should probe that the last {round_no} "
-        f"round(s) did not."
+        f"Round {round_no}. {prior_ref}\n\n"
+        f"I re-read **{title}** ({_elo_txt(target.get('elo'))}) — its last review "
+        f"landed at {score_line}, verdict *{rv['verdict']}*. The softest mark is "
+        f"**{low_dim}** ({sc[low_dim]:.2f}), and that is exactly where a "
+        f"{angle['name']} problem would bite.\n\n"
+        f"{probe_lines}"
     )
     critique = (
-        f"Are these actually the best hypotheses, or the best-defended? Looking "
-        f"hard at **{lead}**, I am not convinced. The flaw this round is "
-        f"**{angle_name}**: {angle_body}. That directly weakens the conclusion "
-        f"the ranking leans on.\n\n"
-        f"**{runner}** has a second problem — {alt_body}. If that holds, its "
-        f"stated result may be over-claimed, and a citation or two are being "
-        f"asked to carry more weight than they can bear.\n\n"
-        f"Next round I will stress-test these specific doubts: re-examine the "
-        f"weakest citation behind **{lead}**, probe the {angle_name} concern "
-        f"with a sharper falsification, and let a re-rank decide whether the "
-        f"current ordering actually holds up."
+        f"{opener} Looking hard at **{title}**, I am not convinced. The weak axis "
+        f"this round is **{angle['name']}**: {angle['body']}.\n\n"
+        f"Its {low_dim} score ({sc[low_dim]:.2f}) is the softest on its "
+        f"scorecard, so {angle['threat']}. If that holds, the verdict of "
+        f"*{rv['verdict']}* is generous and the {_elo_txt(target.get('elo'))} gap "
+        f"to the field is doing more work than the evidence supports.\n\n"
+        f"{closer}"
     )
     return f"## Thinking\n\n{thinking}\n\n## Self-critique\n\n{critique}"
 
@@ -676,23 +803,55 @@ def make_self_critique(goal: str, round_no: int, top: list[dict]) -> str:
 # Fabricated stress-test stage (shared contract with sim/content.ts)
 # --------------------------------------------------------------------------- #
 
-# How an adversarial stress test tries to break a leading hypothesis. Rotated /
-# sampled so each tested idea gets a distinct attack, citation finding and fix.
-_STRESS_ATTACKS = [
-    "searched for a disconfirming result and found an adjacent study whose effect "
-    "reversed once a stricter control was added",
-    "re-derived the mechanism from scratch and found one causal step is assumed "
-    "rather than demonstrated",
-    "probed the dose/intensity window and found the active range is narrower than "
-    "the summary implies",
-    "checked whether the primary readout is the phenomenon itself or a proxy that "
-    "can move for unrelated reasons",
+# Each probe pairs the named check that drove it with the concrete finding, so
+# the verdict driver, the "what I attacked" line, and the found-evidence bullet
+# all stay self-consistent.
+_STRESS_PROBES = [
+    {"check": "adversarial search",
+     "attack": "went looking for the one published result that would sink it and "
+               "found an adjacent study whose effect reversed once a stricter "
+               "control was added",
+     "found": "an adjacent result reversed once a stricter control was added"},
+    {"check": "mechanism re-derivation",
+     "attack": "re-derived the mechanism from scratch and found one causal step "
+               "is assumed rather than demonstrated",
+     "found": "one causal step is assumed, not demonstrated"},
+    {"check": "dose-window probe",
+     "attack": "probed the dose/intensity window and found the active range is "
+               "narrower than the summary implies",
+     "found": "the active dose window is narrower than the summary implies"},
+    {"check": "readout audit",
+     "attack": "checked whether the primary readout is the phenomenon itself or "
+               "a proxy that can move for unrelated reasons",
+     "found": "the primary readout may track a proxy, not the mechanism"},
 ]
-_STRESS_VERDICTS = [
-    ("holds", "survives the stress test with a bounded caveat"),
-    ("holds-with-fix", "holds only after one load-bearing assumption is tightened"),
-    ("weakened", "is weakened but salvageable once the claim is narrowed"),
+# The three scannable verdict tokens (the chat + ranking key off these exact
+# strings). "with fixes" is repeated so it's the common outcome.
+_STRESS_VERDICT_TOKENS = [
+    "**Verdict: PASS**",
+    "**Verdict: PASS (with fixes)**",
+    "**Verdict: PASS (with fixes)**",
+    "**Verdict: FAIL**",
 ]
+
+
+def _stress_verdict_token(goal: str, hyp_id: str) -> str:
+    """Verdict token for a tested hyp — seeded on hyp id only (not round) so the
+    stress report and the stress ranking always show the SAME token."""
+    return _rng(f"{goal}|stressverdict|{hyp_id}").choice(_STRESS_VERDICT_TOKENS)
+
+
+def _claim_gist(summary: str, fallback: str) -> str:
+    """First sentence (<=160 chars) of a summary — the idea's actual claim."""
+    s = (summary or "").strip()
+    if not s:
+        return fallback
+    first = re.split(r"(?<=[.!?])\s", s)[0].strip()
+    if len(first) > 160:
+        first = first[:157] + "…"
+    return first or fallback
+
+
 _STRESS_FIXES = [
     "restricts the claim to the regime the pilot can actually defend and adds the "
     "control the stress test showed was load-bearing",
@@ -719,42 +878,84 @@ def make_stress_report(goal: str, hyp: dict, round_info: dict) -> str:
     """Fabricated meta-review stress test for one top hypothesis.
 
     Shared contract (webapp/simulator.py + sim/content.ts makeStressReport):
-    returns markdown ``## Thinking\\n\\n<reasoning>\\n\\n## Stress test\\n\\n<report>``
-    that actively tries to *break* the hypothesis — seeks contradicting evidence,
-    audits its citations, runs feasibility numbers, then designs a small
-    prototype-scale pilot (model / intervention / readout / success criterion,
-    explicitly a pilot before scaling) and gives a verdict. Deterministic (seeded
-    by goal + hyp id + round); varies per hypothesis.
+    returns markdown ``## Thinking\\n\\n<reasoning>\\n\\n## Stress test\\n\\n<report>``.
+    The first line of the report is exactly one scannable ``**Verdict: …**``
+    token; "What I attacked" names the idea's real claim; found-evidence
+    references its own citations by title (or flags the citation gap when none).
+    Deterministic (seeded by goal + hyp id + round); varies per hypothesis.
     """
     title = (hyp.get("title") or "an untitled idea").strip()
     round_no = round_info.get("round", 1)
     of = round_info.get("of", 3)
     r = _rng(f"{goal}|stress|{hyp.get('id')}|{round_no}")
-    verdict_key, verdict_txt = r.choice(_STRESS_VERDICTS)
-    attack = r.choice(_STRESS_ATTACKS)
-    n_cites = len(hyp.get("citations") or [])
+    probe = r.choice(_STRESS_PROBES)
+    cites = hyp.get("citations") or []
+    n_cites = len(cites)
+    gist = _claim_gist(hyp.get("summary"), title)
     haircut = r.randint(20, 55)   # effect-size haircut under the stricter control
     n_units = r.choice([6, 8, 12])
     weeks = r.choice([2, 3, 4])
     effect = r.randint(15, 40)
 
+    token = _stress_verdict_token(goal, hyp.get("id"))
+    if "PASS (with fixes)" in token:
+        driver = (f"the {probe['check']} exposed a real but bounded gap that the "
+                  f"hardened revision below closes")
+    elif "FAIL" in token:
+        driver = (f"the {probe['check']} surfaced a gap the current claim cannot "
+                  f"absorb without narrowing first")
+    else:
+        driver = "no disconfirming result held up and the load-bearing citations checked out"
+
+    # Pre-fix review scores → plausible post-fix improvements (hardening lifts
+    # correctness/testability/feasibility; novelty is unchanged by a fix).
+    sc = make_review(goal, title, "full")["scores"]
+    after = {
+        "novelty": sc["novelty"],
+        "correctness": min(0.97, round(sc["correctness"] + r.uniform(0.06, 0.14), 2)),
+        "testability": min(0.97, round(sc["testability"] + r.uniform(0.02, 0.08), 2)),
+        "feasibility": min(0.97, round(sc["feasibility"] + r.uniform(0.06, 0.14), 2)),
+    }
+    score_row = " · ".join(f"{d} {sc[d]:.2f} → {after[d]:.2f}" for d in _REVIEW_DIMS)
+
+    cite_titles = list(dict.fromkeys(
+        (c.get("title") or "untitled source").strip() for c in cites))
+    if cite_titles:
+        citation_line = "\n".join(
+            f"- *{t}* — on re-reading, it backs a ~{haircut}% smaller effect than "
+            f"the summary implies once a stricter control is added."
+            for t in cite_titles[:2]
+        )
+    else:
+        citation_line = (
+            "- No sources were attached — flagging the citation gap as a finding: "
+            "the claim currently rests on uncited reasoning."
+        )
+
     thinking = (
         f"Stress round {round_no}/{of}. I am trying to *break* **{title}**, not "
         f"defend it.\n\n"
+        f"Its core claim: “{gist}”. That lever is what I have to falsify.\n\n"
         f"1. Adversarial search: what published result, if it exists, would kill "
-        f"this? I go looking for the disconfirming case specifically.\n"
-        f"2. Citation audit: I re-open each of the {n_cites} supporting "
-        f"reference(s) and ask whether it shows *this* effect or an adjacent one.\n"
-        f"3. Feasibility math: I put rough numbers on the intervention to see if "
-        f"the claimed effect is plausible at a realistic dose/setting.\n"
-        f"4. Then I design the cheapest experiment that could falsify it at "
-        f"prototype scale — before anyone commits real resources."
+        f"this specific claim?\n"
+        f"2. Citation audit: "
+        + (f"re-open each of the {n_cites} supporting reference(s) and ask whether "
+           f"it shows *this* effect or an adjacent one"
+           if n_cites else
+           "there are no attached sources, so the absence of evidence is itself "
+           "the first finding")
+        + ".\n"
+        "3. Feasibility math: put rough numbers on the lever to see if the claimed "
+        "effect is plausible at a realistic dose/setting.\n"
+        "4. Design the cheapest experiment that could falsify it at prototype "
+        "scale — before anyone commits real resources."
     )
     report = (
-        f"**What I attacked.** I {attack}.\n\n"
-        f"**Citation check.** Of {n_cites} cited source(s), the load-bearing one "
-        f"supports a ~{haircut}% smaller effect than the summary implies once the "
-        f"stricter control is applied — a real but survivable haircut.\n\n"
+        f"{token} — {driver}.\n\n"
+        f"**What I attacked.** I targeted the idea's core claim — “{gist}” — and "
+        f"{probe['attack']}.\n\n"
+        f"**Found evidence.**\n{citation_line}\n\n"
+        f"**Scores before → after fix.** {score_row}.\n\n"
         f"**Feasibility numbers.** At a realistic exposure the predicted effect is "
         f"~{effect}% of the outcome measure — above noise, but the margin is thin, "
         f"so any pilot must be powered for it.\n\n"
@@ -765,9 +966,7 @@ def make_stress_report(goal: str, hyp: dict, round_info: dict) -> str:
         f"- *Scale:* n = {n_units} units over {weeks} weeks — a pilot, not a full "
         f"study.\n"
         f"- *Success criterion:* a ≥{effect}% shift vs a matched control, "
-        f"pre-registered; anything less kills the scale-up.\n\n"
-        f"**Verdict:** `{verdict_key}` — the hypothesis {verdict_txt}. The hardened "
-        f"revision below narrows the claim to what the pilot can actually defend."
+        f"pre-registered; anything less kills the scale-up."
     )
     return f"## Thinking\n\n{thinking}\n\n## Stress test\n\n{report}"
 
@@ -809,10 +1008,11 @@ def make_stress_ranking(goal: str, ranked3: list[dict]) -> str:
         r = _rng(f"{goal}|stressrank|{tested.get('id')}")
         found = r.choice(_STRESS_FOUND)
         applied = r.choice(_STRESS_APPLIED)
+        token = _stress_verdict_token(goal, tested.get("id"))
         lines.append(
             f"{i}. **{fix.get('title')}** (`{fix.get('id')}`, Elo "
-            f"{round(e['elo'])}) — hardened from `{tested.get('id')}` (parent Elo "
-            f"{round(e['parent_elo'])}). *Test found:* {found}. *Fix applied:* "
-            f"{applied}."
+            f"{round(e['elo'])}) — {token} on the parent `{tested.get('id')}` "
+            f"(parent Elo {round(e['parent_elo'])}). *Test found:* {found}. "
+            f"*Fix applied:* {applied}."
         )
     return "\n".join(lines)

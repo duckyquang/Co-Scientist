@@ -255,8 +255,28 @@ class StressTestAgent(BaseAgent):
         )
 
 
+# Free-form record verdict → one of the three scannable tokens the chat/ranking
+# key off. Anything unexpected defaults to the middle (PASS with fixes).
+_VERDICT_TOKENS = {
+    "survives": "**Verdict: PASS**",
+    "survives_with_fixes": "**Verdict: PASS (with fixes)**",
+    "undermined": "**Verdict: FAIL**",
+}
+
+
 def _render_stress_md(record: dict[str, Any]) -> str:
-    parts: list[str] = [f"**Verdict.** {record.get('verdict', '?')}"]
+    token = _VERDICT_TOKENS.get(record.get("verdict"), "**Verdict: PASS (with fixes)**")
+    parts: list[str] = [token]
+
+    scores = {k: record.get(k) for k in ("correctness", "testability", "feasibility")}
+    if any(v is not None for v in scores.values()):
+        parts.append(
+            "**Review scores.** "
+            + " · ".join(
+                f"{k} {v:.2f}" if isinstance(v, (int, float)) else f"{k} n/a"
+                for k, v in scores.items()
+            )
+        )
 
     ce = record.get("contradicting_evidence") or []
     parts.append("## Contradicting evidence sought")
