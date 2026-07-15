@@ -31,6 +31,22 @@ def test_web_search_skipped_when_no_search_api_key(tmp_cfg) -> None:
     assert "europe_pmc_search" in names
 
 
+def test_openalex_registered_without_any_key(tmp_cfg, monkeypatch) -> None:
+    """Unlike web_search, openalex_search is keyless: it registers with every
+    secret (and env var) unset."""
+    tmp_cfg.secrets.TAVILY_API_KEY = ""
+    tmp_cfg.secrets.BRAVE_API_KEY = ""
+    tmp_cfg.secrets.OPENALEX_API_KEY = ""
+    monkeypatch.delenv("TAVILY_API_KEY", raising=False)
+    monkeypatch.delenv("BRAVE_API_KEY", raising=False)
+    reg = ToolRegistry(tmp_cfg).discover()
+    names = {t.name for t in reg.all()}
+    assert "openalex_search" in names
+    assert "web_search" not in names
+    # And it's offered to the literature-using agents.
+    assert "openalex_search" in {t.name for t in reg.tools_for("generation")}
+
+
 def test_agent_allowlist_resolution(tmp_cfg) -> None:
     tmp_cfg.secrets.TAVILY_API_KEY = "sk-fake"
     reg = ToolRegistry(tmp_cfg).discover()

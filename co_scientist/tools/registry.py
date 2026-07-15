@@ -12,6 +12,7 @@ from ..config import Config
 from .base import Tool, ToolCtx, ToolResult, to_anthropic_tool
 from .builtins.arxiv import ArxivSearchTool
 from .builtins.europe_pmc import EuropePMCSearchTool
+from .builtins.openalex import OpenAlexSearchTool
 from .builtins.pubmed import PubmedSearchTool
 from .science_skills import ScienceSkillTool, discover_skills
 from .web_fetch import WebFetchTool
@@ -22,26 +23,26 @@ from .web_search import WebSearchTool
 AGENT_TOOLS: dict[str, set[str]] = {
     "generation": {
         "web_search", "web_fetch",
-        "pubmed_search", "arxiv_search", "europe_pmc_search",
+        "pubmed_search", "arxiv_search", "europe_pmc_search", "openalex_search",
         "literature_*",   # any science-skills literature_* tools
     },
     "reflection": {
         "web_search", "web_fetch",
-        "pubmed_search", "arxiv_search", "europe_pmc_search",
+        "pubmed_search", "arxiv_search", "europe_pmc_search", "openalex_search",
         "literature_*",
         # code_exec wired in M2
     },
     "ranking": set(),                # no tools mid-debate
     "evolution": {
         "web_search", "web_fetch",
-        "pubmed_search", "arxiv_search", "europe_pmc_search",
+        "pubmed_search", "arxiv_search", "europe_pmc_search", "openalex_search",
         "literature_*",
     },
     "proximity": set(),
     "metareview": set(),
     "stresstest": {
         "web_search", "web_fetch",
-        "pubmed_search", "arxiv_search", "europe_pmc_search",
+        "pubmed_search", "arxiv_search", "europe_pmc_search", "openalex_search",
         "literature_*",
     },
 }
@@ -59,6 +60,7 @@ class ToolRegistry:
             PubmedSearchTool(self._cfg),
             ArxivSearchTool(),
             EuropePMCSearchTool(),
+            OpenAlexSearchTool(self._cfg),
         ):
             self._register(t)
         # web_search only registers if a backing search API key is set.
