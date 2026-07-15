@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Printer, Link2, Sun, Moon, Check, Sparkles } from "lucide-react";
 import { api } from "../api";
 import { Loader, Markdown, slugify } from "../components/ui";
@@ -37,6 +37,22 @@ export default function Microsite() {
     if (!id) return;
     api.overview(id).then(setMd).catch(() => setMissing(true));
   }, [id]);
+
+  // Arriving via ?print=1 (the session's Print/PDF button) auto-opens the
+  // print dialog once the markdown is in. Mermaid/chart figures render async
+  // (dynamic import + async render) after the markdown mounts, so wait a beat
+  // first. The guard is set inside the timeout so StrictMode's dev
+  // double-effect (which clears the first timer) still prints exactly once.
+  const [search] = useSearchParams();
+  const printedRef = useRef(false);
+  useEffect(() => {
+    if (search.get("print") !== "1" || !md || printedRef.current) return;
+    const t = setTimeout(() => {
+      printedRef.current = true;
+      window.print();
+    }, 600);
+    return () => clearTimeout(t);
+  }, [search, md]);
 
   const parsed = useMemo(() => (md ? parseReport(md) : null), [md]);
 

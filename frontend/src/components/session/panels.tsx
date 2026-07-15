@@ -352,9 +352,13 @@ export function OverviewPanel({ md }: { md: string | null }) {
           <button className="btn-ghost h-8" onClick={() => {
             navigator.clipboard.writeText(md); setCopied(true); setTimeout(() => setCopied(false), 1500);
           }}><Copy className="h-3.5 w-3.5" /> {copied ? "Copied!" : "Copy markdown"}</button>
-          <button className="btn-ghost h-8" onClick={() => window.print()}>
-            <Printer className="h-3.5 w-3.5" /> Print / PDF
-          </button>
+          {id && (
+            // Print from the microsite (?print=1 auto-opens the dialog) so the
+            // PDF is the formatted proposal alone, not the whole chat thread.
+            <Link to={`/s/${id}/site?print=1`} className="btn-ghost h-8">
+              <Printer className="h-3.5 w-3.5" /> Print / PDF
+            </Link>
+          )}
         </div>
       </div>
       <Markdown md={md} />
