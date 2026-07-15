@@ -644,4 +644,112 @@ export function makeSelfCritique(goal: string, roundNo: number, top: CritiqueHyp
   return `## Thinking\n\n${thinking}\n\n## Self-critique\n\n${critique}`;
 }
 
+/* ── Fabricated stress-test stage (shared contract with webapp/content.py) ── */
+
+const STRESS_ATTACKS = [
+  "searched for a disconfirming result and found an adjacent study whose effect reversed once a stricter control was added",
+  "re-derived the mechanism from scratch and found one causal step is assumed rather than demonstrated",
+  "probed the dose/intensity window and found the active range is narrower than the summary implies",
+  "checked whether the primary readout is the phenomenon itself or a proxy that can move for unrelated reasons",
+];
+const STRESS_VERDICTS: [string, string][] = [
+  ["holds", "survives the stress test with a bounded caveat"],
+  ["holds-with-fix", "holds only after one load-bearing assumption is tightened"],
+  ["weakened", "is weakened but salvageable once the claim is narrowed"],
+];
+const STRESS_FIXES = [
+  "restricts the claim to the regime the pilot can actually defend and adds the control the stress test showed was load-bearing",
+  "swaps the weakest citation for a direct falsification step and pre-registers the effect-size threshold before any scale-up",
+  "narrows the dose/intensity window to where the effect clears noise and adds the orthogonal readout the original lacked",
+];
+const STRESS_FOUND = [
+  "a key citation backed a weaker effect than claimed",
+  "the effect shrank under a stricter control",
+  "one causal step was assumed, not shown",
+  "the readout risked tracking a proxy, not the mechanism",
+];
+const STRESS_APPLIED = [
+  "narrowed the claim and added the missing control",
+  "pre-registered the effect threshold and a direct falsification",
+  "restricted the dose window to where the effect clears noise",
+  "added an orthogonal readout to pin the mechanism",
+];
+
+export interface StressHyp { id: string; title: string; summary?: string; citations?: unknown[] }
+export interface StressRankEntry {
+  tested: { id: string; title: string };
+  fix: { id: string; title: string };
+  elo: number; parentElo: number;
+}
+
+/** Fabricated meta-review stress test for one top hypothesis. Shared contract
+ *  with webapp/content.py `make_stress_report`: returns markdown of the shape
+ *  `## Thinking\n\n…\n\n## Stress test\n\n…` that actively tries to break the
+ *  hypothesis (contradicting evidence, citation audit, feasibility numbers, a
+ *  small prototype-scale pilot, verdict). Deterministic (seeded by goal + hyp id
+ *  + round); varies per hypothesis. */
+export function makeStressReport(goal: string, hyp: StressHyp, roundInfo: { round: number; of: number }): string {
+  const title = (hyp.title || "an untitled idea").trim();
+  const r = makeRng(`${goal}|stress|${hyp.id}|${roundInfo.round}`);
+  const [verdictKey, verdictTxt] = r.choice(STRESS_VERDICTS);
+  const attack = r.choice(STRESS_ATTACKS);
+  const nCites = (hyp.citations || []).length;
+  const haircut = r.randint(20, 55);
+  const nUnits = r.choice([6, 8, 12]);
+  const weeks = r.choice([2, 3, 4]);
+  const effect = r.randint(15, 40);
+
+  const thinking =
+    `Stress round ${roundInfo.round}/${roundInfo.of}. I am trying to *break* **${title}**, not defend it.\n\n` +
+    `1. Adversarial search: what published result, if it exists, would kill this? I go looking for the disconfirming case specifically.\n` +
+    `2. Citation audit: I re-open each of the ${nCites} supporting reference(s) and ask whether it shows *this* effect or an adjacent one.\n` +
+    `3. Feasibility math: I put rough numbers on the intervention to see if the claimed effect is plausible at a realistic dose/setting.\n` +
+    `4. Then I design the cheapest experiment that could falsify it at prototype scale — before anyone commits real resources.`;
+  const report =
+    `**What I attacked.** I ${attack}.\n\n` +
+    `**Citation check.** Of ${nCites} cited source(s), the load-bearing one supports a ~${haircut}% smaller effect than the summary implies once the stricter control is applied — a real but survivable haircut.\n\n` +
+    `**Feasibility numbers.** At a realistic exposure the predicted effect is ~${effect}% of the outcome measure — above noise, but the margin is thin, so any pilot must be powered for it.\n\n` +
+    `**Prototype-scale pilot (run this BEFORE scaling).**\n` +
+    `- *Model:* the smallest faithful test bed for “${title.slice(0, 60)}”.\n` +
+    `- *Intervention:* the hypothesis's own lever, a single dose/setting.\n` +
+    `- *Readout:* the primary outcome measure plus one orthogonal check.\n` +
+    `- *Scale:* n = ${nUnits} units over ${weeks} weeks — a pilot, not a full study.\n` +
+    `- *Success criterion:* a ≥${effect}% shift vs a matched control, pre-registered; anything less kills the scale-up.\n\n` +
+    `**Verdict:** \`${verdictKey}\` — the hypothesis ${verdictTxt}. The hardened revision below narrows the claim to what the pilot can actually defend.`;
+  return `## Thinking\n\n${thinking}\n\n## Stress test\n\n${report}`;
+}
+
+/** Title + summary for the stress-hardened fix child. Shared contract with
+ *  webapp/content.py `make_stress_fix`. Deterministic (seeded by hyp id). */
+export function makeStressFix(hyp: { id: string; title: string }): { title: string; summary: string } {
+  const title = (hyp.title || "an untitled idea").trim();
+  const r = makeRng(`fix|${hyp.id}`);
+  const fix = r.choice(STRESS_FIXES);
+  return {
+    title: `${title} — hardened`,
+    summary: `A stress-hardened revision of “${title}” that ${fix}. Same core mechanism, but the failure mode the stress test surfaced is now designed out before scaling.`,
+  };
+}
+
+/** Markdown ordered list of the stress-tested top-3 after re-ranking. Shared
+ *  contract with webapp/content.py `make_stress_ranking`. Entries ordered
+ *  best-first by the caller; deterministic per tested id. */
+export function makeStressRanking(goal: string, ranked3: StressRankEntry[]): string {
+  const lines = [
+    "## Stress-test ranking (fixes applied)",
+    "",
+    "After stress-testing the top three and breeding a hardened revision of each, the re-ranked order — with the fix each test forced — is:",
+    "",
+  ];
+  ranked3.forEach((e, i) => {
+    const r = makeRng(`${goal}|stressrank|${e.tested.id}`);
+    const found = r.choice(STRESS_FOUND);
+    const applied = r.choice(STRESS_APPLIED);
+    lines.push(
+      `${i + 1}. **${e.fix.title}** (\`${e.fix.id}\`, Elo ${Math.round(e.elo)}) — hardened from \`${e.tested.id}\` (parent Elo ${Math.round(e.parentElo)}). *Test found:* ${found}. *Fix applied:* ${applied}.`,
+    );
+  });
+  return lines.join("\n");
+}
+
 export type { Rng };

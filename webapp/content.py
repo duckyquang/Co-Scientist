@@ -594,3 +594,149 @@ def make_self_critique(goal: str, round_no: int, top: list[dict]) -> str:
         f"current ordering actually holds up."
     )
     return f"## Thinking\n\n{thinking}\n\n## Self-critique\n\n{critique}"
+
+
+# --------------------------------------------------------------------------- #
+# Fabricated stress-test stage (shared contract with sim/content.ts)
+# --------------------------------------------------------------------------- #
+
+# How an adversarial stress test tries to break a leading hypothesis. Rotated /
+# sampled so each tested idea gets a distinct attack, citation finding and fix.
+_STRESS_ATTACKS = [
+    "searched for a disconfirming result and found an adjacent study whose effect "
+    "reversed once a stricter control was added",
+    "re-derived the mechanism from scratch and found one causal step is assumed "
+    "rather than demonstrated",
+    "probed the dose/intensity window and found the active range is narrower than "
+    "the summary implies",
+    "checked whether the primary readout is the phenomenon itself or a proxy that "
+    "can move for unrelated reasons",
+]
+_STRESS_VERDICTS = [
+    ("holds", "survives the stress test with a bounded caveat"),
+    ("holds-with-fix", "holds only after one load-bearing assumption is tightened"),
+    ("weakened", "is weakened but salvageable once the claim is narrowed"),
+]
+_STRESS_FIXES = [
+    "restricts the claim to the regime the pilot can actually defend and adds the "
+    "control the stress test showed was load-bearing",
+    "swaps the weakest citation for a direct falsification step and pre-registers "
+    "the effect-size threshold before any scale-up",
+    "narrows the dose/intensity window to where the effect clears noise and adds "
+    "the orthogonal readout the original lacked",
+]
+_STRESS_FOUND = [
+    "a key citation backed a weaker effect than claimed",
+    "the effect shrank under a stricter control",
+    "one causal step was assumed, not shown",
+    "the readout risked tracking a proxy, not the mechanism",
+]
+_STRESS_APPLIED = [
+    "narrowed the claim and added the missing control",
+    "pre-registered the effect threshold and a direct falsification",
+    "restricted the dose window to where the effect clears noise",
+    "added an orthogonal readout to pin the mechanism",
+]
+
+
+def make_stress_report(goal: str, hyp: dict, round_info: dict) -> str:
+    """Fabricated meta-review stress test for one top hypothesis.
+
+    Shared contract (webapp/simulator.py + sim/content.ts makeStressReport):
+    returns markdown ``## Thinking\\n\\n<reasoning>\\n\\n## Stress test\\n\\n<report>``
+    that actively tries to *break* the hypothesis — seeks contradicting evidence,
+    audits its citations, runs feasibility numbers, then designs a small
+    prototype-scale pilot (model / intervention / readout / success criterion,
+    explicitly a pilot before scaling) and gives a verdict. Deterministic (seeded
+    by goal + hyp id + round); varies per hypothesis.
+    """
+    title = (hyp.get("title") or "an untitled idea").strip()
+    round_no = round_info.get("round", 1)
+    of = round_info.get("of", 3)
+    r = _rng(f"{goal}|stress|{hyp.get('id')}|{round_no}")
+    verdict_key, verdict_txt = r.choice(_STRESS_VERDICTS)
+    attack = r.choice(_STRESS_ATTACKS)
+    n_cites = len(hyp.get("citations") or [])
+    haircut = r.randint(20, 55)   # effect-size haircut under the stricter control
+    n_units = r.choice([6, 8, 12])
+    weeks = r.choice([2, 3, 4])
+    effect = r.randint(15, 40)
+
+    thinking = (
+        f"Stress round {round_no}/{of}. I am trying to *break* **{title}**, not "
+        f"defend it.\n\n"
+        f"1. Adversarial search: what published result, if it exists, would kill "
+        f"this? I go looking for the disconfirming case specifically.\n"
+        f"2. Citation audit: I re-open each of the {n_cites} supporting "
+        f"reference(s) and ask whether it shows *this* effect or an adjacent one.\n"
+        f"3. Feasibility math: I put rough numbers on the intervention to see if "
+        f"the claimed effect is plausible at a realistic dose/setting.\n"
+        f"4. Then I design the cheapest experiment that could falsify it at "
+        f"prototype scale — before anyone commits real resources."
+    )
+    report = (
+        f"**What I attacked.** I {attack}.\n\n"
+        f"**Citation check.** Of {n_cites} cited source(s), the load-bearing one "
+        f"supports a ~{haircut}% smaller effect than the summary implies once the "
+        f"stricter control is applied — a real but survivable haircut.\n\n"
+        f"**Feasibility numbers.** At a realistic exposure the predicted effect is "
+        f"~{effect}% of the outcome measure — above noise, but the margin is thin, "
+        f"so any pilot must be powered for it.\n\n"
+        f"**Prototype-scale pilot (run this BEFORE scaling).**\n"
+        f"- *Model:* the smallest faithful test bed for “{title[:60]}”.\n"
+        f"- *Intervention:* the hypothesis's own lever, a single dose/setting.\n"
+        f"- *Readout:* the primary outcome measure plus one orthogonal check.\n"
+        f"- *Scale:* n = {n_units} units over {weeks} weeks — a pilot, not a full "
+        f"study.\n"
+        f"- *Success criterion:* a ≥{effect}% shift vs a matched control, "
+        f"pre-registered; anything less kills the scale-up.\n\n"
+        f"**Verdict:** `{verdict_key}` — the hypothesis {verdict_txt}. The hardened "
+        f"revision below narrows the claim to what the pilot can actually defend."
+    )
+    return f"## Thinking\n\n{thinking}\n\n## Stress test\n\n{report}"
+
+
+def make_stress_fix(hyp: dict) -> dict:
+    """Title + summary for the stress-hardened fix child of a tested hypothesis.
+
+    Shared contract with sim/content.ts makeStressFix. Deterministic (seeded by
+    hyp id)."""
+    title = (hyp.get("title") or "an untitled idea").strip()
+    r = _rng(f"fix|{hyp.get('id')}")
+    fix = r.choice(_STRESS_FIXES)
+    return {
+        "title": f"{title} — hardened",
+        "summary": (
+            f"A stress-hardened revision of “{title}” that {fix}. Same "
+            f"core mechanism, but the failure mode the stress test surfaced is now "
+            f"designed out before scaling."
+        ),
+    }
+
+
+def make_stress_ranking(goal: str, ranked3: list[dict]) -> str:
+    """Markdown ordered list of the stress-tested top-3 after re-ranking.
+
+    Shared contract with sim/content.ts makeStressRanking. Each ``ranked3`` entry
+    is ``{tested, fix, elo, parent_elo}`` where ``tested``/``fix`` are dicts with
+    ``id`` + ``title`` and elos are the final ratings; ordered best-first by the
+    caller. Deterministic per tested id."""
+    lines = [
+        "## Stress-test ranking (fixes applied)",
+        "",
+        "After stress-testing the top three and breeding a hardened revision of "
+        "each, the re-ranked order — with the fix each test forced — is:",
+        "",
+    ]
+    for i, e in enumerate(ranked3, 1):
+        tested, fix = e["tested"], e["fix"]
+        r = _rng(f"{goal}|stressrank|{tested.get('id')}")
+        found = r.choice(_STRESS_FOUND)
+        applied = r.choice(_STRESS_APPLIED)
+        lines.append(
+            f"{i}. **{fix.get('title')}** (`{fix.get('id')}`, Elo "
+            f"{round(e['elo'])}) — hardened from `{tested.get('id')}` (parent Elo "
+            f"{round(e['parent_elo'])}). *Test found:* {found}. *Fix applied:* "
+            f"{applied}."
+        )
+    return "\n".join(lines)

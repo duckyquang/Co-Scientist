@@ -21,7 +21,7 @@ import type {
 } from "../../types";
 import type { LiveTick } from "../hooks";
 import { classifyIntent, composeRerunGoal, OUT_OF_SCOPE } from "./chatRouter";
-import { eloUpdate, figureSet, insertAfterHeading, makeHypothesis, makeOverview, makePlan, makeReview, makeSelfCritique, referencesSection, SIM_MODEL, STRATEGIES } from "./content";
+import { eloUpdate, figureSet, insertAfterHeading, makeHypothesis, makeOverview, makePlan, makeReview, makeSelfCritique, makeStressFix, makeStressRanking, makeStressReport, referencesSection, SIM_MODEL, STRATEGIES } from "./content";
 import { generateSession, type GenHyp, type GeneratedContent } from "./generate";
 import { hasRealProvider } from "../llm";
 import { makeRng } from "./rng";
@@ -102,6 +102,7 @@ interface Plan {
   tEnd: number; pinnedId: string | null; overview: string;
   metaFeedback: Feedback;
   critiques: { t: number; fb: Feedback }[]; // recurring self-critique rounds, timed
+  stress: { t: number; fb: Feedback }[];    // stress-test reports + ranking, timed
   pending?: boolean; // groq generation still in flight (or failed)
   failed?: boolean;  // groq generation errored
 }
@@ -110,10 +111,16 @@ interface Plan {
  *  reaches HIT of the budget. Critique chunks are clamped so they never cross
  *  HIT; only the tiny re-rank burst lands on top → ~95-97% band, never >100%. */
 const BUDGET_HIT = 0.95;
+/** Self-critique loop fills to CRITIQUE_HIT; the stress-test stage tops up to
+ *  BUDGET_HIT — so both stages get budget and the gauge still lands ~95-99%. */
+const CRITIQUE_HIT = 0.85;
 /** Each round burns ~this fraction of the budget, so round count stays bounded
  *  (~3-5) for any budget → wall time stays close to today's. */
 const CRITIQUE_ROUND_FRACTION = 0.22;
 const MAX_CRITIQUE_ROUNDS = 8;
+/** Token chunk each stress-test report spends (budget-scaled, clamped to the
+ *  BUDGET_HIT target). 3 tested hyps × this covers the 0.85→0.95 gap. */
+const STRESS_TEST_FRACTION = 0.05;
 
 /** Assemble a markdown body from Groq's structured hypothesis fields. */
 function assembleFullText(g: GenHyp): string {
@@ -149,6 +156,7 @@ function buildPlan(rec: SimRecord): Plan {
       steps: [], hyps: [], matches: [], events, tEnd: Infinity, pinnedId: null, overview: "",
       metaFeedback: { id: `fb_${rec.id}_meta`, created_at: new Date(rec.created_ms).toISOString(), source: "meta_review", kind: "system_feedback", target_id: null, active: 1, text: "" },
       critiques: [],
+      stress: [],
       pending: true,
     };
   }
@@ -294,7 +302,7 @@ function buildPlan(rec: SimRecord): Plan {
   // looping until simulated token spend reaches BUDGET_HIT of the budget. The
   // per-round chunk scales with the budget so the round COUNT stays bounded.
   const budgetTok = rec.budget_tokens > 0 ? rec.budget_tokens : DEFAULT_BUDGET_TOKENS;
-  const targetTok = BUDGET_HIT * budgetTok;
+  const targetTok = CRITIQUE_HIT * budgetTok;
   const perRound = Math.max(1, Math.floor(CRITIQUE_ROUND_FRACTION * budgetTok));
   const critiques: { t: number; fb: Feedback }[] = [];
   let critRound = 0;
@@ -333,6 +341,95 @@ function buildPlan(rec: SimRecord): Plan {
       transcript("ranking", `ranking.${mode}`, 0.01, 0.05);
       emit("ranking", "match_complete", { match_id: mid, winner, mode });
     }
+  }
+
+  // ── Phase 4.6: fabricated stress-test stage ──
+  // Mimics the real engine's stress-test stage so the demo shows the full
+  // workflow: take the top-3 leaders, write a meta-review stress report + review
+  // for each, breed a hardened fix child (seeded just above its parent), a short
+  // re-rank burst so the fixes generally overtake their parents, then a
+  // stress_ranking summary. Tops token spend from CRITIQUE_HIT up to BUDGET_HIT.
+  const stress: { t: number; fb: Feedback }[] = [];
+  if (hyps.length >= 2) {
+    const stressTop3 = [...hyps].sort((x, y) => elo.get(y.id)! - elo.get(x.id)!).slice(0, 3);
+    const stressTargetTok = BUDGET_HIT * budgetTok;
+    const perStress = Math.max(1, Math.floor(STRESS_TEST_FRACTION * budgetTok));
+    const pairs: { parent: PlanHyp; child: PlanHyp }[] = [];
+    stressTop3.forEach((h, k) => {
+      t += 1.5;
+      emit("stresstest", "task_started", { agent: "stresstest", action: "StressTest", hypothesis_id: h.id });
+      const report = makeStressReport(goal,
+        { id: h.id, title: h.title, summary: h.summary, citations: h.citations },
+        { round: k + 1, of: stressTop3.length });
+      stress.push({
+        t, fb: {
+          id: `fb_${simId}_st${k}`, created_at: isoAt(rec, t),
+          source: "meta_review", kind: "stress_test", target_id: h.id, active: 1, text: report,
+        },
+      });
+      const addTok = Math.min(perStress, Math.max(0, Math.floor(stressTargetTok - tokSum)));
+      critiqueStep("stresstest", "stresstest.report", addTok);
+      emit("stresstest", "task_completed", { agent: "stresstest", kind: "stress_test", hypothesis_id: h.id, action: "StressTest" });
+      // Hardened fix child: strategy feedback_driven, created by evolution,
+      // parent = the tested hyp, seeded just above the parent's current Elo.
+      t += 1.5;
+      const fix = makeStressFix({ id: h.id, title: h.title });
+      const cidx = n + 2 + k;
+      const rv = makeReview(goal, fix.title, "full");
+      const child: PlanHyp = {
+        id: hypId(cidx), idx: cidx, strategy: "feedback_driven",
+        created_by: "evolution", parents: [h.id], tCreate: t, tReview: t,
+        title: fix.title, summary: fix.summary,
+        full_text: `## Hardening\n\n${fix.summary}`,
+        citations: h.citations,
+        review: { verdict: rv.verdict, scores: rv.scores, body: rv.body },
+      };
+      hyps.push(child);
+      elo.set(child.id, elo.get(h.id)! + 8);
+      transcript("evolution", "evolution.feedback_driven", 0.04, 0.2);
+      emit("evolution", "hypothesis_created", { hypothesis_id: child.id, title: fix.title.slice(0, 80), strategy: "feedback_driven" });
+      review(child);
+      pairs.push({ parent: h, child });
+    });
+    // Re-rank burst: 2 random wobble matches (low K) first, then each child
+    // beats its parent (higher K) so the fixes end up on top.
+    const stressMatch = (a: PlanHyp, b: PlanHyp, winner: "a" | "b", k: number, rationale: string) => {
+      t += 0.8;
+      const ea = elo.get(a.id)!, eb = elo.get(b.id)!;
+      const [ra, rb] = eloUpdate(ea, eb, winner, k);
+      const mid = `mat_${simId}_${matchCounter++}`;
+      matches.push({
+        id: mid, t, hyp_a: a.id, hyp_b: b.id, mode: "pairwise", winner,
+        elo_a_before: ea, elo_b_before: eb, elo_a_after: ra, elo_b_after: rb,
+        rationale, similarity: round2(r.uniform(0.05, 0.4)),
+      });
+      elo.set(a.id, ra); elo.set(b.id, rb);
+      transcript("ranking", "ranking.pairwise", 0.01, 0.05);
+      emit("ranking", "match_complete", { match_id: mid, winner, mode: "pairwise" });
+    };
+    for (let bi = 0; bi < 2 && hyps.length >= 2; bi++) {
+      const [a, b] = r.sample(hyps, 2);
+      stressMatch(a, b, r.random() < 0.5 ? "a" : "b", 6, `Idea held up under re-examination.`);
+    }
+    for (const { parent, child } of pairs) {
+      stressMatch(child, parent, "a", 16, "Hardened revision beat its parent under stress re-test.");
+    }
+    // stress_ranking summary, ordered by the fix children's final Elo.
+    t += 0.8;
+    const ranked = pairs
+      .map(({ parent, child }) => ({
+        tested: { id: parent.id, title: parent.title },
+        fix: { id: child.id, title: child.title },
+        elo: elo.get(child.id)!, parentElo: elo.get(parent.id)!,
+      }))
+      .sort((a, b) => b.elo - a.elo);
+    stress.push({
+      t, fb: {
+        id: `fb_${simId}_strank`, created_at: isoAt(rec, t),
+        source: "meta_review", kind: "stress_ranking", target_id: null, active: 1,
+        text: makeStressRanking(goal, ranked),
+      },
+    });
   }
 
   // ── Phase 5: finalize ──
@@ -394,7 +491,7 @@ function buildPlan(rec: SimRecord): Plan {
     text: "Top candidates converge on a shared pathway — a robust signal. Consider one more out-of-box round to stress-test the consensus.",
   };
 
-  const plan: Plan = { steps, hyps, matches, events, tEnd, pinnedId, overview, metaFeedback, critiques, pending: false, failed: false };
+  const plan: Plan = { steps, hyps, matches, events, tEnd, pinnedId, overview, metaFeedback, critiques, stress, pending: false, failed: false };
   _planCache.set(cacheKey, plan);
   return plan;
 }
@@ -763,8 +860,10 @@ export function simCost(id: string): { by_agent: CostByAgent[]; summary: any } {
 export function simFeedback(id: string): Feedback[] {
   const s = snapshot(mustRecord(id));
   const out = [...s.rec.feedback];
-  // Self-critique rounds surface progressively as the run reaches each one.
+  // Self-critique rounds + the stress-test stage surface progressively as the
+  // run reaches each timed row.
   for (const c of s.plan.critiques) if (c.t <= s.el) out.push(c.fb);
+  for (const c of s.plan.stress) if (c.t <= s.el) out.push(c.fb);
   if (s.status === "done") out.push(s.plan.metaFeedback);
   return out.sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at));
 }
