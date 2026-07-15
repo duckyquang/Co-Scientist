@@ -221,7 +221,7 @@ function Thread({ id }: { id: string }) {
     );
   }
 
-  const tokenUsed = (metrics.input_tokens || 0) + (metrics.output_tokens || 0);
+  const tokenUsed = session.budget_used_tokens || 0; // same source as Dashboard; enforces cap consistency
   const startMs = new Date(session.created_at).getTime();
   const endMs = live ? Date.now() : new Date(session.updated_at).getTime();
   const elapsed = Math.max(0, (endMs - startMs) / 1000);
@@ -229,7 +229,7 @@ function Thread({ id }: { id: string }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {/* Thread header — non-scrolling */}
-      <div className="flex items-center gap-3 border-b border-rule pb-3 no-print">
+      <div className="flex items-center gap-3 border-b border-rule py-3 no-print">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <StatusBadge status={session.status} />
