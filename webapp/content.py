@@ -65,6 +65,74 @@ _CONTEXTS = ["AML blasts", "senescent fibroblasts", "exhausted CD8 T cells",
 _JOURNALS = ["Nature", "Cell", "Science", "Nature Medicine", "Cell Metabolism",
              "Immunity", "Nature Cancer", "PNAS", "eLife", "Blood"]
 
+# Curated pool of REAL, landmark papers. Every DOI was verified to resolve to a
+# live publisher page (curl -sI -L → HTTP 200; transcript in the PR). The keyless
+# simulator samples from these instead of minting random DOIs, so every demo
+# citation links to a paper that actually exists. url is always
+# "https://doi.org/" + doi, so the two never disagree. Kept in sync with
+# REAL_PAPERS in frontend/src/lib/sim/content.ts.
+_REAL_PAPERS = [
+    {"title": "The Hallmarks of Cancer", "venue": "Cell", "year": 2000,
+     "doi": "10.1016/S0092-8674(00)81683-9"},
+    {"title": "Hallmarks of Cancer: The Next Generation", "venue": "Cell",
+     "year": 2011, "doi": "10.1016/j.cell.2011.02.013"},
+    {"title": "Highly accurate protein structure prediction with AlphaFold",
+     "venue": "Nature", "year": 2021, "doi": "10.1038/s41586-021-03819-2"},
+    {"title": "Improved protein structure prediction using potentials from deep "
+              "learning", "venue": "Nature", "year": 2020,
+     "doi": "10.1038/s41586-019-1923-7"},
+    {"title": "Induction of Pluripotent Stem Cells from Mouse Embryonic and Adult "
+              "Fibroblast Cultures by Defined Factors", "venue": "Cell",
+     "year": 2006, "doi": "10.1016/j.cell.2006.07.024"},
+    {"title": "Molecular Structure of Nucleic Acids: A Structure for Deoxyribose "
+              "Nucleic Acid", "venue": "Nature", "year": 1953,
+     "doi": "10.1038/171737a0"},
+    {"title": "Initial sequencing and analysis of the human genome",
+     "venue": "Nature", "year": 2001, "doi": "10.1038/35057062"},
+    {"title": "Continuous cultures of fused cells secreting antibody of predefined "
+              "specificity", "venue": "Nature", "year": 1975,
+     "doi": "10.1038/256495a0"},
+    {"title": "Potent and specific genetic interference by double-stranded RNA in "
+              "Caenorhabditis elegans", "venue": "Nature", "year": 1998,
+     "doi": "10.1038/35888"},
+    {"title": "Establishment in culture of pluripotential cells from mouse embryos",
+     "venue": "Nature", "year": 1981, "doi": "10.1038/292154a0"},
+    {"title": "Basic local alignment search tool",
+     "venue": "Journal of Molecular Biology", "year": 1990,
+     "doi": "10.1016/S0022-2836(05)80360-2"},
+    {"title": "Analysis of Relative Gene Expression Data Using Real-Time "
+              "Quantitative PCR and the 2(-Delta Delta C(T)) Method",
+     "venue": "Methods", "year": 2001, "doi": "10.1006/meth.2001.1262"},
+    {"title": "Cleavage of Structural Proteins during the Assembly of the Head of "
+              "Bacteriophage T4", "venue": "Nature", "year": 1970,
+     "doi": "10.1038/227680a0"},
+    {"title": "A rapid and sensitive method for the quantitation of microgram "
+              "quantities of protein utilizing the principle of protein-dye "
+              "binding", "venue": "Analytical Biochemistry", "year": 1976,
+     "doi": "10.1016/0003-2697(76)90527-3"},
+    {"title": "Immunity, Inflammation, and Cancer", "venue": "Cell", "year": 2010,
+     "doi": "10.1016/j.cell.2010.01.025"},
+    {"title": "The Human Microbiome Project", "venue": "Nature", "year": 2007,
+     "doi": "10.1038/nature06244"},
+    {"title": "Human gut microbes associated with obesity", "venue": "Nature",
+     "year": 2006, "doi": "10.1038/4441022a"},
+]
+
+
+def _paper_citation(p: dict) -> dict:
+    """Citation object for a curated real paper — url and doi always agree, and
+    the excerpt references the paper generically (no fabricated statistic)."""
+    return {
+        "title": p["title"],
+        "url": "https://doi.org/" + p["doi"],
+        "excerpt": (
+            f"{p['venue']} ({p['year']}) — cited as background support for this "
+            "direction."
+        ),
+        "doi": p["doi"],
+        "year": p["year"],
+    }
+
 
 def _rng(seed_text: str) -> random.Random:
     return random.Random(int(hashlib.sha256(seed_text.encode()).hexdigest()[:16], 16))
@@ -113,23 +181,9 @@ upstream stimulus to **{fill['phenotype']}** observed in {fill['context']}.
 A dose-dependent collapse of the {fill['phenotype']} program with an
 EC50 within the approved therapeutic window of {fill['drug']}.
 """
-    ctx = fill["context"].split()[0]
-    cite_titles = [
-        f"{fill['pathway']} regulates {fill['phenotype']} in {ctx} models",
-        f"A systematic review of {fill['drug']} targeting {fill['pathway']}",
-        f"{fill['gene']} loss shifts the {fill['phenotype']} program in {ctx}",
-        f"Druggability of {fill['pathway']}: tool compounds and {fill['phenotype']} readouts",
-    ]
-    citations = []
-    for i in range(r.randint(2, 4)):
-        yr = r.randint(2018, 2025)
-        citations.append({
-            "title": cite_titles[i % len(cite_titles)],
-            "url": f"https://doi.org/10.1038/s{r.randint(40000,49999)}-0{yr-2000}-{r.randint(1000,9999)}-x",
-            "excerpt": f"...inhibition of {fill['pathway']} reduced {fill['phenotype']} markers by {r.randint(40,80)}%...",
-            "doi": f"10.1038/s{r.randint(40000,49999)}",
-            "year": yr,
-        })
+    # Sample distinct REAL landmark papers (verified-resolving DOIs) so the demo's
+    # citations always link to a paper that exists — no fabricated/random DOIs.
+    citations = [_paper_citation(p) for p in r.sample(_REAL_PAPERS, r.randint(2, 4))]
     return {
         "title": title, "summary": summary, "full_text": full_text,
         "citations": citations, "strategy": strategy,
@@ -316,11 +370,10 @@ def _figure_set(goal: str, top: list[dict], lineage_nodes: list[dict]) -> dict[s
 
 
 def _overview_refs(top: list[dict]) -> tuple[list[dict], list[str]]:
-    """Dedupe the proposals' fabricated citation objects into a numbered
-    reference list, and return a parallel list of per-proposal inline `[n]`
-    marker strings. Deduped by URL (fallback DOI) so repeated sources share a
-    number. Real (well-formed, demo) citation data only — nothing extra invented
-    here."""
+    """Dedupe the proposals' citation objects (curated real papers) into a
+    numbered reference list, and return a parallel list of per-proposal inline
+    `[n]` marker strings. Deduped by URL (fallback DOI) so repeated sources share
+    a number. Consumes the citation objects as-is — nothing extra invented here."""
     refs: list[dict] = []
     markers: list[str] = []
     key_to_n: dict[str, int] = {}

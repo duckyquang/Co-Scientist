@@ -205,36 +205,51 @@ function goalAim(goal: string): string {
   return clip(clause.replace(/[.?!]+$/g, "").trim().toLowerCase(), 90);
 }
 
-/* Rotating title/excerpt scaffolds so a hypothesis's 2–4 fabricated citations
- * read as distinct sources rather than one paper repeated. */
-const CITE_SCAFFOLDS: ((l: string, m: string, t: string) => string)[] = [
-  (l, m, t) => `${cap(l)} and its effect on ${m} in ${t}`,
-  (l, _m, t) => `A systematic review of ${l} for ${t}`,
-  (l, m, _t) => `Field evidence that ${l} shifts ${m}`,
-  (l, m, t) => `${cap(t)}: measuring ${m} under ${l}`,
+/** Curated pool of REAL, landmark papers. Every DOI was verified to resolve to a
+ *  live publisher page (curl -sI -L → HTTP 200; transcript in the PR). The keyless
+ *  simulator samples from these instead of minting random DOIs, so every demo
+ *  citation links to a paper that actually exists. Kept in sync with _REAL_PAPERS
+ *  in webapp/content.py. */
+interface RealPaper { title: string; venue: string; year: number; doi: string }
+const REAL_PAPERS: RealPaper[] = [
+  { title: "The Hallmarks of Cancer", venue: "Cell", year: 2000, doi: "10.1016/S0092-8674(00)81683-9" },
+  { title: "Hallmarks of Cancer: The Next Generation", venue: "Cell", year: 2011, doi: "10.1016/j.cell.2011.02.013" },
+  { title: "Highly accurate protein structure prediction with AlphaFold", venue: "Nature", year: 2021, doi: "10.1038/s41586-021-03819-2" },
+  { title: "Improved protein structure prediction using potentials from deep learning", venue: "Nature", year: 2020, doi: "10.1038/s41586-019-1923-7" },
+  { title: "Induction of Pluripotent Stem Cells from Mouse Embryonic and Adult Fibroblast Cultures by Defined Factors", venue: "Cell", year: 2006, doi: "10.1016/j.cell.2006.07.024" },
+  { title: "Molecular Structure of Nucleic Acids: A Structure for Deoxyribose Nucleic Acid", venue: "Nature", year: 1953, doi: "10.1038/171737a0" },
+  { title: "Initial sequencing and analysis of the human genome", venue: "Nature", year: 2001, doi: "10.1038/35057062" },
+  { title: "Continuous cultures of fused cells secreting antibody of predefined specificity", venue: "Nature", year: 1975, doi: "10.1038/256495a0" },
+  { title: "Potent and specific genetic interference by double-stranded RNA in Caenorhabditis elegans", venue: "Nature", year: 1998, doi: "10.1038/35888" },
+  { title: "Establishment in culture of pluripotential cells from mouse embryos", venue: "Nature", year: 1981, doi: "10.1038/292154a0" },
+  { title: "Basic local alignment search tool", venue: "Journal of Molecular Biology", year: 1990, doi: "10.1016/S0022-2836(05)80360-2" },
+  { title: "Analysis of Relative Gene Expression Data Using Real-Time Quantitative PCR and the 2(-Delta Delta C(T)) Method", venue: "Methods", year: 2001, doi: "10.1006/meth.2001.1262" },
+  { title: "Cleavage of Structural Proteins during the Assembly of the Head of Bacteriophage T4", venue: "Nature", year: 1970, doi: "10.1038/227680a0" },
+  { title: "A rapid and sensitive method for the quantitation of microgram quantities of protein utilizing the principle of protein-dye binding", venue: "Analytical Biochemistry", year: 1976, doi: "10.1016/0003-2697(76)90527-3" },
+  { title: "Immunity, Inflammation, and Cancer", venue: "Cell", year: 2010, doi: "10.1016/j.cell.2010.01.025" },
+  { title: "The Human Microbiome Project", venue: "Nature", year: 2007, doi: "10.1038/nature06244" },
+  { title: "Human gut microbes associated with obesity", venue: "Nature", year: 2006, doi: "10.1038/4441022a" },
 ];
 
-/** Fabricate 2–4 well-formed placeholder citations for a TEMPLATE hypothesis
- *  (deterministic — the caller's seeded rng). Like the rest of the simulated
- *  fallback these are clearly demo data, mirroring webapp/content.py's
- *  fabrications and overviewRefs below so the drawer's Citations section and
- *  the per-proposal cited-sources donut render in sim mode. Groq/BYOK-generated
- *  hypotheses must NOT get these — engine.ts keeps them at citations: []. */
-function makeCitations(r: Rng, topic: string, lever: string, metric: string): SimCitation[] {
-  const n = r.randint(2, 4);
-  const out: SimCitation[] = [];
-  for (let i = 0; i < n; i++) {
-    const yr = r.randint(2018, 2025);
-    const doi = `10.1038/s${r.randint(40000, 49999)}-${String(yr % 100).padStart(2, "0")}-${r.randint(1000, 9999)}-x`;
-    out.push({
-      title: CITE_SCAFFOLDS[i % CITE_SCAFFOLDS.length](lever, metric, topic),
-      url: `https://doi.org/${doi}`,
-      excerpt: `…${lever} shifted ${metric} by ${r.randint(15, 60)}% relative to matched controls…`,
-      doi,
-      year: yr,
-    });
-  }
-  return out;
+/** Citation object for a curated real paper — url and doi always agree, excerpt
+ *  references the paper generically (no fabricated statistic). */
+function paperCitation(p: RealPaper): SimCitation {
+  return {
+    title: p.title,
+    url: `https://doi.org/${p.doi}`,
+    excerpt: `${p.venue} (${p.year}) — cited as background support for this direction.`,
+    doi: p.doi,
+    year: p.year,
+  };
+}
+
+/** Sample 2–4 distinct REAL landmark papers (verified-resolving DOIs) for a
+ *  TEMPLATE hypothesis (deterministic — the caller's seeded rng), so the drawer's
+ *  Citations section and the per-proposal cited-sources donut link to real papers.
+ *  Groq/BYOK-generated hypotheses must NOT get these — engine.ts keeps them at
+ *  citations: []. */
+function makeCitations(r: Rng): SimCitation[] {
+  return r.sample(REAL_PAPERS, r.randint(2, 4)).map(paperCitation);
 }
 
 const TITLE_SCAFFOLDS = [
@@ -289,7 +304,7 @@ outcome is unchanged, giving a clean falsification.
 A dose- or intensity-dependent change in ${dom.metric}, concentrated where
 ${topic} is most acute — with no effect in the inert control arm.
 `;
-  return { title, summary, full_text, citations: makeCitations(r, topic, lever, dom.metric), strategy };
+  return { title, summary, full_text, citations: makeCitations(r), strategy };
 }
 
 export function makeReview(goal: string, hypTitle: string, kind: string): SimReviewContent {
@@ -487,26 +502,22 @@ export function insertAfterHeading(md: string, n: number, block: string): string
 
 interface OverviewRef { n: number; title: string; year: number; url: string }
 
-/** Fabricate one well-formed citation per proposal (deterministic, demo data).
- *  The sim's makeHypothesis carries no real sources, so — like the rest of the
- *  simulated content — these are clearly-labelled placeholders that let the demo
- *  show the References feature. Returns numbered refs + per-proposal `[n]`
- *  markers, deduped by URL. The real engine builds References from real data;
- *  the browser-LLM path passes null to referencesSection (honest, no sources). */
+/** Pick one curated REAL paper per proposal (deterministic per proposal title).
+ *  Returns numbered refs + per-proposal `[n]` markers, deduped by URL so repeated
+ *  sources share a number. The real engine builds References from real data; the
+ *  browser-LLM path passes null to referencesSection (honest, no sources). */
 function overviewRefs(goal: string, top: OverviewProposal[]): { refs: OverviewRef[]; markers: string[] } {
   const refs: OverviewRef[] = [];
   const markers: string[] = [];
   const urlToN = new Map<string, number>();
   for (const p of top) {
-    const r = makeRng(`ref|${goal}|${p.title}`);
-    const yr = r.randint(2018, 2025);
-    const doi = `10.1038/s${r.randint(40000, 49999)}-${String(yr % 100).padStart(2, "0")}-${r.randint(1000, 9999)}-x`;
-    const url = `https://doi.org/${doi}`;
+    const paper = makeRng(`ref|${goal}|${p.title}`).choice(REAL_PAPERS);
+    const url = `https://doi.org/${paper.doi}`;
     let n = urlToN.get(url);
     if (n === undefined) {
       n = refs.length + 1;
       urlToN.set(url, n);
-      refs.push({ n, title: `Evidence bearing on: ${p.title}`, year: yr, url });
+      refs.push({ n, title: paper.title, year: paper.year, url });
     }
     markers.push(`[${n}]`);
   }
