@@ -165,6 +165,11 @@ ollama pull llama3.3:70b
 # Then set provider = "ollama" in co-scientist.toml
 ```
 
+**Literature grounding — no key needed.** The `openalex_search`, `pubmed_search`,
+`arxiv_search`, and `europe_pmc_search` tools query keyless public APIs and are always
+available, giving agents real papers with resolving DOIs out of the box. General
+`web_search` auto-activates only when you set `TAVILY_API_KEY` or `BRAVE_API_KEY`.
+
 ### 3. Build the UI & run
 
 ```bash
