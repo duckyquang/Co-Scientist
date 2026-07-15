@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Telescope, Sparkles, Swords, GitBranch, FileText, User, MessageSquare,
-  Loader2, Check, ChevronDown, ArrowRight, RefreshCw,
+  Loader2, Check, ChevronDown, ArrowRight, RefreshCw, FlaskConical,
 } from "lucide-react";
 import { EloRace } from "../charts";
 import { OverviewPanel } from "../session/panels";
@@ -23,6 +23,10 @@ export type ChatMsg =
   | { id: string; role: "assistant"; kind: "feedback"; text: string }
   // Self-critique ("requestioning") round — optional Thinking section + narrative.
   | { id: string; role: "assistant"; kind: "critique"; round: number; thinking: string | null; body: string }
+  // Stress-test report for one top hypothesis; `first` carries the stage header.
+  | { id: string; role: "assistant"; kind: "stresstest"; hypId: string; hypTitle: string; thinking: string | null; body: string; first: boolean; active: boolean }
+  // Final ranking after stress tests + fixes.
+  | { id: string; role: "assistant"; kind: "stressranking"; md: string; refs: Hypothesis[] }
   | { id: string; role: "assistant"; kind: "proposal"; md: string }
   // Follow-up chat turns (routed: question answer / tweak-rerun / out-of-scope).
   | { id: string; role: "user"; kind: "chat"; text: string }
@@ -70,14 +74,36 @@ export function deriveMessages(input: {
   // Feedback endpoints return newest-first (correct for the Explore feed), but a
   // top-to-bottom chat thread must read oldest-first like the rest of the thread.
   const fbAsc = [...feedback].sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at));
+  const byId = new Map(hyps.map((h) => [h.id, h]));
+  const hasStressRanking = feedback.some((f) => f.kind === "stress_ranking");
   let critiqueRound = 0;
+  let firstStress = true;
   for (const f of fbAsc) {
     if (f.kind === "self_critique") {
-      const { thinking, body } = parseCritique(f.text);
+      const { thinking, body } = parseSections(f.text, "Self-critique");
       msgs.push({
         id: `fb-${f.id}`, role: "assistant", kind: "critique",
         round: ++critiqueRound, thinking, body,
       });
+      continue;
+    }
+    if (f.kind === "stress_test") {
+      const { thinking, body } = parseSections(f.text, "Stress test");
+      msgs.push({
+        id: `fb-${f.id}`, role: "assistant", kind: "stresstest",
+        hypId: f.target_id ?? "",
+        hypTitle: (f.target_id && byId.get(f.target_id)?.title) || f.target_id || "hypothesis",
+        thinking, body,
+        first: firstStress,
+        active: live && !hasStressRanking && !done,
+      });
+      firstStress = false;
+      continue;
+    }
+    if (f.kind === "stress_ranking") {
+      const refs = Array.from(new Set(f.text.match(/hyp_[a-z0-9_]+/gi) || []))
+        .map((id) => byId.get(id)).filter((h): h is Hypothesis => !!h);
+      msgs.push({ id: `fb-${f.id}`, role: "assistant", kind: "stressranking", md: f.text, refs });
       continue;
     }
     msgs.push({
@@ -91,7 +117,6 @@ export function deriveMessages(input: {
 
   // Follow-up chat turns sit at the end of the thread, oldest-first. Stable ids
   // (index-based over a stable-ordered history) keep them fixed across re-derivation.
-  const byId = new Map(hyps.map((h) => [h.id, h]));
   (chat ?? []).forEach((t, i) => {
     if (t.role === "user") {
       msgs.push({ id: `chat-${i}`, role: "user", kind: "chat", text: t.text });
@@ -108,12 +133,12 @@ export function deriveMessages(input: {
   return msgs;
 }
 
-/** Split a self-critique feedback text into its `## Thinking` (optional) and
- *  `## Self-critique` sections. Unparseable text → whole thing as the body. */
-function parseCritique(text: string): { thinking: string | null; body: string } {
-  const both = text.match(/^##\s*Thinking\s*\n+([\s\S]*?)\n+##\s*Self-critique\s*\n+([\s\S]*)$/i);
+/** Split a feedback text into its `## Thinking` (optional) and `## <section>`
+ *  sections. Unparseable text → whole thing as the body. */
+function parseSections(text: string, section: string): { thinking: string | null; body: string } {
+  const both = text.match(new RegExp(`^##\\s*Thinking\\s*\\n+([\\s\\S]*?)\\n+##\\s*${section}\\s*\\n+([\\s\\S]*)$`, "i"));
   if (both) return { thinking: both[1].trim(), body: both[2].trim() };
-  const solo = text.match(/^##\s*Self-critique\s*\n+([\s\S]*)$/i);
+  const solo = text.match(new RegExp(`^##\\s*${section}\\s*\\n+([\\s\\S]*)$`, "i"));
   if (solo) return { thinking: null, body: solo[1].trim() };
   return { thinking: null, body: text };
 }
@@ -124,6 +149,7 @@ const PHASE_META: Record<string, { icon: any; label: string }> = {
   generating: { icon: Sparkles, label: "Generating hypotheses" },
   ranking: { icon: Swords, label: "Running the tournament" },
   evolving: { icon: GitBranch, label: "Evolving the best ideas" },
+  testing: { icon: FlaskConical, label: "Stress-testing the top ideas" },
   proposal: { icon: FileText, label: "Research proposal" },
 };
 
@@ -282,6 +308,60 @@ export function ChatMessage({ msg, onSelect }: { msg: ChatMsg; onSelect: (id: st
             </details>
           )}
           <Markdown md={msg.body} />
+        </div>
+      </Assistant>
+    );
+  }
+
+  // Stress-test report for one of the top hypotheses.
+  if (msg.kind === "stresstest") {
+    return (
+      <Assistant>
+        {msg.first && <PhaseHeader kind="testing" active={msg.active} />}
+        <div className="mb-2.5 flex items-center gap-2">
+          <span className="grid h-6 w-6 shrink-0 place-items-center border border-rule bg-blue-soft text-blue">
+            <FlaskConical className="h-3.5 w-3.5" />
+          </span>
+          <span className="min-w-0 truncate font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-ink">
+            Stress test · {msg.hypTitle}
+          </span>
+        </div>
+        <div className="border border-rule bg-card p-4 text-[13px]">
+          {msg.thinking && (
+            <details className="mb-3">
+              <summary className="cursor-pointer select-none font-mono text-[10.5px] uppercase tracking-[0.08em] text-ink-soft transition-colors hover:text-ink">
+                Thinking process
+              </summary>
+              <div className="mt-2 whitespace-pre-wrap border-l-2 border-rule pl-3 font-mono text-[12px] leading-relaxed text-ink-soft">
+                {msg.thinking}
+              </div>
+            </details>
+          )}
+          <Markdown md={msg.body} />
+        </div>
+      </Assistant>
+    );
+  }
+
+  // Final ranking of the top ideas after stress tests + fixes.
+  if (msg.kind === "stressranking") {
+    return (
+      <Assistant>
+        <div className="mb-2.5 flex items-center gap-2">
+          <span className="grid h-6 w-6 place-items-center border border-rule bg-blue-soft text-blue">
+            <Check className="h-3.5 w-3.5" />
+          </span>
+          <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-ink">
+            Final ranking after testing
+          </span>
+        </div>
+        <div className="border border-rule bg-card p-4 text-[13px]">
+          <Markdown md={msg.md} />
+          {msg.refs.length > 0 && (
+            <div className="mt-3 space-y-1.5">
+              {msg.refs.map((h) => <HypRow key={h.id} h={h} onSelect={onSelect} />)}
+            </div>
+          )}
         </div>
       </Assistant>
     );
