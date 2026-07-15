@@ -343,8 +343,9 @@ function buildPlan(rec: SimRecord): Plan {
   // Assemble deterministic figures from real session data (scores, strategy mix,
   // lineage, Elo trajectories) so the proposal's charts are always correct.
   const proposals = finalRank.slice(0, 5).map((h) => ({
-    title: h.title, summary: h.summary, strategy: h.strategy,
+    id: h.id, title: h.title, summary: h.summary, strategy: h.strategy,
     elo: elo.get(h.id) ?? null, scores: h.review.scores,
+    fullText: h.full_text, citations: h.citations,
   }));
   const strategyCounts: Record<string, number> = {};
   for (const h of hyps) strategyCounts[h.strategy] = (strategyCounts[h.strategy] || 0) + 1;

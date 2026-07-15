@@ -161,6 +161,53 @@ def test_weave_figures_unmatched_headings_go_to_analysis() -> None:
     assert '"type": "scores"' in out[i_analysis:]
 
 
+def test_insert_after_proposal_heading_splices_at_block_end() -> None:
+    from co_scientist.agents.metareview import _insert_after_proposal_heading
+
+    text = (
+        "## Ranked proposals\n\n"
+        "### Proposal 1. Alpha\n\nBody one.\n\n"
+        "### Proposal 2. Beta\n\nBody two.\n\n"
+        "## Comparative assessment\n\nThey differ."
+    )
+    out, ok = _insert_after_proposal_heading(text, 1, "FIGURE-ONE")
+    assert ok
+    # Figure lands inside proposal 1: after its body, before proposal 2.
+    assert out.index("Body one.") < out.index("FIGURE-ONE") < out.index("### Proposal 2")
+    # The last proposal splices before the next '##' section, not at EOF.
+    out2, ok2 = _insert_after_proposal_heading(text, 2, "FIGURE-TWO")
+    assert ok2
+    assert out2.index("Body two.") < out2.index("FIGURE-TWO") < out2.index("## Comparative")
+    # Missing proposal or empty block → no-op.
+    assert _insert_after_proposal_heading(text, 9, "X") == (text, False)
+    assert _insert_after_proposal_heading(text, 1, "") == (text, False)
+
+
+def test_weave_figures_adds_per_proposal_elo_and_assumptions() -> None:
+    top = [_hyp("H-a", "Alpha idea", "literature")]
+    assumption = SimpleNamespace(
+        assumption="Agent reaches the target tissue", plausibility="uncertain", rationale="r"
+    )
+    reviews = {
+        "H-a": [SimpleNamespace(
+            scores=_scores(0.9, 0.8, 0.7, 0.6), assumptions=[assumption]
+        )]
+    }
+    # >1 Elo point so the per-proposal sparkline is emitted (single point → skip).
+    elo_series = {"H-a": [{"i": 0, "elo": 1208.0}, {"i": 3, "elo": 1232.0}]}
+    out = _weave_figures(top, reviews, elo_series, {"H-a": "Alpha idea"}, _PROSE)
+
+    i_p1 = out.index("### Proposal 1")
+    i_comp = out.index("## Comparative assessment")
+    # Both per-proposal figures land INSIDE the proposal-1 block. (The chart
+    # title's em-dash is —-escaped inside JSON, so assert on placement.)
+    block = out[i_p1:i_comp]
+    assert '"type": "elo"' in block                     # per-proposal Elo sparkline
+    assert "Key assumptions — proposal 1" in block      # plain-markdown table title
+    assert "Agent reaches the target tissue" in block
+    assert "| uncertain |" in block
+
+
 def test_hypothesis_md_renders_sections() -> None:
     md = _render_hypothesis_md(
         {

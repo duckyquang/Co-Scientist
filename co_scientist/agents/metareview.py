@@ -189,12 +189,39 @@ def _donut_body(top: list) -> str | None:
     )
 
 
-def _elo_body(series: dict, labels: dict) -> str | None:
+def _elo_body(
+    series: dict, labels: dict, title: str = "Elo over tournament matches"
+) -> str | None:
     if not series:
         return None
-    spec = {"type": "elo", "title": "Elo over tournament matches",
-            "series": series, "labels": labels}
+    spec = {"type": "elo", "title": title, "series": series, "labels": labels}
     return "```chart\n" + json.dumps(spec) + "\n```"
+
+
+def _assumptions_table(reviews: list, n: int) -> str | None:
+    """Compact 'Key assumptions' markdown table (assumption / plausibility) built
+    from the proposal's reviews — top 3 distinct rows. None when no structured
+    assumptions exist. Unnumbered (no Fig.N), so section numbering is untouched."""
+    rows: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for rv in reviews:
+        for a in getattr(rv, "assumptions", None) or []:
+            key = (a.assumption or "").strip()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            rows.append((key, a.plausibility))
+            if len(rows) >= 3:
+                break
+        if len(rows) >= 3:
+            break
+    if not rows:
+        return None
+    body = "\n".join(f"| {_cell(a[:80])} | {pl} |" for a, pl in rows)
+    return (
+        f"**Key assumptions — proposal {n}**\n\n"
+        "| Assumption | Plausibility |\n|---|---|\n" + body
+    )
 
 
 def _lineage_body(top: list) -> str | None:
@@ -228,6 +255,34 @@ def _insert_after_heading(text: str, keyword: str, block: str) -> tuple[str, boo
             i = m.end()
             return text[:i] + "\n\n" + block + text[i:], True
     return text, False
+
+
+def _insert_after_proposal_heading(text: str, n: int, block: str) -> tuple[str, bool]:
+    """Splice `block` at the END of the '### Proposal N' block — right before the
+    next '##'/'###' heading or '---' rule (or EOF). Returns (text, inserted?).
+    No-op on empty `block` or when no such proposal heading exists."""
+    if not block:
+        return text, False
+    m = re.search(rf"(?mi)^###\s+Proposal\s+{n}\b.*$", text)
+    if not m:
+        return text, False
+    tail = re.search(r"(?m)^(?:#{2,3}\s|-{3,}\s*$)", text[m.end():])
+    end = m.end() + tail.start() if tail else len(text)
+    return text[:end].rstrip() + "\n\n" + block + "\n\n" + text[end:].lstrip("\n"), True
+
+
+def _match_proposal_hyp(text: str, n: int, top: list):
+    """Match the '### Proposal n' block to its hypothesis by the `[H-...]` id
+    marker the metareview_final prompt embeds in each block; fall back to the
+    ordinal tournament order when no id is found."""
+    m = re.search(rf"(?mi)^###\s+Proposal\s+{n}\b.*$", text)
+    if m:
+        tail = re.search(r"(?m)^(?:#{2,3}\s|-{3,}\s*$)", text[m.end():])
+        block = text[m.end(): m.end() + tail.start()] if tail else text[m.end():]
+        for h in top:
+            if h.id in block:
+                return h
+    return top[n - 1] if 0 <= n - 1 < len(top) else None
 
 
 def _weave_figures(
@@ -277,6 +332,26 @@ def _weave_figures(
         text, ok = _insert_after_heading(text, keyword, combined)
         if not ok:
             leftovers.append(combined)
+
+    # Per-proposal figures (UNNUMBERED, so section Fig.N numbering is untouched):
+    # an Elo sparkline + a compact "Key assumptions" table spliced at the END of
+    # each of the top-3 `### Proposal N` blocks. Match each block to its
+    # hypothesis by the `[H-...]` id marker; fall back to ordinal order.
+    for i in range(min(3, len(top))):
+        n = i + 1
+        h = _match_proposal_hyp(text, n, top[:5]) or top[i]
+        per: list[str] = []
+        series = elo_series.get(h.id)
+        if series and len(series) > 1:
+            fig = _elo_body({h.id: series}, {h.id: h.title[:24]},
+                            f"Elo trajectory — proposal {n}")
+            if fig:
+                per.append(fig)
+        table = _assumptions_table(reviews_by_hyp.get(h.id, []), n)
+        if table:
+            per.append(table)
+        if per:
+            text, _ = _insert_after_proposal_heading(text, n, "\n\n".join(per))
 
     analysis = "\n\n".join(["## Analysis", *leftovers, _RATING_MODEL_NOTE])
     return text.rstrip() + "\n\n" + analysis
