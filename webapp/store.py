@@ -149,6 +149,8 @@ def get_hypothesis(conn: sqlite3.Connection, hid: str) -> dict | None:
         return None
     h["parent_ids"] = _loads(h.get("parent_ids"), [])
     h["citations"] = _hypothesis_citations(conn, hid)
+    if not h["citations"] and h.get("artifact_path"):
+        h["citations"] = _artifact_citations(conn, h["artifact_path"])
     h["reviews"] = list_reviews(conn, hid)
     h["scores"] = _avg_scores(conn, hid)
     h["elo_history"] = elo_history_for(conn, hid)
@@ -167,6 +169,33 @@ def _hypothesis_citations(conn: sqlite3.Connection, hid: str) -> list[dict]:
         return rows
     except sqlite3.OperationalError:
         return []
+
+
+def _artifact_citations(conn: sqlite3.Connection, rel_path: str) -> list[dict]:
+    """Fallback for real-engine DBs: citations live only in the hypothesis
+    artifact JSON ({"record": {"citations": [...]}}). Artifact paths are
+    relative to the data dir, which by convention is the DB file's directory
+    (Config.db_path = data_dir / "co_scientist.db"). Any failure — missing
+    file, malformed JSON, traversal attempt — degrades to []."""
+    try:
+        db_file = next(
+            r["file"] for r in conn.execute("PRAGMA database_list")
+            if r["name"] == "main" and r["file"]
+        )
+        data_dir = Path(db_file).resolve().parent
+        p = (data_dir / rel_path).resolve()
+        p.relative_to(data_dir)  # refuse paths escaping the data dir
+        payload = json.loads(p.read_text(encoding="utf-8"))
+    except (StopIteration, OSError, ValueError):  # JSONDecodeError ⊂ ValueError
+        return []
+    record = payload.get("record") if isinstance(payload, dict) else None
+    cites = record.get("citations") if isinstance(record, dict) else None
+    return [
+        {"title": c.get("title"), "url": c.get("url"), "excerpt": c.get("excerpt"),
+         "doi": c.get("doi"), "year": c.get("year")}
+        for c in (cites if isinstance(cites, list) else [])
+        if isinstance(c, dict)
+    ]
 
 
 def list_reviews(conn: sqlite3.Connection, hid: str) -> list[dict]:
