@@ -21,8 +21,9 @@ import type {
 } from "../../types";
 import type { LiveTick } from "../hooks";
 import { classifyIntent, composeRerunGoal, OUT_OF_SCOPE } from "./chatRouter";
-import { eloUpdate, figureSet, insertAfterHeading, makeHypothesis, makeOverview, makePlan, makeReview, makeSelfCritique, makeStressFix, makeStressRanking, makeStressReport, referencesSection, SIM_MODEL, STRATEGIES } from "./content";
+import { eloUpdate, figureSet, insertAfterHeading, makeHypothesis, makeOverview, makePlan, makeReview, makeSelfCritique, makeStressFix, makeStressRanking, makeStressReport, referencesSection, SIM_MODEL, STRATEGIES, type SimCitation } from "./content";
 import { generateSession, type GenHyp, type GeneratedContent } from "./generate";
+import { fetchOpenAlexCitations } from "./openalex";
 import { hasRealProvider } from "../llm";
 import { makeRng } from "./rng";
 
@@ -145,7 +146,40 @@ const round4 = (n: number) => Math.round(n * 10000) / 10000;
 /* ── Plan builder (memoized per session) ───────────────────── */
 const _planCache = new Map<string, Plan>();
 
+/* ── Live OpenAlex citations (supplementary, non-deterministic) ──
+ * Real, topically-matched papers fetched once per session from the keyless,
+ * CORS-enabled OpenAlex API. The fetch is fire-and-forget: it NEVER blocks the
+ * deterministic timeline. When the pool lands we invalidate this session's
+ * cached plan so the next poll rebuilds with real citations woven into the
+ * hypotheses, the per-proposal donut and the overview. On failure/offline the
+ * pool stays empty and every hypothesis keeps its curated REAL_PAPERS fallback,
+ * so the pure offline demo still shows citations. Determinism is unaffected —
+ * elo/matches/timing never read citations; only the drawer/donut/refs do. */
+const _citePool = new Map<string, SimCitation[]>();
+const _citeFetchStarted = new Set<string>();
+
+function maybeFetchCitations(rec: SimRecord): void {
+  if (_citeFetchStarted.has(rec.id) || !rec.goal.trim()) return;
+  _citeFetchStarted.add(rec.id);
+  // Query the actual research goal → a pool of topical papers, sampled per-hyp
+  // below (mirroring how the curated makeCitations samples REAL_PAPERS). One
+  // call regardless of hypothesis count (Deep runs 50).
+  fetchOpenAlexCitations(rec.goal, 8)
+    .then((cites) => {
+      if (!cites.length) return; // failure/offline → keep curated fallback
+      _citePool.set(rec.id, cites);
+      for (const key of [..._planCache.keys()]) {
+        if (key.startsWith(`${rec.id}|`)) _planCache.delete(key);
+      }
+    })
+    .catch(() => { /* fetchOpenAlexCitations never rejects; defensive only */ });
+}
+
 function buildPlan(rec: SimRecord): Plan {
+  // Kick off the live citation fetch once (async, non-blocking). Runs even while
+  // the "Reading your prompt…" placeholder is showing, so real citations are
+  // often pooled by the time the tournament content lands.
+  maybeFetchCitations(rec);
   // Still generating with a live model and within the time budget → a
   // "preparing" placeholder plan (not cached, so the real plan builds the moment
   // content lands). Past the budget (or once generating clears) we DON'T hang
@@ -211,13 +245,25 @@ function buildPlan(rec: SimRecord): Plan {
       cache_read: r.randint(0, it), cache_write: r.randint(0, 800),
     });
   };
+  // Real OpenAlex papers for this session (empty until the async fetch lands).
+  // Sample a distinct 2–4 per hypothesis, seeded by hyp index so the pick is
+  // stable across rebuilds but varies between hypotheses. Non-empty only online.
+  const pool = _citePool.get(simId);
+  const realCitations = (idx: number): SimCitation[] | null => {
+    if (!pool || !pool.length) return null;
+    const rr = makeRng(`${simId}|cite|${idx}`);
+    return rr.sample(pool, Math.min(pool.length, rr.randint(2, 4)));
+  };
   // idx doubles as the index into real (Groq) content; falls back to templates.
   const hypContent = (idx: number, strategy: string) => {
+    const real = realCitations(idx);
     const g = rec.content?.hyps[idx];
     if (g) {
       return {
         title: g.title, summary: g.summary, full_text: assembleFullText(g),
-        citations: [] as PlanHyp["citations"],
+        // Groq hyps: real topical citations when online, else [] (honest — the
+        // model is told never to fabricate sources, so no curated fallback here).
+        citations: (real ?? []) as PlanHyp["citations"],
         review: {
           verdict: g.verdict,
           scores: { novelty: g.novelty, correctness: g.correctness, testability: g.testability, feasibility: g.feasibility },
@@ -228,7 +274,9 @@ function buildPlan(rec: SimRecord): Plan {
     const c = makeHypothesis(goal, idx, strategy);
     const rv = makeReview(goal, c.title, "full");
     return {
-      title: c.title, summary: c.summary, full_text: c.full_text, citations: c.citations,
+      // Template hyps: real topical citations when online, else the curated
+      // REAL_PAPERS fallback so the zero-backend offline demo still cites papers.
+      title: c.title, summary: c.summary, full_text: c.full_text, citations: real ?? c.citations,
       review: { verdict: rv.verdict, scores: rv.scores, body: rv.body } as HypReview,
     };
   };
