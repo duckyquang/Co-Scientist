@@ -226,7 +226,7 @@ function Thread({ id }: { id: string }) {
     return (
       <div className="mx-auto max-w-md flex-1 py-16 text-center">
         <h2 className="font-serif text-lg font-semibold text-ink">Session not found</h2>
-        <Link to="/" className="btn-ghost mt-5 inline-flex">← New session</Link>
+        <Link to="/chat" className="btn-ghost mt-5 inline-flex">← New session</Link>
       </div>
     );
   }
@@ -257,9 +257,9 @@ function Thread({ id }: { id: string }) {
           <h1 className="mt-1 truncate font-serif text-[16px] font-semibold text-ink">{session.research_goal}</h1>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {live && <button disabled={busy} onClick={() => control("pause")} className="btn-ghost h-8 px-2.5"><Pause className="h-3.5 w-3.5" /></button>}
-          {status === "paused" && <button disabled={busy} onClick={() => control("resume")} className="btn-primary h-8 px-2.5"><Play className="h-3.5 w-3.5" /></button>}
-          {(live || status === "paused") && <button disabled={busy} onClick={() => control("abort")} className="btn-danger h-8 px-2.5"><Square className="h-3 w-3" /></button>}
+          {live && <button aria-label="Pause" disabled={busy} onClick={() => control("pause")} className="btn-ghost h-8 px-2.5"><Pause className="h-3.5 w-3.5" /></button>}
+          {status === "paused" && <button aria-label="Resume" disabled={busy} onClick={() => control("resume")} className="btn-primary h-8 px-2.5"><Play className="h-3.5 w-3.5" /></button>}
+          {(live || status === "paused") && <button aria-label="Abort" disabled={busy} onClick={() => control("abort")} className="btn-danger h-8 px-2.5"><Square className="h-3 w-3" /></button>}
           {highRisk && (
             <span title="This session runs in high-risk mode — bold, contrarian hypotheses"
               className="border border-accent bg-accent-soft px-2 py-0.5 font-mono text-[10.5px] uppercase tracking-[0.08em] text-accent">

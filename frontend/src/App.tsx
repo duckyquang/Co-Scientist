@@ -18,6 +18,7 @@ initTheme();
 import Dashboard from "./pages/Dashboard";
 import Chat from "./pages/Chat";
 import Microsite from "./pages/Microsite";
+import Landing from "./pages/Landing";
 import { timeAgo } from "./lib/format";
 import type { SessionRow } from "./types";
 
@@ -72,7 +73,7 @@ function Sidebar({
 
       {/* Primary nav */}
       <div className="px-3 pt-3 pb-2 space-y-0.5">
-        <Link to="/" className="nav-item">
+        <Link to="/chat" className="nav-item">
           <Plus className="h-4 w-4 shrink-0" strokeWidth={2.5} />
           New session
         </Link>
@@ -144,7 +145,7 @@ function MobileBar({
         Co-Scientist
       </Link>
       <div className="ml-auto">
-        <Link to="/" className="btn-primary h-8 px-3">+ New</Link>
+        <Link to="/chat" className="btn-primary h-8 px-3">+ New</Link>
       </div>
     </div>
   );
@@ -163,12 +164,16 @@ function DashboardScroll() {
 
 /* ── Root ───────────────────────────────────────────────── */
 export default function App() {
+  const { pathname } = useLocation();
   const [palette, setPalette] = useState(false);
   const [settings, setSettings] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [onboarding, setOnboarding] = useState(
     !isOnboardingDone() && !getCredentials() && IS_STATIC_DEMO,
   );
+
+  // The marketing landing owns "/" and renders chrome-less (no sidebar/mobile bar).
+  if (pathname === "/") return <Landing />;
 
   return (
     <div className="min-h-full">
@@ -198,12 +203,12 @@ export default function App() {
         <MobileBar onMenu={() => setMobileOpen(true)} />
         <main className="min-h-0 flex-1">
           <Routes>
-            <Route path="/" element={<Chat />} />
+            <Route path="/chat" element={<Chat />} />
             <Route path="/s/:id/site" element={<Microsite />} />
             <Route path="/s/:id" element={<Chat />} />
             <Route path="/sessions" element={<DashboardScroll />} />
-            <Route path="/new" element={<Navigate to="/" replace />} />
-            <Route path="*" element={<Chat />} />
+            <Route path="/new" element={<Navigate to="/chat" replace />} />
+            <Route path="*" element={<Navigate to="/chat" replace />} />
           </Routes>
         </main>
       </div>
