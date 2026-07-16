@@ -27,6 +27,13 @@ CREATE TABLE IF NOT EXISTS web_citations (
 );
 CREATE INDEX IF NOT EXISTS web_cit_hyp ON web_citations(hypothesis_id);
 
+-- Varied synthetic reasoning per hypothesis (labelled SIMULATED in the UI).
+-- A side table so the shared co_scientist hypotheses schema is untouched.
+CREATE TABLE IF NOT EXISTS hyp_thinking (
+    hypothesis_id TEXT PRIMARY KEY,
+    thinking      TEXT
+);
+
 CREATE TABLE IF NOT EXISTS chat_messages (
     id             TEXT PRIMARY KEY,
     session_id     TEXT NOT NULL,
@@ -40,6 +47,15 @@ CREATE INDEX IF NOT EXISTS chat_msg_session ON chat_messages(session_id, created
 """
 
 DEMO_TAG = "demo::"  # session ids are prefixed so --reset only nukes demo data
+
+# Varied match rationales so the demo tournament feed doesn't repeat one sentence.
+_SEED_MATCH_RATIONALES = [
+    "offered a sharper falsification criterion and stronger mechanistic grounding",
+    "made a more specific, testable claim with cleaner controls",
+    "held up better under cross-examination",
+    "proposed a more decisive, lower-cost experiment",
+    "rested on stronger, more direct evidence",
+]
 
 
 def _ts(dt: datetime) -> str:
@@ -132,7 +148,8 @@ def build_session(conn: sqlite3.Connection, *, goal: str, status: str,
             "id": hid, "created_by": created_by, "strategy": strat,
             "parent_ids": list({p for p in parent_ids}),
             "title": c["title"], "summary": c["summary"], "full_text": c["full_text"],
-            "citations": c["citations"], "cluster": f"clu_{i % n_clusters}",
+            "citations": c["citations"], "thinking": c["thinking"],
+            "cluster": f"clu_{i % n_clusters}",
             "elo": seed_elo, "elo0": seed_elo,  # elo0 = fixed quality anchor
             "matches": 0, "created_at": start + timedelta(minutes=2 + i * 3),
         })
@@ -161,8 +178,8 @@ def build_session(conn: sqlite3.Connection, *, goal: str, status: str,
                 "winner": winner, "ea": a["elo"], "eb": b["elo"],
                 "ea2": ra, "eb2": rb, "created_at": match_t,
                 "similarity": round(r.uniform(0.05, 0.4), 2),
-                "rationale": f"Under {mode}, idea {winner.upper()} offered a sharper "
-                             "falsification criterion and stronger mechanistic grounding.",
+                "rationale": f"Under {mode}, idea {winner.upper()} "
+                             f"{r.choice(_SEED_MATCH_RATIONALES)}.",
             })
             a["elo"], b["elo"] = ra, rb
             a["matches"] += 1
@@ -200,6 +217,10 @@ def build_session(conn: sqlite3.Connection, *, goal: str, status: str,
                    VALUES (?,?,?,?,?,?)""",
                 (h["id"], cit["title"], cit["url"], cit["excerpt"], cit["doi"], cit["year"]),
             )
+        conn.execute(
+            "INSERT OR REPLACE INTO hyp_thinking (hypothesis_id, thinking) VALUES (?,?)",
+            (h["id"], h.get("thinking", "")),
+        )
         if h["state"] in ("draft",):
             continue
         for kind in (["full", "verification"] if h["state"] != "reviewed" else ["full"]):
@@ -338,6 +359,7 @@ def seed(db=DEFAULT_DB, reset: bool = False) -> list[str]:
                 conn.execute("DELETE FROM elo_journal WHERE match_id=?", (mid,))
             for hid in hids:
                 conn.execute("DELETE FROM web_citations WHERE hypothesis_id=?", (hid,))
+                conn.execute("DELETE FROM hyp_thinking WHERE hypothesis_id=?", (hid,))
             conn.execute("DELETE FROM events WHERE session_id=?", (sid,))
             # FK ON DELETE CASCADE clears hypotheses/reviews/matches/transcripts/
             # system_feedback/tasks when the parent session is removed.

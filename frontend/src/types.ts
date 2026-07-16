@@ -80,7 +80,9 @@ export interface Hypothesis {
   title: string;
   summary: string;
   full_text: string;
-  /** Real extended-thinking captured during generation/evolution (empty/absent = none produced). */
+  /** Reasoning shown as a disclosure: real captured thinking on the engine
+   *  (generation/evolution), or varied synthetic reasoning for sim hyps
+   *  (labelled SIMULATED) / the model's real rationale for BYOK. Absent = none. */
   thinking?: string | null;
   elo: number | null;
   matches_played: number;
@@ -91,8 +93,6 @@ export interface Hypothesis {
   citations?: Citation[];
   reviews?: Review[];
   elo_history?: { t: string; elo: number }[];
-  /** Captured (real) or simulated reasoning behind this hypothesis; shown as a disclosure. */
-  thinking?: string | null;
 }
 
 export interface Citation {

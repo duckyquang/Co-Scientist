@@ -93,7 +93,25 @@ interface PlanHyp {
   title: string; summary: string; full_text: string;
   citations: { title: string; url: string; excerpt: string | null; doi: string | null; year: number | null }[];
   review: HypReview;
+  thinking: string; // varied synthetic reasoning (sim) / model reasoning (groq)
 }
+
+/** Varied match rationales so the tournament feed doesn't repeat one sentence.
+ *  Picked per match off the plan RNG (deterministic per session). */
+const MATCH_RATIONALES = [
+  "gave a sharper falsification criterion",
+  "offered a cleaner causal mechanism",
+  "proposed a more decisive experiment",
+  "held up better under cross-examination",
+  "rested on stronger, more direct evidence",
+  "made a more specific, testable claim",
+];
+const RERANK_RATIONALES = [
+  "held up under re-examination",
+  "survived a second look",
+  "kept its edge on the low-K rematch",
+  "did not wobble when re-scored",
+];
 interface PlanMatch {
   id: string; t: number; hyp_a: string; hyp_b: string; mode: string;
   winner: "a" | "b"; elo_a_before: number; elo_b_before: number;
@@ -269,6 +287,9 @@ function buildPlan(rec: SimRecord): Plan {
           scores: { novelty: g.novelty, correctness: g.correctness, testability: g.testability, feasibility: g.feasibility },
           body: g.critique,
         } as HypReview,
+        // Groq hyps carry the model's own reasoning (a genuine trace); template
+        // hyps get the varied synthetic thinking below.
+        thinking: g.reasoning,
       };
     }
     const c = makeHypothesis(goal, idx, strategy);
@@ -278,6 +299,7 @@ function buildPlan(rec: SimRecord): Plan {
       // REAL_PAPERS fallback so the zero-backend offline demo still cites papers.
       title: c.title, summary: c.summary, full_text: c.full_text, citations: real ?? c.citations,
       review: { verdict: rv.verdict, scores: rv.scores, body: rv.body } as HypReview,
+      thinking: c.thinking,
     };
   };
   /** Win probability from each idea's fixed quality anchor (seed Elo, elo0), not
@@ -302,6 +324,7 @@ function buildPlan(rec: SimRecord): Plan {
       id: hypId(idx), idx, strategy, created_by: createdBy, parents,
       tCreate: t, tReview: t, elo0: seedElo(hypId(idx), idx, parents),
       title: c.title, summary: c.summary, full_text: c.full_text, citations: c.citations, review: c.review,
+      thinking: c.thinking,
     };
     hyps.push(h);
     elo.set(h.id, h.elo0);
@@ -327,7 +350,7 @@ function buildPlan(rec: SimRecord): Plan {
         matches.push({
           id: mid, t, hyp_a: a.id, hyp_b: b.id, mode, winner,
           elo_a_before: ea, elo_b_before: eb, elo_a_after: ra, elo_b_after: rb,
-          rationale: `Idea ${winner.toUpperCase()} gave a sharper falsification criterion.`,
+          rationale: `Idea ${winner.toUpperCase()} ${r.choice(MATCH_RATIONALES)}.`,
           similarity: round2(r.uniform(0.05, 0.4)),
         });
         elo.set(a.id, ra); elo.set(b.id, rb);
@@ -416,7 +439,7 @@ function buildPlan(rec: SimRecord): Plan {
       matches.push({
         id: mid, t, hyp_a: a.id, hyp_b: b.id, mode, winner,
         elo_a_before: ea, elo_b_before: eb, elo_a_after: ra, elo_b_after: rb,
-        rationale: `Idea ${winner.toUpperCase()} held up under re-examination.`,
+        rationale: `Idea ${winner.toUpperCase()} ${r.choice(RERANK_RATIONALES)}.`,
         similarity: round2(r.uniform(0.05, 0.4)),
       });
       elo.set(a.id, ra); elo.set(b.id, rb);
@@ -469,6 +492,7 @@ function buildPlan(rec: SimRecord): Plan {
         full_text: `## Hardening\n\n${fix.summary}`,
         citations: h.citations,
         review: { verdict: rv.verdict, scores: rv.scores, body: rv.body },
+        thinking: fix.thinking,
       };
       hyps.push(child);
       elo.set(child.id, childElo);
@@ -496,10 +520,14 @@ function buildPlan(rec: SimRecord): Plan {
     for (let bi = 0; bi < 2 && hyps.length >= 2; bi++) {
       const [a, b] = r.sample(hyps, 2);
       const w: "a" | "b" = r.random() < pWinA(a, b) ? "a" : "b";
-      stressMatch(a, b, w, 6, `Idea held up under re-examination.`);
+      stressMatch(a, b, w, 6, `Idea ${w.toUpperCase()} ${r.choice(RERANK_RATIONALES)}.`);
     }
     for (const { parent, child } of pairs) {
-      stressMatch(child, parent, "a", 16, "Hardened revision beat its parent under stress re-test.");
+      stressMatch(child, parent, "a", 16, r.choice([
+        "Hardened revision beat its parent under stress re-test.",
+        "The stress-hardened child outscored the original once re-tested.",
+        "Fix child overtook its parent after the stress re-rank.",
+      ]));
     }
     // stress_ranking summary, ordered by the fix children's final Elo.
     t += 0.8;
@@ -752,6 +780,7 @@ function toHypothesis(s: Snapshot, h: PlanHyp): Hypothesis {
     dedup_cluster: clusterId(h.idx, s.rec.n_initial),
     n_reviews: reviewed ? 1 : 0,
     scores: reviewed ? h.review.scores : {},
+    thinking: h.thinking || undefined,
   };
 }
 

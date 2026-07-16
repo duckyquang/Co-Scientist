@@ -43,6 +43,16 @@ STRESS_TEST_FRACTION = 0.05
 ELO_SEED_BASE = 1000.0
 ELO_SEED_SPAN = 800.0
 
+# Varied match rationales so the tournament feed doesn't repeat one sentence.
+_MATCH_RATIONALES = [
+    "gave a sharper falsification criterion",
+    "offered a cleaner causal mechanism",
+    "proposed a more decisive experiment",
+    "held up better under cross-examination",
+    "rested on stronger, more direct evidence",
+    "made a more specific, testable claim",
+]
+
 
 def _now() -> datetime:
     return datetime.now(UTC)
@@ -172,6 +182,9 @@ class Sim:
                 "INSERT INTO web_citations (hypothesis_id, title, url, excerpt, doi, year)"
                 " VALUES (?,?,?,?,?,?)",
                 (hid, cit["title"], cit["url"], cit["excerpt"], cit["doi"], cit["year"]))
+        conn.execute(
+            "INSERT OR REPLACE INTO hyp_thinking (hypothesis_id, thinking) VALUES (?,?)",
+            (hid, c.get("thinking", "")))
         cost = round(self.r.uniform(0.04, 0.2), 4)
         _transcript(conn, self.sid, created_by, f"{created_by}.{strat}",
                     content.MODELS[created_by], now, cost)
@@ -228,6 +241,9 @@ class Sim:
         mid = "mat_" + hashlib.sha256(
             f"{self.sid}{a['id']}{b['id']}{time.time()}".encode()).hexdigest()[:16]
         now = _now()
+        rationale = (
+            f"Idea {winner.upper()} {self.r.choice(_MATCH_RATIONALES)}."
+        )
         conn.execute(
             """INSERT INTO tournament_matches
                (id, session_id, created_at, hyp_a, hyp_b, mode, winner,
@@ -235,8 +251,7 @@ class Sim:
                 rationale, transcript_id, similarity)
                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (mid, self.sid, _ts(now), a["id"], b["id"], mode, winner,
-             a["elo"], b["elo"], ra, rb,
-             f"Idea {winner.upper()} gave a sharper falsification criterion.",
+             a["elo"], b["elo"], ra, rb, rationale,
              None, round(self.r.uniform(0.05, 0.4), 2)))
         conn.execute(
             """INSERT OR IGNORE INTO elo_journal
@@ -375,6 +390,9 @@ class Sim:
                 "INSERT INTO web_citations (hypothesis_id, title, url, excerpt, doi, year)"
                 " VALUES (?,?,?,?,?,?)",
                 (hid, cit["title"], cit["url"], cit["excerpt"], cit["doi"], cit["year"]))
+        conn.execute(
+            "INSERT OR REPLACE INTO hyp_thinking (hypothesis_id, thinking) VALUES (?,?)",
+            (hid, fix.get("thinking", "")))
         cost = round(self.r.uniform(0.04, 0.2), 4)
         _transcript(conn, self.sid, "evolution", "evolution.feedback_driven",
                     content.MODELS["evolution"], now, cost)
