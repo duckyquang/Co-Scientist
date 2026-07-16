@@ -44,8 +44,8 @@ export function CommandPalette({
 
   const cmds = useMemo<Cmd[]>(() => {
     const base: Cmd[] = [
-      { id: "new", label: "Start new research session", icon: Sparkles, hint: "create", run: () => nav("/") },
-      { id: "home", label: "Go to dashboard", icon: Home, run: () => nav("/") },
+      { id: "new", label: "Start new research session", icon: Sparkles, hint: "create", run: () => nav("/chat") },
+      { id: "home", label: "Go to dashboard", icon: Home, run: () => nav("/sessions") },
     ];
     const sess: Cmd[] = sessions.map((s) => ({
       id: s.id,

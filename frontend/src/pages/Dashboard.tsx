@@ -71,7 +71,7 @@ function EmptyState() {
           Elo-rank novel hypotheses — live.
         </p>
       </div>
-      <Link to="/" className="btn-primary px-6 py-2.5">
+      <Link to="/chat" className="btn-primary px-6 py-2.5">
         Launch a session →
       </Link>
       <div className="w-full border-t border-rule" />
@@ -83,7 +83,7 @@ function EmptyState() {
           {EXAMPLE_PROMPTS.map((p) => (
             <Link
               key={p}
-              to={`/?goal=${encodeURIComponent(p)}`}
+              to={`/chat?goal=${encodeURIComponent(p)}`}
               className="block border border-rule bg-card px-4 py-2.5 text-sm text-ink-soft transition-colors hover:border-blue hover:text-ink"
             >
               {p}
@@ -147,7 +147,7 @@ export default function Dashboard() {
             )}
           </div>
           {userSessions.length > 0 && (
-            <Link to="/" className="btn-primary h-8 px-3">+ New session</Link>
+            <Link to="/chat" className="btn-primary h-8 px-3">+ New session</Link>
           )}
         </div>
 
