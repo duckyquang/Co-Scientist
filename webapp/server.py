@@ -37,7 +37,7 @@ PROVIDERS = [
 ]
 
 
-def _json(handler: "Handler", obj, status=200):
+def _json(handler: Handler, obj, status=200):
     body = json.dumps(obj, default=str).encode()
     handler.send_response(status)
     handler.send_header("Content-Type", "application/json")

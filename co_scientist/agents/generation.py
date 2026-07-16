@@ -47,8 +47,8 @@ class GenerationAgent(BaseAgent):
         plan = session.research_plan
 
         if strategy != "literature":
-            # M3 ships only the literature strategy.
-            raise NotImplementedError(f"strategy {strategy!r} lands in a later milestone")
+            # Only the literature strategy is scheduled by the supervisor.
+            raise ValueError(f"unsupported strategy: {strategy!r}")
 
         # 1. Render the prompt and run the tool loop with `record_hypothesis` available.
         articles_block = (

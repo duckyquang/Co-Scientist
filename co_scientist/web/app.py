@@ -9,7 +9,6 @@ from __future__ import annotations
 import asyncio
 import logging as stdlib_logging
 import os
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +21,7 @@ from fastapi.templating import Jinja2Templates
 from ..config import Config, load_config
 from ..logging import get_logger
 from ..storage import db as db_mod
+from ..storage.repos import hypotheses as hyp_repo
 from ..storage.repos import reviews as rev_repo
 from ..storage.repos import sessions as sess_repo
 from ..storage.repos import transcripts as tx_repo

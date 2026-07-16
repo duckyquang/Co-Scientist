@@ -41,7 +41,7 @@ class ReflectionAgent(BaseAgent):
             raise RuntimeError(f"hypothesis {hypothesis_id} missing")
 
         if kind != "full":
-            raise NotImplementedError(f"reflection kind {kind!r} lands in a later milestone")
+            raise ValueError(f"unsupported reflection kind: {kind!r}")
 
         prompt = render(
             "reflection.full",

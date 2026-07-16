@@ -14,13 +14,13 @@ import json
 import random
 import threading
 import time
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 from . import content
 from .seed import EXTRA_TABLES, _elo_update, _emit, _transcript
 from .store import REPO_ROOT, connect
 
-_RUNNING: dict[str, "Sim"] = {}
+_RUNNING: dict[str, Sim] = {}
 _LOCK = threading.Lock()
 
 TOKENS_PER_USD = 220_000
@@ -277,7 +277,7 @@ class Sim:
         for _r in range(rounds):
             pool = list(self.hyps)
             self.r.shuffle(pool)
-            for a, b in zip(pool[::2], pool[1::2]):
+            for a, b in zip(pool[::2], pool[1::2], strict=False):
                 if a is b or not self._wait(conn, 1.2):
                     return
                 mode = "debate" if self.r.random() < 0.35 else "pairwise"

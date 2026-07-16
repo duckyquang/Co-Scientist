@@ -58,7 +58,7 @@ def connect(db_path: Path | str = DEFAULT_DB) -> sqlite3.Connection:
 def _rows(conn: sqlite3.Connection, sql: str, params: tuple = ()) -> list[dict]:
     cur = conn.execute(sql, params)
     cols = [c[0] for c in cur.description]
-    return [dict(zip(cols, r)) for r in cur.fetchall()]
+    return [dict(zip(cols, r, strict=True)) for r in cur.fetchall()]
 
 
 def _row(conn: sqlite3.Connection, sql: str, params: tuple = ()) -> dict | None:
