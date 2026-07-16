@@ -161,7 +161,7 @@ def build_session(conn: sqlite3.Connection, *, goal: str, status: str,
     match_t = start + timedelta(minutes=n_hyps * 3 + 5)
     for _round in range(n_rounds):
         random.Random(f"{sid}{_round}").shuffle(in_tournament)
-        for a, b in zip(in_tournament[::2], in_tournament[1::2]):
+        for a, b in zip(in_tournament[::2], in_tournament[1::2], strict=False):
             if a is b:
                 continue
             mode = "debate" if r.random() < 0.3 else "pairwise"
@@ -264,7 +264,6 @@ def build_session(conn: sqlite3.Connection, *, goal: str, status: str,
           {"goal": goal[:200], "n_initial": 3, "budget_usd": budget}, start)
     _transcript(conn, sid, "supervisor", "parse_goal", content.MODELS["supervisor"],
                 start, 0.01)
-    ev_t = start + timedelta(minutes=1)
     for h in hyps:
         agent = "evolution" if h["created_by"] == "evolution" else "generation"
         cost = round(r.uniform(0.04, 0.22), 4)
@@ -307,6 +306,7 @@ def build_session(conn: sqlite3.Connection, *, goal: str, status: str,
         top_hyps = sorted(hyps, key=lambda h: -h["elo"])[:5]
         ov_md = content.make_overview(goal, top_hyps)
         import os
+
         from .store import REPO_ROOT
         ov_dir = REPO_ROOT / "data" / "artifacts" / sid / "final"
         ov_dir.mkdir(parents=True, exist_ok=True)

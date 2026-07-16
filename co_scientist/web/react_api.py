@@ -33,6 +33,10 @@ from .user_keys import apply_user_credentials, require_llm_credentials
 
 log = get_logger("react_api")
 
+# Keep strong refs to background session tasks; the event loop only holds a weak
+# ref, so without this a live run can be garbage-collected mid-flight (RUF006).
+_bg_tasks: set[asyncio.Task] = set()
+
 PROVIDERS = [
     {"id": "anthropic", "label": "Anthropic", "models": ["claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"]},
     {"id": "openai", "label": "OpenAI", "models": ["gpt-5", "gpt-4o", "o3-mini"]},
@@ -344,7 +348,9 @@ def create_react_router(base_cfg: Config, *, live_sessions: set[str]) -> APIRout
             finally:
                 live_sessions.discard("_pending")
 
-        asyncio.create_task(_bg())
+        _task = asyncio.create_task(_bg())
+        _bg_tasks.add(_task)
+        _task.add_done_callback(_bg_tasks.discard)
 
         # Session row is created within the first seconds of run_session.
         deadline = time.time() + 45.0
