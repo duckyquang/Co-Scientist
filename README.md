@@ -2,7 +2,7 @@
 
 # 🧬 Co-Scientist
 
-**A multi-agent research engine that turns a natural-language goal into tournament-ranked hypotheses.**
+**A multi-agent research engine that turns a one-line research goal into tournament-ranked, stress-tested, citation-grounded hypotheses.**
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11--3.13-blue.svg)](https://www.python.org/)
@@ -10,24 +10,70 @@
 
 *Created by **Quang Bui***
 
+### [→ Try the live demo](https://duckyquang.github.io/Co-Scientist/) — no account, no API key
+
 </div>
+
+Type a research question. A team of specialised agents generate competing
+hypotheses, debate and **Elo-rank** them, evolve the best across several rounds,
+**adversarially stress-test the top 3**, then write a final proposal with inline
+`[n]` citations grounded in real papers. Watch every step — including the agents'
+reasoning — stream live in the chat.
+
+- **Elo tournament** of pairwise hypothesis debates
+- **Recurring self-critique** — the engine re-questions its own leaderboard for flaws and weak citations
+- **Stress-testing the top 3** — contradicting-evidence search, citation verification, feasibility + a prototype-scale experiment, then fixes and a re-rank
+- **Multi-round evolution** of the leading ideas
+- **HIGH RISK mode** — a toggle for bold, contrarian, non-derivative hypotheses
+- **Real citations, no key** — OpenAlex / PubMed / arXiv / Europe PMC, each verified, with a numbered `## References` section
+- Runs in the browser with **no setup**, or self-host for a server-side key
 
 ---
 
 ## ✨ What it does
 
-An open-source re-implementation of Google's **AI co-scientist** ([Gottweis et al., *Nature*, 2026](https://www.nature.com/articles/s41586-026-10644-y)) — six specialised agents collaborate through an Elo tournament to produce a ranked research overview.
+An open-source re-implementation of Google's **AI co-scientist**
+([Gottweis et al., *"Accelerating scientific discovery with Co-Scientist,"* **Nature**, 2026](https://www.nature.com/articles/s41586-026-10644-y)).
+Six specialised agents collaborate through an Elo tournament, then an adversarial
+stress-test stage pressure-tests the finalists, to turn a natural-language goal
+into a ranked, citation-grounded research proposal.
+
+> Independent project — not affiliated with Google or the paper's authors.
+
+**A single run walks through these stages** — all of it streaming live in the chat,
+including the agents' own reasoning:
+
+1. **Generate** competing hypotheses from a literature review and multi-agent debate.
+2. **Reflect** — review each for novelty, correctness, and testability.
+3. **Rank** in an **Elo tournament** of pairwise debates.
+4. **Evolve** the leaderboard's best ideas across **multiple rounds** (combine, simplify, out-of-the-box) — shown as distinct steps.
+5. **Self-critique**, recurring — the meta-review agent re-questions its own leaderboard: *are these really the best hypotheses? what are the flaws, the wrong conclusions, the suspect citations?* Its thinking shows in the feed.
+6. **Stress-test the top 3** — *the headline stage.* Each finalist is adversarially probed: search for **contradicting evidence**, **verify every citation**, run a **feasibility check**, and design a **prototype-scale experiment**. Surviving weaknesses are **fixed**, then the finalists are **re-ranked** head-to-head.
+7. **Meta-review** — synthesise the final proposal with inline `[n]` citations and a numbered `## References` section.
+
+Steps 3–5 repeat each round until the leaderboard is stable or the token budget is
+spent; step 6 runs once, at finalize.
+
+### The six core agents
 
 | Agent | Role |
 |---|---|
 | **Generation** | Proposes hypotheses via literature review and debate |
 | **Reflection** | Reviews novelty, correctness, testability |
 | **Ranking** | Elo tournament with pairwise debates |
-| **Evolution** | Combines and refines top hypotheses |
+| **Evolution** | Combines and refines top hypotheses across rounds |
 | **Proximity** | Clusters hypotheses for dedup and matchmaking |
-| **Meta-review** | Synthesises the final research overview |
+| **Meta-review** | Recurring self-critique and the final research overview |
 
-> Independent project — not affiliated with Google or the paper's authors.
+A dedicated **stress-test** stage (config `[run] stress_test_top_k`, default 3)
+runs the adversarial probe on the finalists at the end of a run.
+
+### ⚡ HIGH RISK mode
+
+Flip the **High risk** toggle on the composer to push every agent toward **bold,
+contrarian, non-derivative** hypotheses instead of safe, incremental ones
+(config `[run] high_risk`). Sessions run this way are badged so you can tell them
+apart.
 
 ### 🎚️ Hypothesis modes
 
@@ -71,32 +117,40 @@ To steer a session **while it's still running**, the feedback endpoint
 (`POST /api/sessions/{id}/feedback`) still accepts directives, preferences,
 and per-hypothesis pin/reject.
 
-### 📚 Citations guaranteed
+### 📚 Real citations, no key required
 
-Every research proposal ends with a numbered `## References` section, with
-inline `[n]` markers throughout the text. The real engine builds it only from
-papers actually fetched during literature search (`CitedPaper` records) and
-marks any entry the citation verifier couldn't confirm as `(unverified)`.
-Browser-run proposals — simulated or generated by an in-browser LLM — include
-well-formed references too.
+Agents ground their claims in real literature through four **keyless** public
+APIs that are always on: `openalex_search`, `pubmed_search`, `arxiv_search`, and
+`europe_pmc_search` — giving real papers with resolving DOIs out of the box.
+General `web_search` auto-activates only when you supply a `TAVILY_API_KEY` or
+`BRAVE_API_KEY`.
+
+Every proposal ends with a numbered `## References` section, and inline `[n]`
+markers throughout the text link to it. The real engine builds that list only
+from papers actually fetched during literature search (`CitedPaper` records),
+verifies each one, and marks any entry the citation verifier couldn't confirm as
+`(unverified)`. Browser-run proposals — simulated or generated by an in-browser
+LLM — include well-formed references too.
 
 ---
 
 ## 🚀 Quick start — no setup required
 
 1. **Visit the live site** → [duckyquang.github.io/Co-Scientist](https://duckyquang.github.io/Co-Scientist/)
-   — you land straight on the chat composer
+   — it opens on a landing page; click **Launch the demo** to reach the chat
+   composer (`/chat`)
 2. Pick an **Effort** — **Quick** (5), **Standard** (15, default), or **Deep**
-   (50 initial hypotheses)
+   (50 initial hypotheses) — and optionally flip **High risk** on
 3. Type your research question and send
 
-**No account. No API key. No configuration** — for the visitor. Type a prompt and six
-agents generate, debate, and Elo-rank hypotheses, then write a final proposal —
-§-numbered sections, inline `[n]` citations, and a `## References` list included,
-rendered visually with Mermaid diagrams, KaTeX math, and charts. Every finished
-proposal also has a shareable microsite view (**View as website**, `/s/<id>/site`)
-with print-to-PDF export. When it's done, ask follow-up questions or request
-changes right in the session thread.
+**No account. No API key. No configuration** — for the visitor. Type a prompt and
+the agents generate, debate, and Elo-rank hypotheses, evolve the best across
+rounds, self-critique, and adversarially stress-test the top 3 — then write a
+final proposal with §-numbered sections, inline `[n]` citations, and a
+`## References` list, rendered visually with Mermaid diagrams, KaTeX math, and
+charts. Every finished proposal also has a shareable microsite view
+(**View as website**, `/s/<id>/site`) with print-to-PDF export. When it's done,
+ask follow-up questions or request changes right in the session thread.
 
 The UI is an academic "graph-paper" design inspired by
 [GEML](https://saidlaboratory.github.io/GEML/): serif typography, mono
@@ -231,12 +285,39 @@ Quick steps:
           │  SQLite · SSE live stream · REST API │
           └──────────────────────────────────────┘
                               │
-          ┌───────────────────┴───────────────────┐
-          │          Simulator / real engine       │
-          │  Generation → Reflection → Ranking    │
-          │  → Evolution → Proximity → Meta-review│
-          └────────────────────────────────────────┘
+                              ▼
+              ─── Simulator / real engine ───
+
+    Generate hypotheses   (literature review + debate)
+             │
+             ▼
+    Reflect   (novelty · correctness · testability)
+             │
+             ▼         ┐
+    Elo tournament     │  loop each round
+             │         │  until the board
+             ▼         │  is stable or the
+    Evolve top ideas   │  token budget is
+    (multi-round)      │  spent
+             │         │
+             ▼         │
+    Self-critique      ┘
+             │
+             ▼
+    Stress-test the TOP 3   ◄── the headline stage
+      · search for contradicting evidence
+      · verify every citation
+      · feasibility + prototype-scale experiment
+             │
+             ▼
+    Apply fixes → final head-to-head re-rank
+             │
+             ▼
+    Meta-review proposal
+    (inline [n] citations + numbered References)
 ```
+
+Proximity clustering runs throughout for dedup and matchmaking.
 
 ---
 
