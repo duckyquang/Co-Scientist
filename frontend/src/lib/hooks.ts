@@ -152,20 +152,13 @@ export function useStickToBottom(dep: unknown) {
 export type Theme = "light" | "dark";
 const THEME_KEY = "cosci_theme";
 
-function systemTheme(): Theme {
-  return typeof window !== "undefined" &&
-    window.matchMedia?.("(prefers-color-scheme: dark)").matches
-    ? "dark"
-    : "light";
-}
-
-/** Resolve the active theme: explicit user choice, else system preference. */
+/** Resolve the active theme: explicit user choice, else the dark default. */
 export function getTheme(): Theme {
   try {
     const saved = localStorage.getItem(THEME_KEY);
     if (saved === "light" || saved === "dark") return saved;
   } catch { /* ignore */ }
-  return systemTheme();
+  return "dark";
 }
 
 export function applyTheme(theme: Theme) {
@@ -184,19 +177,6 @@ export function useTheme(): [Theme, (t: Theme) => void] {
     setThemeState(t);
     applyTheme(t);
     try { localStorage.setItem(THEME_KEY, t); } catch { /* ignore */ }
-  }, []);
-  // Follow system changes only while the user hasn't pinned a choice.
-  useEffect(() => {
-    const mq = window.matchMedia?.("(prefers-color-scheme: dark)");
-    if (!mq) return;
-    const onChange = () => {
-      try { if (localStorage.getItem(THEME_KEY)) return; } catch { /* ignore */ }
-      const t = systemTheme();
-      setThemeState(t);
-      applyTheme(t);
-    };
-    mq.addEventListener?.("change", onChange);
-    return () => mq.removeEventListener?.("change", onChange);
   }, []);
   return [theme, setTheme];
 }
